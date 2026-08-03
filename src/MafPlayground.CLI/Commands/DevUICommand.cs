@@ -52,6 +52,7 @@ public static class DevUICommand
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
+            ContentRootPath = AppContext.BaseDirectory,
             EnvironmentName = Environments.Development,
         });
 

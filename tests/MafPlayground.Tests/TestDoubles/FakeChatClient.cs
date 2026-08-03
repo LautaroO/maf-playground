@@ -3,7 +3,7 @@ using Microsoft.Extensions.AI;
 
 namespace MafPlayground.Tests;
 
-internal sealed class FakeChatClient(string responseText) : IChatClient
+internal sealed class FakeChatClient(string responseText, UsageDetails? usage = null) : IChatClient
 {
     public List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
 
@@ -15,7 +15,10 @@ internal sealed class FakeChatClient(string responseText) : IChatClient
         CancellationToken cancellationToken = default)
     {
         Requests.Add(messages.ToList());
-        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, responseText)));
+        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, responseText))
+        {
+            Usage = usage,
+        });
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -27,6 +30,14 @@ internal sealed class FakeChatClient(string responseText) : IChatClient
         await Task.Yield();
         cancellationToken.ThrowIfCancellationRequested();
         yield return new ChatResponseUpdate(ChatRole.Assistant, responseText);
+
+        if (usage is not null)
+        {
+            yield return new ChatResponseUpdate
+            {
+                Contents = [new UsageContent(usage)],
+            };
+        }
     }
 
     public object? GetService(Type serviceType, object? serviceKey = null) =>

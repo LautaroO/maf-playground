@@ -35,6 +35,11 @@ public static class ObservabilityServiceExtensions
                 $"{ObservabilityOptions.SectionName}:ServiceName cannot be empty when observability is enabled.");
         }
 
+        if (options.Cost.Enabled)
+        {
+            services.AddSingleton<IChatClientDecorator, CostTrackingChatClientDecorator>();
+        }
+
         services.AddLogging(logging => logging.AddOpenTelemetry(openTelemetry =>
         {
             openTelemetry.IncludeFormattedMessage = true;
@@ -50,7 +55,9 @@ public static class ObservabilityServiceExtensions
                     ObservabilityTelemetry.TestHarnessSourceName)
                 .AddOtlpExporter())
             .WithMetrics(metrics => metrics
-                .AddMeter(AITelemetry.AgentSourceName)
+                .AddMeter(
+                    AITelemetry.AgentSourceName,
+                    ObservabilityTelemetry.CostMeterName)
                 .AddOtlpExporter());
 
         return services;

@@ -45,7 +45,11 @@ public static class BasicAgentCommand
         using ILoggerFactory commandLoggerFactory = CommandLogging.CreateLoggerFactory();
         ILogger logger = commandLoggerFactory.CreateLogger(typeof(BasicAgentCommand));
 
-        HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(
+            new HostApplicationBuilderSettings
+            {
+                ContentRootPath = AppContext.BaseDirectory,
+            });
         builder.Logging.ClearProviders();
 
         ConfigurationManager configuration = builder.Configuration;

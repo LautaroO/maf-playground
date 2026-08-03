@@ -73,6 +73,25 @@ Prompts, responses, and tool payloads are excluded by default. Sensitive capture
 can be enabled explicitly for a secured local environment with
 `OBSERVABILITY__AGENTFRAMEWORK__ENABLESENSITIVEDATA=true`.
 
+Estimated model-call cost can also be emitted as the
+`maf_playground.gen_ai.cost` metric and the `maf_playground.gen_ai.cost`
+span attribute. Prices use the common provider convention of currency units per
+one million input or output tokens:
+
+```text
+cost = (input tokens × input rate + output tokens × output rate) / 1,000,000
+```
+
+Each provider owns how its prices are represented and exposes normalized pricing
+through a provider-neutral contract. The host supplies the actual values. The
+CLI's `appsettings.json` configures a synthetic USD 0.01-per-million rate under
+`AI:Providers:Ollama:Pricing`, even though a local Ollama call has no provider
+charge. Set both rates to `0`, or add model objects to that provider's `Models`
+array, to represent other pricing. Environment variables can still override
+individual settings when a deployment requires it. An estimate is emitted only
+when both a matching price and provider-reported input/output usage are
+available; it is not an invoice or an authoritative billing record.
+
 Future web or worker hosts can compose the reusable infrastructure with:
 
 ```csharp

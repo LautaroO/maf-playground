@@ -16,7 +16,19 @@ public static class AIServiceExtensions
         serviceCollection.AddSingleton(modelSelection);
         serviceCollection.AddSingleton<AIProviderRegistry>();
         serviceCollection.AddSingleton<IChatClient>(serviceProvider =>
-            serviceProvider.GetRequiredService<AIProviderRegistry>().CreateChatClient(modelSelection));
+        {
+            IChatClient chatClient = serviceProvider
+                .GetRequiredService<AIProviderRegistry>()
+                .CreateChatClient(modelSelection);
+
+            foreach (IChatClientDecorator decorator in
+                serviceProvider.GetServices<IChatClientDecorator>())
+            {
+                chatClient = decorator.Decorate(chatClient, modelSelection);
+            }
+
+            return chatClient;
+        });
         serviceCollection.AddSingleton<Agents.BasicAgent.BasicAgent>();
 
         return serviceCollection;
