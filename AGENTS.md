@@ -20,6 +20,9 @@ When implementing or reviewing MAF code, use sources in this order:
    https://github.com/microsoft/agent-framework/tree/c073ed9f74bf864d4c696e03a705e2811311a4db/dotnet
 5. Official Agent Framework samples:
    https://github.com/microsoft/Agent-Framework-Samples
+6. DevUI documentation and current .NET source:
+   https://learn.microsoft.com/agent-framework/devui/
+   https://github.com/microsoft/agent-framework/tree/main/dotnet/src/Microsoft.Agents.AI.DevUI
 
 Prefer documentation and code matching the package version used by this repository. MAF evolves quickly; do not assume current `main` APIs match installed NuGet packages.
 
@@ -252,6 +255,23 @@ Capture at least:
 - outcome status.
 
 Do not log secrets, credentials, full sensitive prompts, or confidential tool payloads by default.
+
+## Local testing, harnesses, and DevUI
+
+Keep local testing surfaces separate from reusable agent and workflow libraries.
+
+- A repository-owned CLI harness is suitable for conversational and typed local tests.
+- `HarnessAgent` is an opinionated agent runtime; the official harness console is a sample terminal UX around it.
+- DevUI is a local web test and debugging surface for registered agents and native workflows.
+- Aspire Dashboard or another OTLP backend is an external observability destination, not a replacement for DevUI execution or graph visualization.
+
+For DevUI, register standalone agents with `AddAIAgent` and native graph workflows with `AddWorkflow`. Do not also register a workflow as an agent unless a second agent-shaped entity is intentional. Set workflow identity and description on `WorkflowBuilder` so the metadata remains available in any host.
+
+DevUI and its C# packages evolve quickly. Verify the installed DevUI and hosting package APIs, XML documentation, and official .NET source. Do not assume Python-only documentation describes structured workflow inputs or trace collection in the installed C# preview.
+
+Treat OTLP export and DevUI trace rendering as separate integrations. A working OTLP exporter proves that an external collector can receive telemetry; it does not prove that DevUI receives the response trace events its debug panel expects. Test `/v1/entities`, `/v1/responses`, graph metadata, and trace rendering explicitly.
+
+DevUI is development-only by default. Bind to loopback. If remote access is explicitly required, add authentication and network controls.
 
 ## Testing expectations
 

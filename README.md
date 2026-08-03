@@ -233,7 +233,9 @@ Then invoke a skill explicitly when useful:
 ```text
 $maf-architecture Design the translation workflow.
 $maf-implementation Implement the approved design.
+$maf-implementation Expose the agent and native workflow through a local DevUI command.
 $maf-review Review the current MAF implementation.
+$maf-review Check DevUI discovery, duplicate registrations, hosted execution, and tracing.
 ```
 
 Skills can also activate implicitly from their descriptions.

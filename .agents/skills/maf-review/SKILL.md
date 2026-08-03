@@ -1,6 +1,6 @@
 ---
 name: maf-review
-description: Review Microsoft Agent Framework C#/.NET code and architecture. Use for pull request review, refactoring advice, or checking whether agents, workflows, tools, middleware, memory, context, structured outputs, and provider adapters are used idiomatically.
+description: Review Microsoft Agent Framework C#/.NET code and architecture. Use for pull request review, refactoring advice, or checking whether agents, workflows, tools, middleware, memory, context, structured outputs, provider adapters, hosting, CLI harnesses, and DevUI are used idiomatically.
 ---
 
 # Microsoft Agent Framework review
@@ -12,6 +12,7 @@ description: Review Microsoft Agent Framework C#/.NET code and architecture. Use
 3. Read `references/review-checklist.md`.
 4. Compare implementation with current official docs and pinned official .NET samples.
 5. Separate confirmed framework guidance from architectural recommendations.
+6. For DevUI, compare the installed package XML/source with the current .NET implementation; do not assume Python-only documentation describes the C# preview.
 
 ## Required review structure
 

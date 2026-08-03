@@ -1,6 +1,6 @@
 ---
 name: maf-architecture
-description: Design Microsoft Agent Framework architectures in C#/.NET. Use when deciding between deterministic code, tools, agents, workflows, middleware, memory, context providers, structured outputs, human approval, or durable execution. Do not use for generic .NET work unrelated to agentic systems.
+description: Design Microsoft Agent Framework architectures in C#/.NET. Use when deciding between deterministic code, tools, agents, workflows, middleware, memory, context providers, structured outputs, human approval, durable execution, hosting, CLI test harnesses, or DevUI. Do not use for generic .NET work unrelated to agentic systems.
 ---
 
 # Microsoft Agent Framework architecture
@@ -49,6 +49,17 @@ A workflow executor is conceptually similar to a LangGraph node. Typed workflow 
 ### Combined design
 
 Prefer a workflow containing small agent steps when the process is deterministic but individual steps require semantic judgment.
+
+### Development and hosting surfaces
+
+Keep agents, workflows, tools, and provider-neutral services independent of the executable used to exercise them.
+
+- Use a CLI harness for fast conversational or typed local testing.
+- Use DevUI for local interactive execution, entity discovery, workflow graph visualization, and trace inspection.
+- Use an OTLP backend such as Aspire Dashboard for host-wide logs, metrics, and distributed traces.
+- Treat `HarnessAgent` as an opinionated agent runtime and its terminal UX as a sample; neither is synonymous with DevUI.
+- Register a workflow natively when graph visualization matters. Expose it as an agent only when agent semantics are independently required.
+- Keep DevUI out of production composition unless the user explicitly requests and secures it.
 
 ## Provider neutrality
 

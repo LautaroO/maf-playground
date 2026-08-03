@@ -64,6 +64,21 @@
 - Agent/executor/tool durations?
 - Model usage where available?
 - Sensitive data redacted?
+- External OTLP export and DevUI trace delivery tested independently?
+
+## Local testing and DevUI
+
+- CLI harness, `HarnessAgent`, harness sample console, DevUI, and OTLP dashboard distinguished?
+- DevUI dependencies isolated to a development host or command?
+- Agents registered with `AddAIAgent` and graph workflows with `AddWorkflow`?
+- Workflow-as-agent registration present only for a real agent-shaped use case?
+- Each logical entity discovered exactly once at `/v1/entities`?
+- Agent/workflow name and description exposed from the entity itself?
+- Native workflow topology and executors visible?
+- Hosted input/output protocol tested through `/v1/responses`, not only a typed runner?
+- Structured workflow input behavior confirmed against the installed C# package rather than inferred from Python docs?
+- Agent, model, tool, workflow, and executor spans visible in intended destinations?
+- DevUI loopback-only, development-only, or explicitly authenticated and network-restricted?
 
 ## Testing
 

@@ -1,6 +1,6 @@
 ---
 name: maf-implementation
-description: Implement Microsoft Agent Framework agents, tools, workflows, middleware, sessions, context providers, structured outputs, or durable patterns in C#/.NET. Use only when editing or generating MAF code; verify installed NuGet APIs and official samples before coding.
+description: Implement Microsoft Agent Framework agents, tools, workflows, middleware, sessions, context providers, structured outputs, durable patterns, hosting, CLI test harnesses, or DevUI integration in C#/.NET. Use only when editing or generating MAF code; verify installed NuGet APIs and official samples before coding.
 ---
 
 # Microsoft Agent Framework implementation
@@ -12,9 +12,10 @@ description: Implement Microsoft Agent Framework agents, tools, workflows, middl
 3. Identify exact MAF package names and versions.
 4. Search local code and tests for the closest pattern.
 5. Consult `references/official-sources.md` and the pinned official .NET source.
-6. Do not copy a sample blindly: adapt it to repository conventions and installed APIs.
-7. Implement the smallest complete change with tests.
-8. Run formatting, build, and targeted tests.
+6. For DevUI, hosting, or interactive testing, read `references/devui.md` completely.
+7. Do not copy a sample blindly: adapt it to repository conventions and installed APIs.
+8. Implement the smallest complete change with tests.
+9. Run formatting, build, and targeted tests.
 
 ## Implementation rules
 
@@ -34,6 +35,15 @@ description: Implement Microsoft Agent Framework agents, tools, workflows, middl
 - Keep prompts out of domain entities.
 - Avoid static mutable state.
 - Never hardcode credentials.
+
+## Local test surfaces
+
+- Keep CLI consoles and DevUI in development hosts, not in reusable agent/workflow core projects.
+- Distinguish `HarnessAgent`, the sample harness terminal UX, DevUI, and an OTLP dashboard; they solve different problems.
+- Register an agent with `AddAIAgent` and a native workflow with `AddWorkflow` when DevUI must visualize its graph.
+- Do not also expose that workflow with `AddAsAIAgent` unless two distinct DevUI entities are intentional.
+- Put workflow name and description on `WorkflowBuilder`; treat DevUI registration as hosting, not domain metadata.
+- Verify DevUI discovery, execution protocol, and traces independently. OTLP export alone does not prove that DevUI receives trace events.
 
 ## Testing
 
