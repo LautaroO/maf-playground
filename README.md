@@ -37,6 +37,21 @@ set -a; source .env; set +a
 The application reads process environment variables; it does not load `.env`
 files automatically.
 
+## Run DevUI
+
+The same CLI executable can host the Agent Framework DevUI for local visual
+testing. Load the environment and run:
+
+```bash
+set -a; source .env; set +a
+dotnet run --project src/MafPlayground.CLI -- devui
+```
+
+Open `http://localhost:5050/devui`. Override the model with `--model` or the
+listening address with `--url`. DevUI reuses the same agents, providers, and
+observability pipeline as the terminal harness, and is restricted to local
+development use.
+
 ## Observability
 
 Agent instrumentation lives in `MafPlayground.AI`, while telemetry collection and
