@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -7,25 +6,18 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
-
   <ItemGroup>
-    <ProjectReference Include="../../src/MafPlayground.AI/MafPlayground.AI.csproj" />
-    <ProjectReference Include="../../src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
-    <ProjectReference Include="../../src/MafPlayground.Observability/MafPlayground.Observability.csproj" />
     <ProjectReference Include="../../src/MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
+    <ProjectReference Include="../../src/MafPlayground.Retrieval.Postgres/MafPlayground.Retrieval.Postgres.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <None Include="../../documents/help.pdf" Link="TestData/help.pdf" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

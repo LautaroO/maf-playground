@@ -1,9 +1,11 @@
 using System.CommandLine;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
+using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.CLI.DevUI;
 using MafPlayground.Observability;
+using MafPlayground.Retrieval;
 using Microsoft.Agents.AI.DevUI;
 using Microsoft.Agents.AI.Hosting;
 using Microsoft.Agents.AI.Hosting.OpenAI;
@@ -32,15 +34,21 @@ public static class DevUICommand
         {
             Description = "HTTP URL for DevUI. Falls back to DEVUI_URL."
         };
+        Option<string?> embeddingModelOption = new("--embedding-model")
+        {
+            Description = "Embedding model selector in provider:model format. Falls back to AI_EMBEDDING_MODEL."
+        };
 
         Command command = new("devui", "Run the local Agent Framework DevUI.");
         command.Options.Add(modelOption);
         command.Options.Add(urlOption);
+        command.Options.Add(embeddingModelOption);
         command.SetAction((parseResult, cancellationToken) =>
             runAsync(
                 new DevUICommandOptions(
                     parseResult.GetValue(modelOption),
-                    parseResult.GetValue(urlOption)),
+                    parseResult.GetValue(urlOption),
+                    parseResult.GetValue(embeddingModelOption)),
                 cancellationToken));
         return command;
     }
@@ -67,6 +75,13 @@ public static class DevUICommand
                 "An AI model is required in provider:model format. Use --model or set AI_MODEL");
             return 2;
         }
+        if (!EmbeddingModelSelection.TryParse(
+                commandOptions.EmbeddingModel ?? builder.Configuration["AI_EMBEDDING_MODEL"],
+                out EmbeddingModelSelection? embeddingSelection))
+        {
+            logger.LogError("An embedding model is required in provider:model format. Use --embedding-model or set AI_EMBEDDING_MODEL");
+            return 2;
+        }
 
         string url = commandOptions.Url
             ?? builder.Configuration["DEVUI_URL"]
@@ -78,11 +93,15 @@ public static class DevUICommand
         builder.Services.Configure<TranslationWorkflowOptions>(
             builder.Configuration.GetSection("AI:Workflows:Translation"));
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
+        builder.Services.AddConfiguredRetrieval(builder.Configuration, embeddingSelection!);
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);
         builder.Services.AddDevUITracing();
         builder.AddAIAgent(
             "basic-agent",
             (services, _) => services.GetRequiredService<BasicAgent>().Agent);
+        builder.AddAIAgent(
+            "basic-rag-agent",
+            (services, _) => services.GetRequiredService<BasicRagAgent>().Agent);
         builder.AddWorkflow(
             "translation-workflow",
             (services, workflowName) =>
@@ -106,6 +125,7 @@ public static class DevUICommand
             await using WebApplication app = builder.Build();
 
             _ = app.Services.GetRequiredService<BasicAgent>();
+            _ = app.Services.GetRequiredService<BasicRagAgent>();
 
             app.UseDevUITracing();
             app.MapOpenAIResponses();
@@ -122,6 +142,11 @@ public static class DevUICommand
             logger.LogError("{ErrorMessage}", exception.Message);
             return 2;
         }
+        catch (EmbeddingProviderNotFoundException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         catch (OptionsValidationException exception)
         {
             logger.LogError("{ErrorMessage}", exception.Message);
@@ -134,4 +159,4 @@ public static class DevUICommand
     }
 }
 
-public sealed record DevUICommandOptions(string? Model, string? Url);
+public sealed record DevUICommandOptions(string? Model, string? Url, string? EmbeddingModel = null);

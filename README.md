@@ -48,6 +48,51 @@ set -a; source .env; set +a
 The application reads process environment variables; it does not load `.env`
 files automatically.
 
+## Run the Basic RAG agent
+
+The RAG example uses a provider-neutral extraction and retrieval core, PostgreSQL
+with pgvector as the current storage adapter, and Ollama as the initial embedding
+provider. PDF is the first registered `IDocumentExtractor`; adding DOCX, Markdown,
+or text support requires another extractor without changing ingestion or the agent.
+
+Start PostgreSQL, pull the embedding model, migrate the schema, and explicitly
+ingest a text-based PDF:
+
+```bash
+docker compose up -d postgres
+ollama pull nomic-embed-text
+dotnet run --project src/MafPlayground.CLI -- rag database migrate
+dotnet run --project src/MafPlayground.CLI -- rag ingest --path ./documents/help.pdf --source-root ./documents
+```
+
+The repository includes `documents/help.pdf`, a four-page fictional Northstar
+customer guide with precise, page-specific facts for retrieval and citation tests.
+Regenerate it after editing the sample content with:
+
+```bash
+python3 -m pip install reportlab
+python3 scripts/generate-sample-help-pdf.py
+```
+
+Then run the grounded agent interactively or with one prompt:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- agent basic-rag
+dotnet run --project src/MafPlayground.CLI -- agent basic-rag --prompt "How do I reset my account?"
+```
+
+`AI_EMBEDDING_MODEL` uses the same `provider:model` convention as `AI_MODEL`; the
+example selects `ollama:nomic-embed-text`. The initial schema is configured for
+its 768 dimensions. Collections record their embedding identity and reject
+incompatible writes, so changing dimensions requires a migration or a separate
+compatible collection.
+
+Ingestion preserves a stable relative source identifier with `--source-root`,
+records PDF pages, skips unchanged content, and reports pages without extractable
+text. OCR is intentionally deferred behind the extraction abstraction. Answers
+must use exact citations with document title, stable source ID, and page where
+available. Retrieval is automatic, with at most one refined model-requested search.
+
 ## Run the translation workflow
 
 The translation workflow creates one branch per requested language. Translation
@@ -86,7 +131,8 @@ dotnet run --project src/MafPlayground.CLI -- devui
 ```
 
 Open `http://localhost:5050/devui`. Override the model with `--model` or the
-listening address with `--url`. The entity picker includes `basic-agent` and
+listening address with `--url`. The entity picker includes `basic-agent`,
+`basic-rag-agent`, and
 `translation-workflow`. Select `translation-workflow` to inspect its
 fan-out/fan-in topology or execute a translation from a text message; DevUI
 renders the final typed result as JSON. The visible branches are configured with
@@ -155,8 +201,7 @@ request-based hosts should provide their own registration.
 ## Local infrastructure
 
 The root `compose.yaml` provides development infrastructure shared by any local
-host. It currently starts the standalone Aspire Dashboard and can be extended
-later with PostgreSQL or other dependencies.
+host. It starts the standalone Aspire Dashboard and PostgreSQL with pgvector.
 
 Copy the example environment, enable observability, and start the stack:
 

@@ -34,6 +34,10 @@ public static class AIServiceExtensions
         serviceCollection.AddSingleton<Tools.CurrentDateTimeTool>();
         serviceCollection.AddSingleton<UserContextProvider>();
         serviceCollection.AddSingleton<Agents.BasicAgent.BasicAgent>();
+        serviceCollection.AddSingleton<Agents.BasicRagAgent.RagInvocationContextAccessor>();
+        serviceCollection.AddSingleton<Agents.BasicRagAgent.RagContextProvider>();
+        serviceCollection.AddSingleton<Agents.BasicRagAgent.CitationValidator>();
+        serviceCollection.AddSingleton<Agents.BasicRagAgent.BasicRagAgent>();
         serviceCollection.AddOptions<Workflows.Translation.TranslationWorkflowOptions>()
             .Validate(
                 options => options.MaxTargetLanguages > 0,

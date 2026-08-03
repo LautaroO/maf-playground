@@ -4,8 +4,11 @@
     <Project Path="src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
     <Project Path="src/MafPlayground.Observability/MafPlayground.Observability.csproj" />
     <Project Path="src/MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
+    <Project Path="src/MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
+    <Project Path="src/MafPlayground.Retrieval.Postgres/MafPlayground.Retrieval.Postgres.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/MafPlayground.IntegrationTests/MafPlayground.IntegrationTests.csproj" />
     <Project Path="tests/MafPlayground.Tests/MafPlayground.Tests.csproj" />
   </Folder>
 </Solution>

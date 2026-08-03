@@ -1,4 +1,5 @@
 using MafPlayground.AI;
+using MafPlayground.Retrieval;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -24,6 +25,7 @@ public static class OllamaServiceExtensions
                 "Ollama pricing requires a currency, version, unique model names, and non-negative token prices.");
 
         serviceCollection.AddSingleton<IChatClientProvider, OllamaChatClientProvider>();
+        serviceCollection.AddSingleton<IEmbeddingGeneratorProvider, OllamaEmbeddingGeneratorProvider>();
         serviceCollection.AddSingleton<IModelPricingSource, OllamaModelPricingSource>();
         return serviceCollection;
     }

@@ -1,6 +1,23 @@
 name: maf-playground
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-maf_playground}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
     environment:
@@ -10,3 +27,6 @@ services:
       - "${OTEL_EXPORTER_OTLP_GRPC_PORT:-4317}:18889"
       - "${OTEL_EXPORTER_OTLP_HTTP_PORT:-4318}:18890"
     restart: unless-stopped
+
+volumes:
+  postgres-data:

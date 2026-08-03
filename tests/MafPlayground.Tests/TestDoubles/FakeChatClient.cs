@@ -5,11 +5,15 @@ namespace MafPlayground.Tests;
 
 internal sealed class FakeChatClient(string responseText, UsageDetails? usage = null) : IChatClient
 {
+    private readonly Queue<string> _responses = new([responseText]);
+
     public List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
 
     public List<ChatOptions?> RequestOptions { get; } = [];
 
     public ChatClientMetadata Metadata { get; } = new("fake");
+
+    public void EnqueueResponse(string value) => _responses.Enqueue(value);
 
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -18,7 +22,7 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
     {
         Requests.Add(messages.ToList());
         RequestOptions.Add(options);
-        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, responseText))
+        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, NextResponse()))
         {
             Usage = usage,
         });
@@ -33,7 +37,7 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
         RequestOptions.Add(options);
         await Task.Yield();
         cancellationToken.ThrowIfCancellationRequested();
-        yield return new ChatResponseUpdate(ChatRole.Assistant, responseText);
+        yield return new ChatResponseUpdate(ChatRole.Assistant, NextResponse());
 
         if (usage is not null)
         {
@@ -50,4 +54,7 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
     public void Dispose()
     {
     }
+
+    private string NextResponse() =>
+        _responses.Count > 1 ? _responses.Dequeue() : _responses.Peek();
 }
