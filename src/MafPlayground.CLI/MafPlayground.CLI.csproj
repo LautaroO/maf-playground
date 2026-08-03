@@ -12,4 +12,10 @@
     <PackageReference Include="System.CommandLine" Version="2.0.10" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../MafPlayground.AI/MafPlayground.AI.csproj" />
+    <ProjectReference Include="../MafPlayground.Observability/MafPlayground.Observability.csproj" />
+    <ProjectReference Include="../MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -2,5 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/MafPlayground.AI/MafPlayground.AI.csproj" />
     <Project Path="src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
+    <Project Path="src/MafPlayground.Observability/MafPlayground.Observability.csproj" />
+    <Project Path="src/MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MafPlayground.Tests/MafPlayground.Tests.csproj" />
   </Folder>
 </Solution>
