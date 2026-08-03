@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MafPlayground.AI/MafPlayground.AI.csproj" />
+    <Project Path="src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,11 @@
+# Example USER-level Codex configuration.
+# Copy relevant settings to ~/.codex/config.toml.
+# This file is included only as a reference and is not required in the repository.
+
+# AGENTS.md has a default combined limit of 32 KiB.
+# Raise only if your repository genuinely needs more layered instructions.
+project_doc_max_bytes = 65536
+
+# Optional fallback instruction filenames.
+# AGENTS.md remains the preferred repository convention.
+# project_doc_fallback_filenames = ["TEAM_GUIDE.md"]
