@@ -34,6 +34,30 @@ public static class AIServiceExtensions
         serviceCollection.AddSingleton<Tools.CurrentDateTimeTool>();
         serviceCollection.AddSingleton<UserContextProvider>();
         serviceCollection.AddSingleton<Agents.BasicAgent.BasicAgent>();
+        serviceCollection.AddOptions<Workflows.Translation.TranslationWorkflowOptions>()
+            .Validate(
+                options => options.MaxTargetLanguages > 0,
+                "TranslationWorkflow:MaxTargetLanguages must be greater than zero.")
+            .Validate(
+                options => options.MaxInputCharacters > 0,
+                "TranslationWorkflow:MaxInputCharacters must be greater than zero.")
+            .Validate(
+                options => options.MaxRepairAttempts >= 0,
+                "TranslationWorkflow:MaxRepairAttempts cannot be negative.")
+            .Validate(
+                options => options.MinimumValidationConfidence is >= 0 and <= 1,
+                "TranslationWorkflow:MinimumValidationConfidence must be between zero and one.")
+            .Validate(
+                options => options.ModelCallTimeout > TimeSpan.Zero,
+                "TranslationWorkflow:ModelCallTimeout must be greater than zero.")
+            .Validate(
+                options => options.DevUITargetLanguages is { Length: > 0 },
+                "TranslationWorkflow:DevUITargetLanguages must contain at least one language.");
+        serviceCollection.AddSingleton<Workflows.Translation.ITranslationModel,
+            Workflows.Translation.ChatClientTranslationModel>();
+        serviceCollection.AddSingleton<Workflows.Translation.TranslationBranchProcessor>();
+        serviceCollection.AddSingleton<Workflows.Translation.TranslationWorkflowFactory>();
+        serviceCollection.AddSingleton<Workflows.Translation.TranslationWorkflowRunner>();
 
         return serviceCollection;
     }

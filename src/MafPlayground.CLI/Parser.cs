@@ -7,10 +7,12 @@ public static class Parser
 {
     public static RootCommand CreateRootCommand(
         Func<BasicAgentCommandOptions, CancellationToken, Task<int>>? runBasicAgentAsync = null,
-        Func<DevUICommandOptions, CancellationToken, Task<int>>? runDevUIAsync = null)
+        Func<DevUICommandOptions, CancellationToken, Task<int>>? runDevUIAsync = null,
+        Func<TranslateWorkflowCommandOptions, CancellationToken, Task<int>>? runTranslateAsync = null)
     {
         RootCommand rootCommand = new("Microsoft Agent Framework playground CLI");
         rootCommand.Subcommands.Add(AgentCommand.Create(runBasicAgentAsync));
+        rootCommand.Subcommands.Add(WorkflowCommand.Create(runTranslateAsync));
         rootCommand.Subcommands.Add(DevUICommand.Create(runDevUIAsync));
         return rootCommand;
     }

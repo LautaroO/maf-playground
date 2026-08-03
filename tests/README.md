@@ -9,6 +9,7 @@ MafPlayground.Tests/
   AI/
     Agents/
     Tools/
+    Workflows/
   CLI/
   Observability/
   TestDoubles/

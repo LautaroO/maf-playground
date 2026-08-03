@@ -1,6 +1,8 @@
 using System.CommandLine;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
+using MafPlayground.AI.Workflows.Translation;
+using MafPlayground.CLI.DevUI;
 using MafPlayground.Observability;
 using Microsoft.Agents.AI.DevUI;
 using Microsoft.Agents.AI.Hosting;
@@ -73,11 +75,28 @@ public static class DevUICommand
 
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(modelSelection);
+        builder.Services.Configure<TranslationWorkflowOptions>(
+            builder.Configuration.GetSection("AI:Workflows:Translation"));
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);
+        builder.Services.AddDevUITracing();
         builder.AddAIAgent(
             "basic-agent",
             (services, _) => services.GetRequiredService<BasicAgent>().Agent);
+        builder.AddWorkflow(
+            "translation-workflow",
+            (services, workflowName) =>
+            {
+                TranslationWorkflowFactory factory = services
+                    .GetRequiredService<TranslationWorkflowFactory>();
+                TranslationWorkflowOptions workflowOptions = services
+                    .GetRequiredService<IOptions<TranslationWorkflowOptions>>()
+                    .Value;
+                return factory.CreateForDevUI(
+                    workflowOptions.DevUITargetLanguages,
+                    workflowName);
+            },
+            ServiceLifetime.Transient);
         builder.AddDevUI();
         builder.Services.AddOpenAIResponses();
         builder.Services.AddOpenAIConversations();
@@ -88,6 +107,7 @@ public static class DevUICommand
 
             _ = app.Services.GetRequiredService<BasicAgent>();
 
+            app.UseDevUITracing();
             app.MapOpenAIResponses();
             app.MapOpenAIConversations();
             app.MapDevUI();

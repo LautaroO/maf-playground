@@ -25,4 +25,27 @@ public sealed class AppSettingsTests
             "0.01",
             configuration["AI:Providers:Ollama:Pricing:Models:0:OutputPerMillionTokens"]);
     }
+
+    [Fact]
+    public void CliAppSettings_ContainsTranslationWorkflowDefaults()
+    {
+        string appSettingsPath = Path.Combine(
+            Path.GetDirectoryName(typeof(MafPlayground.CLI.Parser).Assembly.Location)!,
+            "appsettings.json");
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddJsonFile(appSettingsPath, optional: false)
+            .Build();
+
+        Assert.Equal(8, configuration.GetValue<int>(
+            "AI:Workflows:Translation:MaxTargetLanguages"));
+        Assert.Equal(1, configuration.GetValue<int>(
+            "AI:Workflows:Translation:MaxRepairAttempts"));
+        string[]? devUITargetLanguages = configuration
+            .GetSection("AI:Workflows:Translation:DevUITargetLanguages")
+            .Get<string[]>();
+        Assert.NotNull(devUITargetLanguages);
+        Assert.Equal(["es", "fr", "pt-BR"], devUITargetLanguages);
+        Assert.Equal(TimeSpan.FromMinutes(1), configuration.GetValue<TimeSpan>(
+            "AI:Workflows:Translation:ModelCallTimeout"));
+    }
 }

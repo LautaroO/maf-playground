@@ -48,6 +48,33 @@ set -a; source .env; set +a
 The application reads process environment variables; it does not load `.env`
 files automatically.
 
+## Run the translation workflow
+
+The translation workflow creates one branch per requested language. Translation
+branches run concurrently, each result passes through a semantic validator, and
+the validated branches join through a fan-in barrier before producing an ordered
+result:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- \
+  workflow translate \
+  --model ollama:llama3.1:8b \
+  --text "Hello, how are you?" \
+  --languages es,fr,pt-BR
+```
+
+Validation checks the target language and meaning preservation using structured
+model output. A failed validation receives one bounded repair attempt. Provider
+errors, invalid output, validation failures, and timeouts are returned per
+language so one failed branch does not prevent the fan-in result. The command
+returns exit code `0` when every translation is valid and `1` when it produces
+one or more partial failures.
+
+Concurrency limits, input size, validation confidence, repair attempts, and the
+per-call timeout are configured under `AI:Workflows:Translation` in the CLI's
+`appsettings.json`. Other hosts can configure `TranslationWorkflowOptions`
+through their own composition root.
+
 ## Run DevUI
 
 The same CLI executable can host the Agent Framework DevUI for local visual
@@ -59,9 +86,20 @@ dotnet run --project src/MafPlayground.CLI -- devui
 ```
 
 Open `http://localhost:5050/devui`. Override the model with `--model` or the
-listening address with `--url`. DevUI reuses the same agents, providers, and
-observability pipeline as the terminal harness, and is restricted to local
-development use.
+listening address with `--url`. The entity picker includes `basic-agent` and
+`translation-workflow`. Select `translation-workflow` to inspect its
+fan-out/fan-in topology or execute a translation from a text message; DevUI
+renders the final typed result as JSON. The visible branches are configured with
+`AI:Workflows:Translation:DevUITargetLanguages`; execute the workflow from the
+terminal with `workflow translate`, where the topology remains dynamic through
+`--languages`. DevUI reuses the same agents, providers, and observability
+pipeline as the terminal harness, and is restricted to local development use.
+
+The `devui` command also installs a local trace bridge for the current .NET DevUI
+preview. Agent, model, tool, workflow, and executor spans are emitted into the
+DevUI response stream and appear in its debug trace panel without requiring an
+OTLP collector. This is independent of the optional OTLP export below, so the
+same run can be inspected in both DevUI and the Aspire Dashboard.
 
 ## Observability
 
