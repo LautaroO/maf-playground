@@ -63,6 +63,7 @@ public static class BasicAgentCommand
             return 2;
         }
 
+        builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(modelSelection);
         builder.Services.AddConfiguredAIProviders(configuration);
         builder.Services.AddMafPlaygroundObservability(configuration);

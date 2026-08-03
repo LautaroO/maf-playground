@@ -160,6 +160,11 @@ public sealed class ObservabilityServiceExtensionsTests
         ServiceCollection services = new();
         services.AddSingleton<IChatClientProvider>(new FakeProvider(innerClient));
         services.AddSingleton<IModelPricingSource>(new FakePricingSource());
+        services.AddSingleton<IUserContextAccessor>(new FakeUserContextAccessor(
+            new UserContext(
+            [
+                new KeyValuePair<string, string>(UserContextKeys.TimeZone, "UTC"),
+            ])));
         services.AddAIServices(AIModelSelection.Parse("fake:model:v1"));
         services.AddMafPlaygroundObservability(CreateCostConfiguration());
 

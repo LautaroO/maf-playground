@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace MafPlayground.AI;
 
@@ -13,6 +14,7 @@ public static class AIServiceExtensions
         ArgumentNullException.ThrowIfNull(modelSelection);
 
         serviceCollection.AddOptions<AgentTelemetryOptions>();
+        serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton(modelSelection);
         serviceCollection.AddSingleton<AIProviderRegistry>();
         serviceCollection.AddSingleton<IChatClient>(serviceProvider =>
@@ -29,6 +31,8 @@ public static class AIServiceExtensions
 
             return chatClient;
         });
+        serviceCollection.AddSingleton<Tools.CurrentDateTimeTool>();
+        serviceCollection.AddSingleton<UserContextProvider>();
         serviceCollection.AddSingleton<Agents.BasicAgent.BasicAgent>();
 
         return serviceCollection;

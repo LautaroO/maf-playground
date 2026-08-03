@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI;
+using MafPlayground.AI.Tools;
 using MafPlayground.Observability;
 using MafPlayground.CLI;
 
@@ -16,7 +17,7 @@ public sealed class InteractiveAgentConsoleTests
     public async Task RunAsync_WithPrompt_StreamsResponseAndExits()
     {
         using FakeChatClient chatClient = new("streamed response");
-        BasicAgent basicAgent = new(chatClient);
+        BasicAgent basicAgent = CreateBasicAgent(chatClient);
         StringWriter output = new();
         StringWriter error = new();
         InteractiveAgentConsole console = new(new StringReader(string.Empty), output, error);
@@ -32,7 +33,7 @@ public sealed class InteractiveAgentConsoleTests
     public async Task RunAsync_InteractiveMode_ReusesConversationSession()
     {
         using FakeChatClient chatClient = new("answer");
-        BasicAgent basicAgent = new(chatClient);
+        BasicAgent basicAgent = CreateBasicAgent(chatClient);
         StringWriter output = new();
         InteractiveAgentConsole console = new(
             new StringReader("first\nsecond\n/exit\n"),
@@ -66,7 +67,7 @@ public sealed class InteractiveAgentConsoleTests
         ActivitySource.AddActivityListener(listener);
 
         using FakeChatClient chatClient = new("answer");
-        BasicAgent basicAgent = new(chatClient);
+        BasicAgent basicAgent = CreateBasicAgent(chatClient);
         InteractiveAgentConsole console = new(
             new StringReader(string.Empty),
             new StringWriter(),
@@ -87,5 +88,18 @@ public sealed class InteractiveAgentConsoleTests
         Assert.DoesNotContain(
             activity.TagObjects,
             tag => Equals(tag.Value, "prompt content must not be captured"));
+    }
+
+    private static BasicAgent CreateBasicAgent(FakeChatClient chatClient)
+    {
+        CurrentDateTimeTool currentDateTimeTool = new(TimeProvider.System);
+        FakeUserContextAccessor accessor = new(new UserContext(
+        [
+            new KeyValuePair<string, string>(UserContextKeys.TimeZone, "UTC"),
+        ]));
+        return new BasicAgent(
+            chatClient,
+            currentDateTimeTool,
+            new UserContextProvider(accessor));
     }
 }

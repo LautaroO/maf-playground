@@ -71,6 +71,7 @@ public static class DevUICommand
             ?? "http://localhost:5050";
         builder.WebHost.UseUrls(url);
 
+        builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(modelSelection);
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);

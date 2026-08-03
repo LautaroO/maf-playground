@@ -7,6 +7,8 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
 {
     public List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
 
+    public List<ChatOptions?> RequestOptions { get; } = [];
+
     public ChatClientMetadata Metadata { get; } = new("fake");
 
     public Task<ChatResponse> GetResponseAsync(
@@ -15,6 +17,7 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
         CancellationToken cancellationToken = default)
     {
         Requests.Add(messages.ToList());
+        RequestOptions.Add(options);
         return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, responseText))
         {
             Usage = usage,
@@ -27,6 +30,7 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Requests.Add(messages.ToList());
+        RequestOptions.Add(options);
         await Task.Yield();
         cancellationToken.ThrowIfCancellationRequested();
         yield return new ChatResponseUpdate(ChatRole.Assistant, responseText);

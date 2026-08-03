@@ -27,6 +27,17 @@ Models use a provider-qualified selector. For Ollama, use `ollama:<model>`, for 
 Ollama's endpoint defaults to `http://localhost:11434` and can be overridden with
 the provider-owned `AI__PROVIDERS__OLLAMA__ENDPOINT` variable.
 
+The Basic agent exposes the reusable `get_current_date_time` operation. It accepts
+an IANA or system time-zone identifier and returns the exact current date, time,
+weekday, resolved time-zone ID, and UTC offset.
+
+The CLI supplies `TimeZoneInfo.Local.Id` as its local-development user context.
+The context contract is a generic key/value bag and a MAF context provider adds
+its values per invocation, so future hosts can supply other trusted fields without
+expanding the Basic agent prompt. A web host should replace
+`IUserContextAccessor` with a request-aware implementation rather than using the
+server's local time zone.
+
 For local configuration, copy `.env.example` to `.env` and load it into your shell:
 
 ```bash
@@ -98,6 +109,10 @@ Future web or worker hosts can compose the reusable infrastructure with:
 services.AddAIServices(modelSelection);
 services.AddMafPlaygroundObservability(configuration);
 ```
+
+The host must also register an `IUserContextAccessor`. The CLI's
+`AddLocalUserContext()` implementation is intended only for local development;
+request-based hosts should provide their own registration.
 
 ## Local infrastructure
 

@@ -8,6 +8,7 @@ logical production areas while keeping one lightweight unit-test project:
 MafPlayground.Tests/
   AI/
     Agents/
+    Tools/
   CLI/
   Observability/
   TestDoubles/
