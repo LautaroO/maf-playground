@@ -157,3 +157,25 @@ public sealed partial class TranslationWorkflowFactory(
     [GeneratedRegex("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", RegexOptions.CultureInvariant)]
     private static partial Regex LanguageIdentifierRegex();
 }
+
+public sealed class TranslationWorkflowRunner(TranslationWorkflowFactory workflowFactory)
+{
+    public async Task<TranslationWorkflowResult> RunAsync(
+        TranslationWorkflowRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        TranslationWorkflowRequest validatedRequest = workflowFactory.Validate(request);
+        Workflow workflow = workflowFactory.Create(validatedRequest.TargetLanguages);
+        await using Run run = await InProcessExecution.RunAsync(
+            workflow,
+            new TranslationWorkflowInput(validatedRequest.Text),
+            cancellationToken: cancellationToken);
+
+        TranslationWorkflowResult? result = run.OutgoingEvents
+            .OfType<WorkflowOutputEvent>()
+            .Select(output => output.As<TranslationWorkflowResult>())
+            .LastOrDefault(output => output is not null);
+        return result ?? throw new InvalidOperationException(
+            "The translation workflow completed without producing a result.");
+    }
+}

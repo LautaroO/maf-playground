@@ -4,6 +4,21 @@ using Microsoft.Extensions.AI;
 
 namespace MafPlayground.AI.Workflows.Translation;
 
+public interface ITranslationModel
+{
+    Task<string> TranslateAsync(
+        string sourceText,
+        string targetLanguage,
+        IReadOnlyList<string>? repairIssues,
+        CancellationToken cancellationToken);
+
+    Task<TranslationValidation> ValidateAsync(
+        string sourceText,
+        string targetLanguage,
+        string translatedText,
+        CancellationToken cancellationToken);
+}
+
 public sealed class ChatClientTranslationModel(IChatClient chatClient) : ITranslationModel
 {
     private static readonly JsonSerializerOptions SerializerOptions =
