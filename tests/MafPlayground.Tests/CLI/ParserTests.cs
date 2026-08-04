@@ -18,12 +18,12 @@ public sealed class ParserTests
             (_, _) => Task.FromResult(0));
 
         int exitCode = await rootCommand.Parse(
-            ["agent", "basic", "--model", "ollama:qwen3:4b", "--prompt", "hello"])
+            ["agent", "basic", "--model", "ollama:qwen3:4b", "--prompt", "hello", "--watch"])
             .InvokeAsync();
 
         Assert.Equal(0, exitCode);
         Assert.Equal(
-            new BasicAgentCommandOptions("ollama:qwen3:4b", "hello"),
+            new BasicAgentCommandOptions("ollama:qwen3:4b", "hello", Watch: true),
             captured);
     }
 
@@ -68,6 +68,7 @@ public sealed class ParserTests
                 "--model", "ollama:qwen3:4b",
                 "--text", "Hello",
                 "--languages", "es,fr,pt-BR",
+                "--watch",
             ])
             .InvokeAsync();
 
@@ -76,7 +77,37 @@ public sealed class ParserTests
             new TranslateWorkflowCommandOptions(
                 "ollama:qwen3:4b",
                 "Hello",
-                "es,fr,pt-BR"),
+                "es,fr,pt-BR",
+                Watch: true),
+            captured);
+    }
+
+    [Fact]
+    public async Task InspectWorkflowCommand_MapsOptions()
+    {
+        InspectCommandOptions? captured = null;
+        var rootCommand = Parser.CreateRootCommand(
+            runInspectAsync: (options, _) =>
+            {
+                captured = options;
+                return Task.FromResult(0);
+            });
+
+        int exitCode = await rootCommand.Parse(
+            [
+                "inspect", "workflow", "translation-workflow",
+                "--view-input",
+                "--diagram",
+            ])
+            .InvokeAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            new InspectCommandOptions(
+                EntityKind: "workflow",
+                EntityId: "translation-workflow",
+                ViewInput: true,
+                Diagram: true),
             captured);
     }
 }

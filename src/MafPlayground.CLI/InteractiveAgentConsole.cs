@@ -2,6 +2,7 @@ using System.Diagnostics;
 using MafPlayground.AI;
 using MafPlayground.Observability;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -49,6 +50,7 @@ public sealed class InteractiveAgentConsole
         AIAgent agent,
         AIModelSelection modelSelection,
         string? prompt,
+        bool watch = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
@@ -64,6 +66,7 @@ public sealed class InteractiveAgentConsole
                 modelSelection,
                 prompt,
                 "single",
+                watch,
                 cancellationToken) ? 0 : 1;
         }
 
@@ -91,6 +94,7 @@ public sealed class InteractiveAgentConsole
                 modelSelection,
                 input,
                 "interactive",
+                watch,
                 cancellationToken);
         }
 
@@ -103,6 +107,7 @@ public sealed class InteractiveAgentConsole
         AIModelSelection modelSelection,
         string prompt,
         string mode,
+        bool watch,
         CancellationToken cancellationToken)
     {
         using Activity? activity = ActivitySource.StartActivity(
@@ -124,6 +129,15 @@ public sealed class InteractiveAgentConsole
 
         try
         {
+            Stopwatch elapsed = Stopwatch.StartNew();
+            Dictionary<string, (string Name, TimeSpan StartedAt)> toolCalls = [];
+            if (watch)
+            {
+                await WriteWatchEventAsync(
+                    elapsed,
+                    $"agent {agent.Name ?? "unnamed"} started");
+            }
+
             await _output.WriteAsync("Agent: ");
 
             await foreach (AgentResponseUpdate update in agent.RunStreamingAsync(
@@ -131,6 +145,32 @@ public sealed class InteractiveAgentConsole
                                session,
                                cancellationToken: timeoutSource.Token))
             {
+                if (watch)
+                {
+                    foreach (AIContent content in update.Contents)
+                    {
+                        if (content is FunctionCallContent functionCall &&
+                            toolCalls.TryAdd(
+                                functionCall.CallId,
+                                (functionCall.Name, elapsed.Elapsed)))
+                        {
+                            await WriteWatchEventAsync(
+                                elapsed,
+                                $"tool {functionCall.Name} called");
+                        }
+                        else if (content is FunctionResultContent functionResult &&
+                                 toolCalls.Remove(
+                                     functionResult.CallId,
+                                     out (string Name, TimeSpan StartedAt) toolCall))
+                        {
+                            await WriteWatchEventAsync(
+                                elapsed,
+                                $"tool {toolCall.Name} completed in " +
+                                $"{(elapsed.Elapsed - toolCall.StartedAt).TotalMilliseconds:0} ms");
+                        }
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(update.Text))
                 {
                     await _output.WriteAsync(update.Text);
@@ -139,6 +179,12 @@ public sealed class InteractiveAgentConsole
             }
 
             await _output.WriteLineAsync();
+            if (watch)
+            {
+                await WriteWatchEventAsync(
+                    elapsed,
+                    $"agent completed in {elapsed.Elapsed.TotalMilliseconds:0} ms");
+            }
             activity?.SetTag("maf_playground.outcome", "success");
             _logger.LogInformation("Agent test turn completed successfully");
             return true;
@@ -167,6 +213,12 @@ public sealed class InteractiveAgentConsole
             await _error.WriteLineAsync($"Agent request failed: {exception.Message}");
             return false;
         }
+    }
+
+    private async Task WriteWatchEventAsync(Stopwatch elapsed, string message)
+    {
+        await _error.WriteLineAsync(
+            $"[watch {elapsed.Elapsed:hh\\:mm\\:ss\\.fff}] {message}");
     }
 
     private static bool IsExitCommand(string input)

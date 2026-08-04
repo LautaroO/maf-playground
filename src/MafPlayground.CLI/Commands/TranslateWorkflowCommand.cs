@@ -31,16 +31,22 @@ public static class TranslateWorkflowCommand
         {
             Description = "Comma-separated target language identifiers, for example es,fr,pt-BR.",
         };
+        Option<bool> watchOption = new("--watch")
+        {
+            Description = "Stream native workflow execution events to the terminal.",
+        };
         Command command = new("translate", "Translate text concurrently and validate each result.");
         command.Options.Add(modelOption);
         command.Options.Add(textOption);
         command.Options.Add(languagesOption);
+        command.Options.Add(watchOption);
         command.SetAction((parseResult, cancellationToken) =>
             runAsync(
                 new TranslateWorkflowCommandOptions(
                     parseResult.GetValue(modelOption),
                     parseResult.GetValue(textOption),
-                    parseResult.GetValue(languagesOption)),
+                    parseResult.GetValue(languagesOption),
+                    parseResult.GetValue(watchOption)),
                 cancellationToken));
         return command;
     }
@@ -94,8 +100,9 @@ public static class TranslateWorkflowCommand
 
                 TranslationWorkflowRunner runner =
                     host.Services.GetRequiredService<TranslationWorkflowRunner>();
-                TranslationWorkflowResult result =
-                    await runner.RunAsync(request, cancellationToken);
+                TranslationWorkflowResult result = commandOptions.Watch
+                    ? await RunWithEventsAsync(runner, request, cancellationToken)
+                    : await runner.RunAsync(request, cancellationToken);
                 Console.WriteLine(JsonSerializer.Serialize(
                     result,
                     new JsonSerializerOptions(JsonSerializerDefaults.Web)
@@ -132,9 +139,32 @@ public static class TranslateWorkflowCommand
             return 130;
         }
     }
+
+    private static async Task<TranslationWorkflowResult> RunWithEventsAsync(
+        TranslationWorkflowRunner runner,
+        TranslationWorkflowRequest request,
+        CancellationToken cancellationToken)
+    {
+        WorkflowExecutionConsole executionConsole = new(Console.Error);
+        TranslationWorkflowResult? result = null;
+
+        await foreach (Microsoft.Agents.AI.Workflows.WorkflowEvent workflowEvent in
+                       runner.RunStreamingAsync(request, cancellationToken))
+        {
+            await executionConsole.RenderAsync(workflowEvent, cancellationToken);
+            if (workflowEvent is Microsoft.Agents.AI.Workflows.WorkflowOutputEvent output)
+            {
+                result = output.As<TranslationWorkflowResult>() ?? result;
+            }
+        }
+
+        return result ?? throw new InvalidOperationException(
+            "The translation workflow completed without producing a result.");
+    }
 }
 
 public sealed record TranslateWorkflowCommandOptions(
     string? Model,
     string? Text,
-    string? Languages);
+    string? Languages,
+    bool Watch = false);

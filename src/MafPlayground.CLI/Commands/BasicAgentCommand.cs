@@ -26,15 +26,21 @@ public static class BasicAgentCommand
         {
             Description = "Run one prompt and exit. Omit to start an interactive session."
         };
+        Option<bool> watchOption = new("--watch")
+        {
+            Description = "Show agent lifecycle and tool-call events while streaming.",
+        };
 
         Command command = new("basic", "Run the Basic agent.");
         command.Options.Add(modelOption);
         command.Options.Add(promptOption);
+        command.Options.Add(watchOption);
         command.SetAction((parseResult, cancellationToken) =>
             runAsync(
                 new BasicAgentCommandOptions(
                     parseResult.GetValue(modelOption),
-                    parseResult.GetValue(promptOption)),
+                    parseResult.GetValue(promptOption),
+                    parseResult.GetValue(watchOption)),
                 cancellationToken));
         return command;
     }
@@ -89,6 +95,7 @@ public static class BasicAgentCommand
                     basicAgent.Agent,
                     modelSelection,
                     commandOptions.Prompt,
+                    commandOptions.Watch,
                     cancellationToken);
             }
             finally
@@ -116,4 +123,4 @@ public static class BasicAgentCommand
     }
 }
 
-public sealed record BasicAgentCommandOptions(string? Model, string? Prompt);
+public sealed record BasicAgentCommandOptions(string? Model, string? Prompt, bool Watch = false);

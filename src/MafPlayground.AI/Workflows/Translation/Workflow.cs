@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Options;
 
@@ -120,5 +121,25 @@ public sealed class TranslationWorkflowRunner(TranslationWorkflowFactory workflo
             .LastOrDefault(output => output is not null);
         return result ?? throw new InvalidOperationException(
             "The translation workflow completed without producing a result.");
+    }
+
+    public async IAsyncEnumerable<WorkflowEvent> RunStreamingAsync(
+        TranslationWorkflowRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        TranslationWorkflowRequest validatedRequest = workflowFactory.Validate(request);
+        Workflow workflow = workflowFactory.Create();
+        await using StreamingRun run = await InProcessExecution.RunStreamingAsync(
+            workflow,
+            new TranslationWorkflowInput(
+                validatedRequest.Text,
+                validatedRequest.TargetLanguages),
+            cancellationToken: cancellationToken);
+
+        await foreach (WorkflowEvent workflowEvent in
+                       run.WatchStreamAsync(cancellationToken))
+        {
+            yield return workflowEvent;
+        }
     }
 }

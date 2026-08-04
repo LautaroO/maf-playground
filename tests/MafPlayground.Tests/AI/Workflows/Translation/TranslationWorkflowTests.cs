@@ -97,6 +97,30 @@ public sealed class TranslationWorkflowTests
     }
 
     [Fact]
+    public async Task RunStreamingAsync_EmitsExecutorEventsAndTypedOutput()
+    {
+        TranslationWorkflowRunner runner = CreateRunner(new FeedbackTranslationModel());
+        List<WorkflowEvent> events = [];
+
+        await foreach (WorkflowEvent workflowEvent in runner.RunStreamingAsync(
+                           new TranslationWorkflowRequest("Hello", ["es"])))
+        {
+            events.Add(workflowEvent);
+        }
+
+        Assert.Contains(events, workflowEvent =>
+            workflowEvent is ExecutorInvokedEvent { ExecutorId: "translate-es" });
+        Assert.Contains(events, workflowEvent =>
+            workflowEvent is ExecutorCompletedEvent { ExecutorId: "validate-es" });
+        TranslationWorkflowResult? result = events
+            .OfType<WorkflowOutputEvent>()
+            .Select(output => output.As<TranslationWorkflowResult>())
+            .LastOrDefault(output => output is not null);
+        Assert.NotNull(result);
+        Assert.Equal("Hola", Assert.Single(result.Translations).TranslatedText);
+    }
+
+    [Fact]
     public async Task DevUIWorkflow_RunsNativelyThroughChatProtocolAndReturnsStructuredJson()
     {
         FeedbackTranslationModel model = new();

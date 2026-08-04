@@ -30,6 +30,31 @@ public sealed class InteractiveAgentConsoleTests
     }
 
     [Fact]
+    public async Task RunAsync_WithWatch_EmitsLifecycleWithoutPromptContent()
+    {
+        using FakeChatClient chatClient = new("streamed response");
+        BasicAgent basicAgent = CreateBasicAgent(chatClient);
+        StringWriter error = new();
+        InteractiveAgentConsole console = new(
+            new StringReader(string.Empty),
+            new StringWriter(),
+            error);
+
+        int exitCode = await console.RunAsync(
+            basicAgent.Agent,
+            ModelSelection,
+            "private prompt",
+            watch: true);
+
+        string watchOutput = error.ToString();
+        Assert.Equal(0, exitCode);
+        Assert.Contains("[watch ", watchOutput, StringComparison.Ordinal);
+        Assert.Contains("agent basic-agent started", watchOutput, StringComparison.Ordinal);
+        Assert.Contains("agent completed", watchOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("private prompt", watchOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RunAsync_InteractiveMode_ReusesConversationSession()
     {
         using FakeChatClient chatClient = new("answer");

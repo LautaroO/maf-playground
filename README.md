@@ -124,6 +124,52 @@ per-call timeout are configured under `AI:Workflows:Translation` in the CLI's
 `appsettings.json`. Other hosts can configure `TranslationWorkflowOptions`
 through their own composition root.
 
+## Inspect and watch local AI entities
+
+The CLI includes a development-only inspection surface for the same local agents
+and workflows exposed through DevUI. List the registered entities with:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- inspect list
+```
+
+View the required input as JSON Schema together with an example:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- inspect agent basic-rag-agent --view-input
+dotnet run --project src/MafPlayground.CLI -- inspect workflow translation-workflow --view-input
+```
+
+Export the translation workflow's native MAF graph as Mermaid source:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- \
+  inspect workflow translation-workflow --diagram
+```
+
+The command prints Mermaid text and does not require a Mermaid renderer. Redirect
+it to a `.mmd` file when needed. Standalone `AIAgent` diagrams are intentionally
+out of scope because agents do not expose a native executor graph equivalent to a
+MAF workflow; inventing one through reflection would misrepresent runtime behavior.
+
+Add `--watch` to stream local execution diagnostics while preserving the normal
+result on standard output:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- \
+  workflow translate --text "Hello" --languages es,fr --watch
+
+dotnet run --project src/MafPlayground.CLI -- \
+  agent basic --prompt "What time is it for me?" --watch
+```
+
+Workflow watch mode consumes native `WorkflowEvent` instances and reports
+super-steps, executor starts/completions, failures, and final output. Agent watch
+mode reports lifecycle and tool-call timing around the already-streamed response.
+Prompt, executor-message, tool-argument, and tool-result payloads are not printed.
+These commands are a focused terminal development harness, not a replacement for
+DevUI's interactive graph and trace panels or for an external OTLP dashboard.
+
 ## Run DevUI
 
 The same CLI executable can host the Agent Framework DevUI for local visual

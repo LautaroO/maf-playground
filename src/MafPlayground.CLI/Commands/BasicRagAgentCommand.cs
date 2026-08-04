@@ -19,11 +19,13 @@ public static class BasicRagAgentCommand
         Option<string?> model = new("--model", "-m") { Description = "Chat model in provider:model format. Falls back to AI_MODEL." };
         Option<string?> embeddingModel = new("--embedding-model") { Description = "Embedding model in provider:model format. Falls back to AI_EMBEDDING_MODEL." };
         Option<string?> prompt = new("--prompt", "-p") { Description = "Run one prompt and exit. Omit for an interactive session." };
+        Option<bool> watch = new("--watch") { Description = "Show agent lifecycle events while streaming." };
         Command command = new("basic-rag", "Run the grounded Basic RAG agent.");
         command.Options.Add(model);
         command.Options.Add(embeddingModel);
         command.Options.Add(prompt);
-        command.SetAction((result, cancellationToken) => runAsync(new(result.GetValue(model), result.GetValue(embeddingModel), result.GetValue(prompt)), cancellationToken));
+        command.Options.Add(watch);
+        command.SetAction((result, cancellationToken) => runAsync(new(result.GetValue(model), result.GetValue(embeddingModel), result.GetValue(prompt), result.GetValue(watch)), cancellationToken));
         return command;
     }
 
@@ -62,7 +64,12 @@ public static class BasicRagAgentCommand
             {
                 BasicRagAgent ragAgent = host.Services.GetRequiredService<BasicRagAgent>();
                 InteractiveAgentConsole console = host.Services.GetRequiredService<InteractiveAgentConsole>();
-                return await console.RunAsync(ragAgent.Agent, chatSelection, commandOptions.Prompt, cancellationToken);
+                return await console.RunAsync(
+                    ragAgent.Agent,
+                    chatSelection,
+                    commandOptions.Prompt,
+                    commandOptions.Watch,
+                    cancellationToken);
             }
             finally { await host.StopAsync(CancellationToken.None); }
         }
@@ -75,4 +82,8 @@ public static class BasicRagAgentCommand
     }
 }
 
-public sealed record BasicRagAgentCommandOptions(string? Model, string? EmbeddingModel, string? Prompt);
+public sealed record BasicRagAgentCommandOptions(
+    string? Model,
+    string? EmbeddingModel,
+    string? Prompt,
+    bool Watch = false);

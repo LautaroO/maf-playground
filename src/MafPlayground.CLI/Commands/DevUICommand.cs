@@ -5,6 +5,7 @@ using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.CLI.DevUI;
+using MafPlayground.CLI.Inspection;
 using MafPlayground.Observability;
 using MafPlayground.Retrieval;
 using Microsoft.Agents.AI.DevUI;
@@ -99,21 +100,23 @@ public static class DevUICommand
         builder.Services.AddConfiguredRetrieval(builder.Configuration, embeddingSelection!);
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);
         builder.Services.AddDevUITracing();
-        builder.AddAIAgent(
-            "basic-agent",
-            (services, _) => services.GetRequiredService<BasicAgent>().Agent);
-        builder.AddAIAgent(
-            "basic-rag-agent",
-            (services, _) => services.GetRequiredService<BasicRagAgent>().Agent);
-        builder.AddWorkflow(
-            "translation-workflow",
-            (services, workflowName) =>
+        foreach (LocalEntityDescriptor descriptor in LocalEntityCatalog.All)
+        {
+            if (descriptor.Kind == LocalEntityKind.Agent)
             {
-                TranslationWorkflowFactory factory = services
-                    .GetRequiredService<TranslationWorkflowFactory>();
-                return factory.CreateForDevUI(workflowName);
-            },
-            ServiceLifetime.Transient);
+                builder.AddAIAgent(
+                    descriptor.Id,
+                    (services, _) => descriptor.CreateAgent!(services));
+            }
+            else
+            {
+                builder.AddWorkflow(
+                    descriptor.Id,
+                    (services, workflowName) =>
+                        descriptor.CreateHostedWorkflow!(services, workflowName),
+                    ServiceLifetime.Transient);
+            }
+        }
         builder.AddDevUI();
         builder.Services.AddOpenAIResponses();
         builder.Services.AddOpenAIConversations();
