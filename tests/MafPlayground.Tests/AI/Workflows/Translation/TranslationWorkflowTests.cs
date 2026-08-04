@@ -13,23 +13,23 @@ public sealed class TranslationWorkflowTests
     [Fact]
     public async Task RunAsync_TranslatesLanguagesInParallelAndAggregatesInRequestedOrder()
     {
-        ParallelTranslationModel model = new(["es", "fr", "pt"]);
+        ParallelTranslationModel model = new(["es", "fr", "pt-BR"]);
         TranslationWorkflowRunner runner = CreateRunner(model);
 
         TranslationWorkflowResult result = await runner.RunAsync(
-            new TranslationWorkflowRequest("Hello", ["es", "fr", "pt"]));
+            new TranslationWorkflowRequest("Hello", ["es", "fr", "pt-BR"]));
 
         Assert.Equal("Hello", result.SourceText);
-        Assert.Equal(["es", "fr", "pt"],
+        Assert.Equal(["es", "fr", "pt-BR"],
             result.Translations.Select(translation => translation.TargetLanguage));
         Assert.All(result.Translations, translation => Assert.True(translation.IsValid));
         Assert.Equal(3, model.MaximumConcurrentTranslations);
     }
 
     [Fact]
-    public async Task RunAsync_RepairsAndRevalidatesAnInvalidTranslationOnce()
+    public async Task RunAsync_RetriesInvalidTranslationWithValidationFeedbackOnce()
     {
-        RepairingTranslationModel model = new();
+        FeedbackTranslationModel model = new();
         TranslationWorkflowRunner runner = CreateRunner(model);
 
         TranslationWorkflowResult result = await runner.RunAsync(
@@ -41,6 +41,22 @@ public sealed class TranslationWorkflowTests
         Assert.Equal(2, translation.Attempts);
         Assert.Equal(2, model.TranslationCalls);
         Assert.Equal(2, model.ValidationCalls);
+    }
+
+    [Fact]
+    public void Workflow_UsesOnlyTranslationAndValidationNodesPerLanguage()
+    {
+        TranslationWorkflowFactory factory = CreateFactory(new FeedbackTranslationModel());
+        Workflow workflow = factory.Create();
+
+        string graph = WorkflowVisualizer.ToMermaidString(workflow);
+
+        Assert.DoesNotContain("initialize-es", graph, StringComparison.Ordinal);
+        Assert.DoesNotContain("complete-es", graph, StringComparison.Ordinal);
+        Assert.Contains("translate-es", graph, StringComparison.Ordinal);
+        Assert.Contains("validate-es", graph, StringComparison.Ordinal);
+        Assert.Contains("retry with feedback", graph, StringComparison.Ordinal);
+        Assert.Contains("translation-aggregate", graph, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -69,7 +85,7 @@ public sealed class TranslationWorkflowTests
             ActivityStopped = stoppedActivities.Enqueue,
         };
         ActivitySource.AddActivityListener(listener);
-        TranslationWorkflowRunner runner = CreateRunner(new RepairingTranslationModel());
+        TranslationWorkflowRunner runner = CreateRunner(new FeedbackTranslationModel());
 
         await runner.RunAsync(new TranslationWorkflowRequest("Hello", ["es"]));
 
@@ -82,23 +98,30 @@ public sealed class TranslationWorkflowTests
     [Fact]
     public async Task DevUIWorkflow_RunsNativelyThroughChatProtocolAndReturnsStructuredJson()
     {
-        TranslationWorkflowFactory factory = CreateFactory(new RepairingTranslationModel());
-        Workflow workflow = factory.CreateForDevUI(["es"]);
+        FeedbackTranslationModel model = new();
+        TranslationWorkflowFactory factory = CreateFactory(model);
+        Workflow workflow = factory.CreateForDevUI();
 
         Assert.Equal(
             "Translates text into multiple target languages in parallel, " +
-            "validates each translation, and repairs invalid results with bounded retries.",
+            "validates each translation, and retries invalid results with validator feedback.",
             workflow.Description);
 
         await using Run run = await InProcessExecution.RunAsync(
             workflow,
-            new List<ChatMessage> { new(ChatRole.User, "Hello") });
+            new List<ChatMessage>
+            {
+                new(ChatRole.User, """
+                    {"text":"Hello","targetLanguages":["es"]}
+                    """),
+            });
         string responseText = string.Concat(run.OutgoingEvents
             .OfType<WorkflowOutputEvent>()
             .Select(output => output.As<ChatMessage>()?.Text));
 
         Assert.Contains("Hola", responseText, StringComparison.Ordinal);
         Assert.Contains("\"targetLanguage\":\"es\"", responseText, StringComparison.Ordinal);
+        Assert.Equal(2, model.TranslationCalls);
     }
 
     [Theory]
@@ -106,10 +129,22 @@ public sealed class TranslationWorkflowTests
     [InlineData("not a language")]
     public void Validate_RejectsInvalidLanguageIdentifiers(string language)
     {
-        TranslationWorkflowFactory factory = CreateFactory(new RepairingTranslationModel());
+        TranslationWorkflowFactory factory = CreateFactory(new FeedbackTranslationModel());
 
         Assert.Throws<ArgumentException>(() => factory.Validate(
             new TranslationWorkflowRequest("Hello", [language])));
+    }
+
+    [Fact]
+    public void Validate_RejectsUnsupportedTargetLanguage()
+    {
+        TranslationWorkflowFactory factory = CreateFactory(new FeedbackTranslationModel());
+
+        ArgumentException exception = Assert.Throws<ArgumentException>(() => factory.Validate(
+            new TranslationWorkflowRequest("Hello", ["de"])));
+
+        Assert.Contains("'de' is not supported", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("es, fr, pt", exception.Message, StringComparison.Ordinal);
     }
 
     private static TranslationWorkflowRunner CreateRunner(ITranslationModel model) =>
@@ -118,13 +153,10 @@ public sealed class TranslationWorkflowTests
     private static TranslationWorkflowFactory CreateFactory(ITranslationModel model)
     {
         IOptions<TranslationWorkflowOptions> options = Options.Create(
-            new TranslationWorkflowOptions
-            {
-                ModelCallTimeout = TimeSpan.FromSeconds(5),
-            });
-        TranslationBranchProcessor processor = new(model, options);
+            new TranslationWorkflowOptions());
+        TranslationService service = new(model, options);
         return new TranslationWorkflowFactory(
-            processor,
+            service,
             options,
             Options.Create(new AgentTelemetryOptions()));
     }
@@ -148,7 +180,7 @@ public sealed class TranslationWorkflowTests
         public async Task<string> TranslateAsync(
             string sourceText,
             string targetLanguage,
-            IReadOnlyList<string>? repairIssues,
+            IReadOnlyList<string>? validationFeedback,
             CancellationToken cancellationToken)
         {
             int active = Interlocked.Increment(ref _activeTranslations);
@@ -188,7 +220,7 @@ public sealed class TranslationWorkflowTests
         }
     }
 
-    private sealed class RepairingTranslationModel : ITranslationModel
+    private sealed class FeedbackTranslationModel : ITranslationModel
     {
         public int TranslationCalls { get; private set; }
 
@@ -197,11 +229,11 @@ public sealed class TranslationWorkflowTests
         public Task<string> TranslateAsync(
             string sourceText,
             string targetLanguage,
-            IReadOnlyList<string>? repairIssues,
+            IReadOnlyList<string>? validationFeedback,
             CancellationToken cancellationToken)
         {
             TranslationCalls++;
-            return Task.FromResult(repairIssues is null ? "Hello" : "Hola");
+            return Task.FromResult(validationFeedback is null ? "Hello" : "Hola");
         }
 
         public Task<TranslationValidation> ValidateAsync(
@@ -222,7 +254,7 @@ public sealed class TranslationWorkflowTests
         public Task<string> TranslateAsync(
             string sourceText,
             string targetLanguage,
-            IReadOnlyList<string>? repairIssues,
+            IReadOnlyList<string>? validationFeedback,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("provider unavailable");
 

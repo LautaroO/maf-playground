@@ -1,16 +1,23 @@
 namespace MafPlayground.AI.Workflows.Translation;
 
-public sealed record TranslationWorkflowInput(string Text);
+public sealed record TranslationWorkflowInput(
+    string Text,
+    IReadOnlyList<string> TargetLanguages);
 
 public sealed record TranslationWorkflowRequest(
     string Text,
     IReadOnlyList<string> TargetLanguages);
 
-public sealed record TranslationCandidate(
+internal sealed record TranslationBranchState(
     string SourceText,
+    IReadOnlyList<string> RequestedTargetLanguages,
     string TargetLanguage,
-    string? TranslatedText,
-    int Attempts,
+    string? TranslatedText = null,
+    int Attempts = 0,
+    bool IsValid = false,
+    double Confidence = 0,
+    IReadOnlyList<string>? Feedback = null,
+    bool ShouldRetry = false,
     string? Error = null);
 
 public sealed record TranslationValidation(
@@ -33,4 +40,5 @@ public sealed record TranslationWorkflowResult(
 
 internal sealed record ValidatedTranslationMessage(
     string SourceText,
+    IReadOnlyList<string> RequestedTargetLanguages,
     ValidatedTranslation Translation);

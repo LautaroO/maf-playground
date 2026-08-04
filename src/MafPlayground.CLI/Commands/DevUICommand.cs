@@ -1,5 +1,6 @@
 using System.CommandLine;
 using MafPlayground.AI;
+using MafPlayground.AI.Resilience;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Workflows.Translation;
@@ -90,6 +91,8 @@ public static class DevUICommand
 
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(modelSelection);
+        builder.Services.Configure<AIResilienceOptions>(
+            builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.Configure<TranslationWorkflowOptions>(
             builder.Configuration.GetSection("AI:Workflows:Translation"));
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
@@ -108,12 +111,7 @@ public static class DevUICommand
             {
                 TranslationWorkflowFactory factory = services
                     .GetRequiredService<TranslationWorkflowFactory>();
-                TranslationWorkflowOptions workflowOptions = services
-                    .GetRequiredService<IOptions<TranslationWorkflowOptions>>()
-                    .Value;
-                return factory.CreateForDevUI(
-                    workflowOptions.DevUITargetLanguages,
-                    workflowName);
+                return factory.CreateForDevUI(workflowName);
             },
             ServiceLifetime.Transient);
         builder.AddDevUI();

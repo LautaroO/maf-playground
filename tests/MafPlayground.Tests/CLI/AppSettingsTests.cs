@@ -39,13 +39,13 @@ public sealed class AppSettingsTests
         Assert.Equal(8, configuration.GetValue<int>(
             "AI:Workflows:Translation:MaxTargetLanguages"));
         Assert.Equal(1, configuration.GetValue<int>(
-            "AI:Workflows:Translation:MaxRepairAttempts"));
-        string[]? devUITargetLanguages = configuration
-            .GetSection("AI:Workflows:Translation:DevUITargetLanguages")
+            "AI:Workflows:Translation:MaxTranslationRetries"));
+        string[]? supportedTargetLanguages = configuration
+            .GetSection("AI:Workflows:Translation:SupportedTargetLanguages")
             .Get<string[]>();
-        Assert.NotNull(devUITargetLanguages);
-        Assert.Equal(["es", "fr", "pt-BR"], devUITargetLanguages);
+        Assert.NotNull(supportedTargetLanguages);
+        Assert.Equal(["es", "fr", "pt-BR"], supportedTargetLanguages);
         Assert.Equal(TimeSpan.FromMinutes(1), configuration.GetValue<TimeSpan>(
-            "AI:Workflows:Translation:ModelCallTimeout"));
+            "AI:Resilience:ModelCallTimeout"));
     }
 }

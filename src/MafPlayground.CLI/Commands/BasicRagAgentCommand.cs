@@ -1,6 +1,7 @@
 using System.CommandLine;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.AI.Resilience;
 using MafPlayground.Observability;
 using MafPlayground.Retrieval;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,6 +47,8 @@ public static class BasicRagAgentCommand
 
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(chatSelection);
+        builder.Services.Configure<AIResilienceOptions>(
+            builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
         builder.Services.AddConfiguredRetrieval(builder.Configuration, embeddingSelection!);
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);

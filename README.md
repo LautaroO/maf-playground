@@ -108,14 +108,18 @@ dotnet run --project src/MafPlayground.CLI -- \
   --languages es,fr,pt-BR
 ```
 
-Validation checks the target language and meaning preservation using structured
-model output. A failed validation receives one bounded repair attempt. Provider
-errors, invalid output, validation failures, and timeouts are returned per
+The workflow input is the typed `TranslationWorkflowInput` record containing
+`Text` and `TargetLanguages`. Requested languages are validated against
+`AI:Workflows:Translation:SupportedTargetLanguages` before any model call.
+Validation then checks the target language and meaning preservation using
+structured model output. A failed
+validation is sent back to the translation node with feedback and bounded
+retries. Provider errors, invalid output, validation failures, and timeouts are returned per
 language so one failed branch does not prevent the fan-in result. The command
 returns exit code `0` when every translation is valid and `1` when it produces
 one or more partial failures.
 
-Concurrency limits, input size, validation confidence, repair attempts, and the
+Concurrency limits, input size, validation confidence, retry attempts, and the
 per-call timeout are configured under `AI:Workflows:Translation` in the CLI's
 `appsettings.json`. Other hosts can configure `TranslationWorkflowOptions`
 through their own composition root.
@@ -134,9 +138,12 @@ Open `http://localhost:5050/devui`. Override the model with `--model` or the
 listening address with `--url`. The entity picker includes `basic-agent`,
 `basic-rag-agent`, and
 `translation-workflow`. Select `translation-workflow` to inspect its
-fan-out/fan-in topology or execute a translation from a text message; DevUI
-renders the final typed result as JSON. The visible branches are configured with
-`AI:Workflows:Translation:DevUITargetLanguages`; execute the workflow from the
+fan-out/fan-in topology. The installed .NET DevUI preview exposes workflow input
+as a string, so enter the typed input as JSON, for example
+`{"text":"Hello","targetLanguages":["es","fr"]}`; the host adapter deserializes it to
+`TranslationWorkflowInput`, and DevUI renders the final typed result as JSON.
+The visible branches are configured with
+`AI:Workflows:Translation:SupportedTargetLanguages`; execute the workflow from the
 terminal with `workflow translate`, where the topology remains dynamic through
 `--languages`. DevUI reuses the same agents, providers, and observability
 pipeline as the terminal harness, and is restricted to local development use.

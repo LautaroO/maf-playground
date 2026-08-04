@@ -1,70 +1,54 @@
-using System.Text.RegularExpressions;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Options;
 
 namespace MafPlayground.AI.Workflows.Translation;
 
-public sealed partial class TranslationWorkflowFactory(
-    TranslationBranchProcessor branchProcessor,
+public sealed class TranslationWorkflowFactory(
+    TranslationService translationService,
     IOptions<TranslationWorkflowOptions> options,
     IOptions<AgentTelemetryOptions> telemetryOptions)
 {
     private readonly TranslationWorkflowOptions _options = options.Value;
     private readonly AgentTelemetryOptions _telemetryOptions = telemetryOptions.Value;
 
-    public Workflow Create(IReadOnlyList<string> targetLanguages) =>
-        Create(targetLanguages, "translation-workflow", useChatProtocol: false);
+    public Workflow Create() =>
+        Create("translation-workflow", useChatProtocol: false);
 
     public Workflow CreateForDevUI(
-        IReadOnlyList<string> targetLanguages,
         string workflowName = "translation-workflow") =>
-        Create(targetLanguages, workflowName, useChatProtocol: true);
+        Create(workflowName, useChatProtocol: true);
 
     private Workflow Create(
-        IReadOnlyList<string> targetLanguages,
         string workflowName,
         bool useChatProtocol)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowName);
-        string[] validatedLanguages = ValidateLanguages(targetLanguages);
+        string[] supportedLanguages = TranslationWorkflowHelpers.ValidateSupportedLanguages(
+            _options.SupportedTargetLanguages);
 
-        ExecutorBinding input = ((Func<TranslationWorkflowInput,
-            TranslationWorkflowRequest>)(workflowInput => Validate(
-                new TranslationWorkflowRequest(
-                    workflowInput.Text,
-                    validatedLanguages))))
-            .BindAsExecutor<TranslationWorkflowInput, TranslationWorkflowRequest>(
-                "translation-input");
+        TranslationInputExecutor input = new(_options);
         List<ExecutorBinding> translators = [];
         List<ExecutorBinding> validators = [];
+        TranslationAggregatorExecutor aggregator = new(
+            emitAgentResponse: useChatProtocol);
 
-        foreach (string language in validatedLanguages)
+        foreach (string language in supportedLanguages)
         {
-            string executorSuffix = NormalizeExecutorId(language);
-            ExecutorBinding translator =
-                ((Func<TranslationWorkflowRequest, CancellationToken,
-                    ValueTask<TranslationCandidate>>)((input, cancellationToken) =>
-                        branchProcessor.TranslateAsync(input, language, cancellationToken)))
-                .BindAsExecutor<TranslationWorkflowRequest, TranslationCandidate>(
-                    $"translate-{executorSuffix}");
-            ExecutorBinding validator =
-                ((Func<TranslationCandidate, CancellationToken,
-                    ValueTask<ValidatedTranslationMessage>>)(async (candidate, cancellationToken) =>
-                        new ValidatedTranslationMessage(
-                            candidate.SourceText,
-                            await branchProcessor.ValidateAndRepairAsync(
-                                candidate,
-                                cancellationToken))))
-                .BindAsExecutor<TranslationCandidate, ValidatedTranslationMessage>(
-                    $"validate-{executorSuffix}");
+            string executorSuffix = TranslationWorkflowHelpers.NormalizeExecutorId(language);
+            string translatorId = $"translate-{executorSuffix}";
+            TranslationExecutor translator = new(
+                translatorId,
+                language,
+                translationService);
+            TranslationValidationExecutor validator = new(
+                $"validate-{executorSuffix}",
+                translatorId,
+                translationService);
 
             translators.Add(translator);
             validators.Add(validator);
         }
 
-        TranslationAggregatorExecutor aggregator = new(
-            validatedLanguages,
-            emitAgentResponse: useChatProtocol);
         WorkflowBuilder builder;
         if (useChatProtocol)
         {
@@ -81,81 +65,38 @@ public sealed partial class TranslationWorkflowFactory(
             .WithName(workflowName)
             .WithDescription(
                 "Translates text into multiple target languages in parallel, " +
-                "validates each translation, and repairs invalid results with bounded retries.")
+                "validates each translation, and retries invalid results with validator feedback.")
             .WithOpenTelemetry(telemetry =>
                 telemetry.EnableSensitiveData = _telemetryOptions.EnableSensitiveData)
-            .AddFanOutEdge(input, translators);
+            .AddFanOutEdge<TranslationWorkflowRequest>(
+                input,
+                translators,
+                (request, _) => TranslationWorkflowHelpers.SelectTargetIndexes(
+                    request ?? throw new ArgumentNullException(nameof(request)),
+                    supportedLanguages));
 
         for (int index = 0; index < translators.Count; index++)
         {
             builder.AddEdge(translators[index], validators[index]);
+            builder.AddEdge(
+                validators[index],
+                translators[index],
+                "retry with feedback",
+                idempotent: false);
+            builder.AddEdge(
+                validators[index],
+                aggregator,
+                "complete",
+                idempotent: false);
         }
 
         return builder
-            .AddFanInBarrierEdge(validators, aggregator)
             .WithOutputFrom(aggregator)
             .Build();
     }
 
-    public TranslationWorkflowRequest Validate(TranslationWorkflowRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        string text = request.Text?.Trim() ?? string.Empty;
-        if (text.Length == 0)
-        {
-            throw new ArgumentException("Translation text is required.", nameof(request));
-        }
-
-        if (text.Length > _options.MaxInputCharacters)
-        {
-            throw new ArgumentException(
-                $"Translation text cannot exceed {_options.MaxInputCharacters} characters.",
-                nameof(request));
-        }
-
-        string[] languages = ValidateLanguages(request.TargetLanguages);
-        return new TranslationWorkflowRequest(text, languages);
-    }
-
-    private string[] ValidateLanguages(IReadOnlyList<string>? targetLanguages)
-    {
-        string[] languages = targetLanguages?
-            .Select(language => language?.Trim() ?? string.Empty)
-            .Where(language => language.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray() ?? [];
-        if (languages.Length == 0)
-        {
-            throw new ArgumentException(
-                "At least one target language is required.",
-                nameof(targetLanguages));
-        }
-
-        if (languages.Length > _options.MaxTargetLanguages)
-        {
-            throw new ArgumentException(
-                $"A maximum of {_options.MaxTargetLanguages} target languages is allowed.",
-                nameof(targetLanguages));
-        }
-
-        string? invalidLanguage = languages.FirstOrDefault(
-            language => !LanguageIdentifierRegex().IsMatch(language));
-        if (invalidLanguage is not null)
-        {
-            throw new ArgumentException(
-                $"'{invalidLanguage}' is not a valid language identifier.",
-                nameof(targetLanguages));
-        }
-
-        return languages;
-    }
-
-    private static string NormalizeExecutorId(string language) =>
-        language.ToLowerInvariant().Replace('-', '_');
-
-    [GeneratedRegex("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", RegexOptions.CultureInvariant)]
-    private static partial Regex LanguageIdentifierRegex();
+    public TranslationWorkflowRequest Validate(TranslationWorkflowRequest request) =>
+        TranslationWorkflowHelpers.ValidateRequest(request, _options);
 }
 
 public sealed class TranslationWorkflowRunner(TranslationWorkflowFactory workflowFactory)
@@ -165,10 +106,12 @@ public sealed class TranslationWorkflowRunner(TranslationWorkflowFactory workflo
         CancellationToken cancellationToken = default)
     {
         TranslationWorkflowRequest validatedRequest = workflowFactory.Validate(request);
-        Workflow workflow = workflowFactory.Create(validatedRequest.TargetLanguages);
+        Workflow workflow = workflowFactory.Create();
         await using Run run = await InProcessExecution.RunAsync(
             workflow,
-            new TranslationWorkflowInput(validatedRequest.Text),
+            new TranslationWorkflowInput(
+                validatedRequest.Text,
+                validatedRequest.TargetLanguages),
             cancellationToken: cancellationToken);
 
         TranslationWorkflowResult? result = run.OutgoingEvents

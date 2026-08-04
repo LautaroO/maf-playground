@@ -16,7 +16,7 @@ public sealed class ChatClientTranslationModelTests
         string result = await model.TranslateAsync(
             "Hello",
             "es",
-            repairIssues: null,
+            validationFeedback: null,
             CancellationToken.None);
 
         Assert.Equal("Hola", result);

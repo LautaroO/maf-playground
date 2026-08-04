@@ -1,3 +1,4 @@
+using MafPlayground.AI.Resilience;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -14,9 +15,14 @@ public static class AIServiceExtensions
         ArgumentNullException.ThrowIfNull(modelSelection);
 
         serviceCollection.AddOptions<AgentTelemetryOptions>();
+        serviceCollection.AddOptions<AIResilienceOptions>()
+            .Validate(
+                options => options.ModelCallTimeout > TimeSpan.Zero,
+                "AI:Resilience:ModelCallTimeout must be greater than zero.");
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton(modelSelection);
         serviceCollection.AddSingleton<AIProviderRegistry>();
+        serviceCollection.AddSingleton<IChatClientDecorator, TimeoutChatClientDecorator>();
         serviceCollection.AddSingleton<IChatClient>(serviceProvider =>
         {
             IChatClient chatClient = serviceProvider
@@ -46,20 +52,17 @@ public static class AIServiceExtensions
                 options => options.MaxInputCharacters > 0,
                 "TranslationWorkflow:MaxInputCharacters must be greater than zero.")
             .Validate(
-                options => options.MaxRepairAttempts >= 0,
-                "TranslationWorkflow:MaxRepairAttempts cannot be negative.")
+                options => options.MaxTranslationRetries >= 0,
+                "TranslationWorkflow:MaxTranslationRetries cannot be negative.")
             .Validate(
                 options => options.MinimumValidationConfidence is >= 0 and <= 1,
                 "TranslationWorkflow:MinimumValidationConfidence must be between zero and one.")
             .Validate(
-                options => options.ModelCallTimeout > TimeSpan.Zero,
-                "TranslationWorkflow:ModelCallTimeout must be greater than zero.")
-            .Validate(
-                options => options.DevUITargetLanguages is { Length: > 0 },
-                "TranslationWorkflow:DevUITargetLanguages must contain at least one language.");
+                options => options.SupportedTargetLanguages is { Length: > 0 },
+                "TranslationWorkflow:SupportedTargetLanguages must contain at least one language.");
         serviceCollection.AddSingleton<Workflows.Translation.ITranslationModel,
             Workflows.Translation.ChatClientTranslationModel>();
-        serviceCollection.AddSingleton<Workflows.Translation.TranslationBranchProcessor>();
+        serviceCollection.AddSingleton<Workflows.Translation.TranslationService>();
         serviceCollection.AddSingleton<Workflows.Translation.TranslationWorkflowFactory>();
         serviceCollection.AddSingleton<Workflows.Translation.TranslationWorkflowRunner>();
 

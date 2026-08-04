@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text.Json;
 using MafPlayground.AI;
+using MafPlayground.AI.Resilience;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.Observability;
 using Microsoft.Extensions.Configuration;
@@ -30,7 +31,6 @@ public static class TranslateWorkflowCommand
         {
             Description = "Comma-separated target language identifiers, for example es,fr,pt-BR.",
         };
-
         Command command = new("translate", "Translate text concurrently and validate each result.");
         command.Options.Add(modelOption);
         command.Options.Add(textOption);
@@ -76,6 +76,8 @@ public static class TranslateWorkflowCommand
             languages);
 
         builder.Services.AddAIServices(modelSelection);
+        builder.Services.Configure<AIResilienceOptions>(
+            configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.Configure<TranslationWorkflowOptions>(
             configuration.GetSection("AI:Workflows:Translation"));
         builder.Services.AddConfiguredAIProviders(configuration);
