@@ -139,9 +139,13 @@ listening address with `--url`. The entity picker includes `basic-agent`,
 `basic-rag-agent`, and
 `translation-workflow`. Select `translation-workflow` to inspect its
 fan-out/fan-in topology. The installed .NET DevUI preview exposes workflow input
-as a string, so enter the typed input as JSON, for example
-`{"text":"Hello","targetLanguages":["es","fr"]}`; the host adapter deserializes it to
-`TranslationWorkflowInput`, and DevUI renders the final typed result as JSON.
+as a string. For the current preview, paste it with the temporary `json:` prefix,
+for example `json:{"text":"Hello","targetLanguages":["es","fr"]}`. The prefix
+keeps the typed JSON distinguishable inside DevUI's current `{ "input": "..." }`
+string-schema envelope. The host adapter unwraps that envelope and removes the
+prefix before deserializing `TranslationWorkflowInput`. Direct JSON text and a
+`.json` attachment remain supported. This compatibility syntax can be removed
+when DevUI supports structured workflow input natively.
 The visible branches are configured with
 `AI:Workflows:Translation:SupportedTargetLanguages`; execute the workflow from the
 terminal with `workflow translate`, where the topology remains dynamic through

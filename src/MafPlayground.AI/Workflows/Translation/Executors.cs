@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
@@ -112,6 +113,10 @@ internal sealed class TranslationChatInputExecutor()
         },
         declareCrossRunShareable: false)
 {
+    private const string DevUIStringInputProperty = "input";
+    private const string JsonInputPrefix = "json:";
+    private const int MaxJsonInputBytes = 64 * 1024;
+
     private static readonly JsonSerializerOptions SerializerOptions =
         new(JsonSerializerDefaults.Web);
 
@@ -121,9 +126,11 @@ internal sealed class TranslationChatInputExecutor()
         bool? emitEvents,
         CancellationToken cancellationToken)
     {
-        string json = messages.LastOrDefault(message => message.Role == ChatRole.User)?.Text
-            ?? messages.LastOrDefault()?.Text
-            ?? string.Empty;
+        ChatMessage userMessage = messages.LastOrDefault(
+                message => message.Role == ChatRole.User)
+            ?? throw new ArgumentException(
+                "The workflow requires a user message containing its JSON input.");
+        string json = GetJsonInput(userMessage);
 
         TranslationWorkflowInput input;
         try
@@ -141,10 +148,158 @@ internal sealed class TranslationChatInputExecutor()
                 exception);
         }
 
+        if (string.IsNullOrWhiteSpace(input.Text))
+        {
+            input = ApplyInputTextAlias(json, input);
+        }
+
+        if (string.IsNullOrWhiteSpace(input.Text))
+        {
+            throw new ArgumentException(
+                "The workflow JSON must contain a non-empty 'text' property " +
+                "(the temporary 'inputText' alias is also accepted).",
+                nameof(userMessage));
+        }
+
         await context.SendMessageAsync(
             input,
             cancellationToken);
     }
+
+    private static string GetJsonInput(ChatMessage userMessage)
+    {
+        List<string> candidates = [];
+        if (!string.IsNullOrWhiteSpace(userMessage.Text))
+        {
+            candidates.Add(userMessage.Text);
+        }
+
+        foreach (DataContent attachment in userMessage.Contents.OfType<DataContent>())
+        {
+            if (!IsJsonAttachment(attachment))
+            {
+                continue;
+            }
+
+            ReadOnlyMemory<byte>? data = attachment.Data;
+            if (data is null)
+            {
+                throw new ArgumentException(
+                    "The JSON attachment must contain inline data.");
+            }
+
+            if (data.Value.Length > MaxJsonInputBytes)
+            {
+                throw new ArgumentException(
+                    $"The workflow JSON input cannot exceed {MaxJsonInputBytes} bytes.");
+            }
+
+            candidates.Add(Encoding.UTF8.GetString(data.Value.Span));
+        }
+
+        if (candidates.Count == 0)
+        {
+            throw new ArgumentException(
+                "The latest user message must contain json:{...}, JSON text, or one .json attachment.");
+        }
+
+        if (candidates.Count > 1)
+        {
+            throw new ArgumentException(
+                "Provide the workflow input either as JSON text or as one .json attachment, not both.");
+        }
+
+        string json = UnwrapDevUIStringInput(candidates[0].Trim());
+        if (json.StartsWith(JsonInputPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            json = json[JsonInputPrefix.Length..].TrimStart();
+        }
+
+        if (Encoding.UTF8.GetByteCount(json) > MaxJsonInputBytes)
+        {
+            throw new ArgumentException(
+                $"The workflow JSON input cannot exceed {MaxJsonInputBytes} bytes.");
+        }
+
+        return json;
+    }
+
+    private static string UnwrapDevUIStringInput(string candidate)
+    {
+        const int maxEnvelopeDepth = 3;
+
+        for (int depth = 0; depth < maxEnvelopeDepth; depth++)
+        {
+            if (!candidate.StartsWith('{'))
+            {
+                break;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(candidate);
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object ||
+                    !root.TryGetProperty(DevUIStringInputProperty, out JsonElement input))
+                {
+                    break;
+                }
+
+                candidate = input.ValueKind switch
+                {
+                    JsonValueKind.String => input.GetString()?.Trim() ?? string.Empty,
+                    JsonValueKind.Object => input.GetRawText(),
+                    _ => candidate,
+                };
+
+                if (input.ValueKind is not (JsonValueKind.String or JsonValueKind.Object))
+                {
+                    break;
+                }
+            }
+            catch (JsonException)
+            {
+                // The regular deserializer reports the public input-format error.
+                break;
+            }
+        }
+
+        return candidate;
+    }
+
+    private static TranslationWorkflowInput ApplyInputTextAlias(
+        string json,
+        TranslationWorkflowInput input)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("inputText", out JsonElement inputText) &&
+                inputText.ValueKind == JsonValueKind.String)
+            {
+                return input with
+                {
+                    Text = inputText.GetString() ?? string.Empty,
+                };
+            }
+        }
+        catch (JsonException)
+        {
+            // JSON syntax errors are reported by the primary deserializer.
+        }
+
+        return input;
+    }
+
+    private static bool IsJsonAttachment(DataContent attachment) =>
+        string.Equals(
+            attachment.MediaType,
+            "application/json",
+            StringComparison.OrdinalIgnoreCase) ||
+        attachment.MediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase) ||
+        attachment.Name?.EndsWith(".json", StringComparison.OrdinalIgnoreCase) is true;
 
     protected override ProtocolBuilder ConfigureProtocol(ProtocolBuilder protocolBuilder)
     {

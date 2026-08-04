@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 using MafPlayground.AI;
 using MafPlayground.AI.Workflows.Translation;
 using Microsoft.Agents.AI.Workflows;
@@ -121,6 +122,104 @@ public sealed class TranslationWorkflowTests
 
         Assert.Contains("Hola", responseText, StringComparison.Ordinal);
         Assert.Contains("\"targetLanguage\":\"es\"", responseText, StringComparison.Ordinal);
+        Assert.Equal(2, model.TranslationCalls);
+    }
+
+    [Fact]
+    public async Task DevUIWorkflow_AcceptsJsonAttachmentFromLatestUserMessage()
+    {
+        FeedbackTranslationModel model = new();
+        TranslationWorkflowFactory factory = CreateFactory(model);
+        Workflow workflow = factory.CreateForDevUI();
+        DataContent attachment = new(
+            Encoding.UTF8.GetBytes("""
+                {"text":"Hello","targetLanguages":["es"]}
+                """),
+            "application/json")
+        {
+            Name = "workflow-input.json",
+        };
+
+        await using Run run = await InProcessExecution.RunAsync(
+            workflow,
+            new List<ChatMessage>
+            {
+                new(ChatRole.User, [attachment]),
+            });
+        string responseText = string.Concat(run.OutgoingEvents
+            .OfType<WorkflowOutputEvent>()
+            .Select(output => output.As<ChatMessage>()?.Text));
+
+        Assert.Contains("Hola", responseText, StringComparison.Ordinal);
+        Assert.Equal(2, model.TranslationCalls);
+    }
+
+    [Fact]
+    public async Task DevUIWorkflow_AcceptsTemporaryJsonPrefix()
+    {
+        FeedbackTranslationModel model = new();
+        TranslationWorkflowFactory factory = CreateFactory(model);
+        Workflow workflow = factory.CreateForDevUI();
+
+        await using Run run = await InProcessExecution.RunAsync(
+            workflow,
+            new List<ChatMessage>
+            {
+                new(ChatRole.User, """
+                    json:{"text":"Hello","targetLanguages":["es"]}
+                    """),
+            });
+        string responseText = string.Concat(run.OutgoingEvents
+            .OfType<WorkflowOutputEvent>()
+            .Select(output => output.As<ChatMessage>()?.Text));
+
+        Assert.Contains("Hola", responseText, StringComparison.Ordinal);
+        Assert.Equal(2, model.TranslationCalls);
+    }
+
+    [Fact]
+    public async Task DevUIWorkflow_AcceptsStringSchemaEnvelopeWithTemporaryJsonPrefix()
+    {
+        FeedbackTranslationModel model = new();
+        TranslationWorkflowFactory factory = CreateFactory(model);
+        Workflow workflow = factory.CreateForDevUI();
+
+        await using Run run = await InProcessExecution.RunAsync(
+            workflow,
+            new List<ChatMessage>
+            {
+                new(ChatRole.User, """
+                    {"input":"json:{\"text\":\"Hello\",\"targetLanguages\":[\"es\"]}"}
+                    """),
+            });
+        string responseText = string.Concat(run.OutgoingEvents
+            .OfType<WorkflowOutputEvent>()
+            .Select(output => output.As<ChatMessage>()?.Text));
+
+        Assert.Contains("Hola", responseText, StringComparison.Ordinal);
+        Assert.Equal(2, model.TranslationCalls);
+    }
+
+    [Fact]
+    public async Task DevUIWorkflow_AcceptsObjectEnvelopeMetadataAndInputTextAlias()
+    {
+        FeedbackTranslationModel model = new();
+        TranslationWorkflowFactory factory = CreateFactory(model);
+        Workflow workflow = factory.CreateForDevUI();
+
+        await using Run run = await InProcessExecution.RunAsync(
+            workflow,
+            new List<ChatMessage>
+            {
+                new(ChatRole.User, """
+                    {"input":{"inputText":"Hello","targetLanguages":["es"]},"role":"user"}
+                    """),
+            });
+        string responseText = string.Concat(run.OutgoingEvents
+            .OfType<WorkflowOutputEvent>()
+            .Select(output => output.As<ChatMessage>()?.Text));
+
+        Assert.Contains("Hola", responseText, StringComparison.Ordinal);
         Assert.Equal(2, model.TranslationCalls);
     }
 
