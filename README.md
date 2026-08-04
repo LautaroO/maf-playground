@@ -1,47 +1,100 @@
-# maf-playground
-This is a Microsoft Agent Framework (MAF) playground to discover ideas, apps, and learn how to build agents with MAF.
+# MAF Playground
 
-## Run the Basic agent
+A production-oriented Microsoft Agent Framework (MAF) playground for building,
+running, inspecting, and testing provider-neutral agents and native workflows in
+C#/.NET.
 
-Start Ollama and make sure a model is available:
+The repository includes:
+
+- a conversational agent with trusted user context and a reusable time tool;
+- a grounded RAG agent with PDF ingestion, semantic retrieval, and mandatory
+  citations;
+- a translation workflow with parallel fan-out, validation, feedback retry, and
+  ordered fan-in;
+- a local CLI harness and DevUI host;
+- OpenTelemetry logs, traces, metrics, and model-cost estimates;
+- Ollama and PostgreSQL/pgvector as replaceable local adapters.
+
+## Architecture
+
+MAF is the orchestration layer. Model providers, storage, hosts, and telemetry
+exporters stay outside reusable agent and workflow behavior.
+
+```mermaid
+flowchart TB
+    CLI[MafPlayground.CLI<br/>local host and composition root]
+    AI[MafPlayground.AI<br/>agents, tools, context, workflows]
+    Retrieval[MafPlayground.Retrieval<br/>extraction and retrieval core]
+    Ollama[MafPlayground.Providers.Ollama<br/>chat, embeddings, pricing]
+    Postgres[MafPlayground.Retrieval.Postgres<br/>EF Core and pgvector]
+    Obs[MafPlayground.Observability<br/>OpenTelemetry and cost tracking]
+    Dev[CLI, DevUI, or a future web/worker host]
+
+    Dev --> CLI
+    CLI --> AI
+    CLI --> Retrieval
+    CLI --> Ollama
+    CLI --> Postgres
+    CLI --> Obs
+    AI --> Retrieval
+    Ollama --> AI
+    Ollama --> Retrieval
+    Postgres --> Retrieval
+    Obs --> AI
+```
+
+| Concern | Implementation | MAF/application role |
+| --- | --- | --- |
+| Open-ended conversation | Basic and Basic RAG agents | `AIAgent` |
+| Trusted user data | `UserContextProvider` | `AIContextProvider` |
+| Current date/time | `CurrentDateTimeTool` | Deterministic tool/function |
+| RAG evidence | `RagContextProvider` | Retrieval-backed context plus one narrow search tool |
+| Citation enforcement | `CitationValidator` and agent middleware | Deterministic postcondition with bounded repair |
+| Translation orchestration | Native translation graph | Workflow executors, typed messages, fan-out/fan-in edges |
+| Timeouts and cost | Chat-client decorators | Provider-neutral cross-cutting infrastructure |
+| Documents and vector search | Retrieval services and store ports | Deterministic application logic and persistence boundary |
+| Local execution | CLI and DevUI commands | Development host, not reusable core |
+
+## Projects
+
+| Project | Responsibility |
+| --- | --- |
+| [`MafPlayground.AI`](src/MafPlayground.AI/README.md) | Provider-neutral MAF agents, workflows, tools, context, provider contracts, and resilience decorators. |
+| [`MafPlayground.CLI`](src/MafPlayground.CLI/README.md) | Local command-line harness, DevUI host, entity inspection, and dependency composition. |
+| [`MafPlayground.Observability`](src/MafPlayground.Observability/README.md) | OpenTelemetry registration and provider-neutral token-cost estimation. |
+| [`MafPlayground.Providers.Ollama`](src/MafPlayground.Providers.Ollama/README.md) | Ollama chat, embedding, endpoint, and pricing adapters. |
+| [`MafPlayground.Retrieval`](src/MafPlayground.Retrieval/README.md) | File-format-neutral ingestion, chunking, embedding, search, and storage contracts. |
+| [`MafPlayground.Retrieval.Postgres`](src/MafPlayground.Retrieval.Postgres/README.md) | EF Core/PostgreSQL/pgvector implementation of the retrieval store. |
+| [`MafPlayground.Tests`](tests/MafPlayground.Tests/README.md) | Fast deterministic unit and component tests. |
+| [`MafPlayground.IntegrationTests`](tests/MafPlayground.IntegrationTests/README.md) | Explicitly opt-in tests that require external infrastructure. |
+
+Detailed feature documentation:
+
+- [Basic agent](src/MafPlayground.AI/Agents/BasicAgent/README.md)
+- [Basic RAG agent](src/MafPlayground.AI/Agents/BasicRagAgent/README.md)
+- [Translation workflow](src/MafPlayground.AI/Workflows/Translation/README.md)
+- [Test organization](tests/README.md)
+
+## Prerequisites
+
+- .NET 10 SDK
+- [Ollama](https://ollama.com/) for the included local provider adapter
+- Docker with Compose for PostgreSQL/pgvector and the Aspire Dashboard
+
+The solution pins MAF `1.16.0`; the .NET DevUI/hosting packages are preview
+builds. Installed NuGet APIs are authoritative because MAF and DevUI evolve
+quickly.
+
+## Quick start: Basic agent
+
+Start Ollama and pull the default chat model:
 
 ```bash
 ollama serve
 ollama pull llama3.1:8b
 ```
 
-Run an interactive conversation:
-
-```bash
-dotnet run --project src/MafPlayground.CLI -- agent basic --model ollama:llama3.1:8b
-```
-
-Or run one prompt and exit:
-
-```bash
-dotnet run --project src/MafPlayground.CLI -- agent basic --model ollama:llama3.1:8b --prompt "Hello"
-```
-
-Models use a provider-qualified selector. For Ollama, use `ollama:<model>`, for example
-`ollama:llama3.1:8b`. The selector can also be supplied through `AI_MODEL`.
-Ollama's endpoint defaults to `http://localhost:11434` and can be overridden with
-the provider-owned `AI__PROVIDERS__OLLAMA__ENDPOINT` variable.
-
-The Basic agent exposes the reusable `get_current_date_time` operation. It accepts
-an IANA or system time-zone identifier and returns the exact current date, time,
-weekday, resolved time-zone ID, and UTC offset.
-
-See the [Basic agent documentation](src/MafPlayground.AI/Agents/BasicAgent/README.md)
-for its architecture, request flow, failure behavior, and extension points.
-
-The CLI supplies `TimeZoneInfo.Local.Id` as its local-development user context.
-The context contract is a generic key/value bag and a MAF context provider adds
-its values per invocation, so future hosts can supply other trusted fields without
-expanding the Basic agent prompt. A web host should replace
-`IUserContextAccessor` with a request-aware implementation rather than using the
-server's local time zone.
-
-For local configuration, copy `.env.example` to `.env` and load it into your shell:
+Copy and load the local environment:
 
 ```bash
 cp .env.example .env
@@ -49,314 +102,214 @@ set -a; source .env; set +a
 ```
 
 The application reads process environment variables; it does not load `.env`
-files automatically.
+automatically.
 
-## Run the Basic RAG agent
+Start an interactive conversation:
 
-The RAG example uses a provider-neutral extraction and retrieval core, PostgreSQL
-with pgvector as the current storage adapter, and Ollama as the initial embedding
-provider. PDF is the first registered `IDocumentExtractor`; adding DOCX, Markdown,
-or text support requires another extractor without changing ingestion or the agent.
+```bash
+dotnet run --project src/MafPlayground.CLI -- agent basic
+```
 
-Start PostgreSQL, pull the embedding model, migrate the schema, and explicitly
-ingest a text-based PDF:
+Or run one prompt and stream execution diagnostics:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- \
+  agent basic --prompt "What date and time is it for me?" --watch
+```
+
+The CLI supplies the machine's `TimeZoneInfo.Local.Id` as trusted local user
+context. A production host must replace this with request-aware user context.
+
+## Quick start: Basic RAG agent
+
+The RAG example requires PostgreSQL, a chat model, an embedding model, database
+migrations, and explicit document ingestion:
 
 ```bash
 docker compose up -d postgres
 ollama pull nomic-embed-text
 dotnet run --project src/MafPlayground.CLI -- rag database migrate
-dotnet run --project src/MafPlayground.CLI -- rag ingest --path ./documents/help.pdf --source-root ./documents
+dotnet run --project src/MafPlayground.CLI -- \
+  rag ingest --path ./documents/help.pdf --source-root ./documents
+dotnet run --project src/MafPlayground.CLI -- \
+  agent basic-rag \
+  --prompt "How long does a password-reset link remain valid?" \
+  --watch
 ```
 
-The repository includes `documents/help.pdf`, a four-page fictional Northstar
-customer guide with precise, page-specific facts for retrieval and citation tests.
-Regenerate it after editing the sample content with:
+`documents/help.pdf` is a four-page fictional help guide with stable,
+page-specific test facts. Ingestion extracts text, chunks it, generates semantic
+embeddings, and writes them to pgvector. Answers must contain exact citations
+from the current retrieval invocation. Textless PDF pages are reported; OCR is a
+future extension behind `IDocumentExtractor`.
 
-```bash
-python3 -m pip install reportlab
-python3 scripts/generate-sample-help-pdf.py
-```
+Read the [RAG architecture guide](src/MafPlayground.AI/Agents/BasicRagAgent/README.md)
+for the full ingestion/query flow, state model, failure behavior, and extension
+points.
 
-Then run the grounded agent interactively or with one prompt:
-
-```bash
-dotnet run --project src/MafPlayground.CLI -- agent basic-rag
-dotnet run --project src/MafPlayground.CLI -- agent basic-rag --prompt "How do I reset my account?"
-```
-
-`AI_EMBEDDING_MODEL` uses the same `provider:model` convention as `AI_MODEL`; the
-example selects `ollama:nomic-embed-text`. The initial schema is configured for
-its 768 dimensions. Collections record their embedding identity and reject
-incompatible writes, so changing dimensions requires a migration or a separate
-compatible collection.
-
-Ingestion preserves a stable relative source identifier with `--source-root`,
-records PDF pages, skips unchanged content, and reports pages without extractable
-text. OCR is intentionally deferred behind the extraction abstraction. Answers
-must use exact citations with document title, stable source ID, and page where
-available. Retrieval is automatic, with at most one refined model-requested search.
-
-See the [Basic RAG agent documentation](src/MafPlayground.AI/Agents/BasicRagAgent/README.md)
-for the ingestion and query pipelines, citation enforcement, state ownership,
-replaceable boundaries, and current limitations.
-
-## Run the translation workflow
-
-The translation workflow creates one branch per requested language. Translation
-branches run concurrently, each result passes through a semantic validator, and
-the validated branches join through a fan-in barrier before producing an ordered
-result:
+## Quick start: translation workflow
 
 ```bash
 dotnet run --project src/MafPlayground.CLI -- \
   workflow translate \
-  --model ollama:llama3.1:8b \
   --text "Hello, how are you?" \
-  --languages es,fr,pt-BR
+  --languages es,fr,pt-BR \
+  --watch
 ```
 
-The workflow input is the typed `TranslationWorkflowInput` record containing
-`Text` and `TargetLanguages`. Requested languages are validated against
-`AI:Workflows:Translation:SupportedTargetLanguages` before any model call.
-Validation then checks the target language and meaning preservation using
-structured model output. A failed
-validation is sent back to the translation node with feedback and bounded
-retries. Provider errors, invalid output, validation failures, and timeouts are returned per
-language so one failed branch does not prevent the fan-in result. The command
-returns exit code `0` when every translation is valid and `1` when it produces
-one or more partial failures.
+Requested languages are validated before model calls. Active branches translate
+concurrently, semantic validators return typed reviews, invalid output can loop
+back once with feedback, and the fan-in result preserves requested order. A
+failed branch is returned as a partial failure rather than blocking other
+languages.
 
-Concurrency limits, input size, validation confidence, retry attempts, and the
-per-call timeout are configured under `AI:Workflows:Translation` in the CLI's
-`appsettings.json`. Other hosts can configure `TranslationWorkflowOptions`
-through their own composition root.
+## CLI command map
 
-See the [translation workflow documentation](src/MafPlayground.AI/Workflows/Translation/README.md)
-for the native graph, typed contracts, retry and fan-in behavior, DevUI adapter,
-and test strategy.
-
-## Inspect and watch local AI entities
-
-The CLI includes a development-only inspection surface for the same local agents
-and workflows exposed through DevUI. List the registered entities with:
+System.CommandLine provides help at every level:
 
 ```bash
-dotnet run --project src/MafPlayground.CLI -- inspect list
+dotnet run --project src/MafPlayground.CLI -- --help
+dotnet run --project src/MafPlayground.CLI -- agent --help
+dotnet run --project src/MafPlayground.CLI -- workflow translate --help
 ```
 
-View the required input as JSON Schema together with an example:
+| Command | Purpose |
+| --- | --- |
+| `agent basic` | Run the Basic agent interactively or with `--prompt`. |
+| `agent basic-rag` | Run the grounded RAG agent. |
+| `workflow translate` | Execute the typed translation workflow. |
+| `rag database migrate` | Apply EF Core retrieval migrations. |
+| `rag ingest` | Extract, chunk, embed, and index one document explicitly. |
+| `inspect list` | List locally registered agents and workflows. |
+| `inspect agent <id> --view-input` | Print an agent's JSON Schema and example input. |
+| `inspect workflow <id> --view-input` | Print a workflow's JSON Schema and example input. |
+| `inspect workflow <id> --diagram` | Print the native MAF graph as Mermaid source. |
+| `devui` | Host the local MAF DevUI. |
+
+`--watch` is available on agent and workflow execution commands. It shows
+lifecycle, tool, executor, and workflow events without printing sensitive payloads.
+Standalone agent diagrams are intentionally out of scope because `AIAgent` does
+not expose a native executor graph equivalent to a MAF workflow.
+
+## DevUI
 
 ```bash
-dotnet run --project src/MafPlayground.CLI -- inspect agent basic-rag-agent --view-input
-dotnet run --project src/MafPlayground.CLI -- inspect workflow translation-workflow --view-input
-```
-
-Export the translation workflow's native MAF graph as Mermaid source:
-
-```bash
-dotnet run --project src/MafPlayground.CLI -- \
-  inspect workflow translation-workflow --diagram
-```
-
-The command prints Mermaid text and does not require a Mermaid renderer. Redirect
-it to a `.mmd` file when needed. Standalone `AIAgent` diagrams are intentionally
-out of scope because agents do not expose a native executor graph equivalent to a
-MAF workflow; inventing one through reflection would misrepresent runtime behavior.
-
-Add `--watch` to stream local execution diagnostics while preserving the normal
-result on standard output:
-
-```bash
-dotnet run --project src/MafPlayground.CLI -- \
-  workflow translate --text "Hello" --languages es,fr --watch
-
-dotnet run --project src/MafPlayground.CLI -- \
-  agent basic --prompt "What time is it for me?" --watch
-```
-
-Workflow watch mode consumes native `WorkflowEvent` instances and reports
-super-steps, executor starts/completions, failures, and final output. Agent watch
-mode reports lifecycle and tool-call timing around the already-streamed response.
-Prompt, executor-message, tool-argument, and tool-result payloads are not printed.
-These commands are a focused terminal development harness, not a replacement for
-DevUI's interactive graph and trace panels or for an external OTLP dashboard.
-
-## Run DevUI
-
-The same CLI executable can host the Agent Framework DevUI for local visual
-testing. Load the environment and run:
-
-```bash
-set -a; source .env; set +a
 dotnet run --project src/MafPlayground.CLI -- devui
 ```
 
-Open `http://localhost:5050/devui`. Override the model with `--model` or the
-listening address with `--url`. The entity picker includes `basic-agent`,
-`basic-rag-agent`, and
-`translation-workflow`. Select `translation-workflow` to inspect its
-fan-out/fan-in topology. The installed .NET DevUI preview exposes workflow input
-as a string. For the current preview, paste it with the temporary `json:` prefix,
-for example `json:{"text":"Hello","targetLanguages":["es","fr"]}`. The prefix
-keeps the typed JSON distinguishable inside DevUI's current `{ "input": "..." }`
-string-schema envelope. The host adapter unwraps that envelope and removes the
-prefix before deserializing `TranslationWorkflowInput`. Direct JSON text and a
-`.json` attachment remain supported. This compatibility syntax can be removed
-when DevUI supports structured workflow input natively.
-The visible branches are configured with
-`AI:Workflows:Translation:SupportedTargetLanguages`; execute the workflow from the
-terminal with `workflow translate`, where the topology remains dynamic through
-`--languages`. DevUI reuses the same agents, providers, and observability
-pipeline as the terminal harness, and is restricted to local development use.
+Open `http://localhost:5050/devui`. The registered entities are `basic-agent`,
+`basic-rag-agent`, and the native `translation-workflow` graph.
 
-The `devui` command also installs a local trace bridge for the current .NET DevUI
-preview. Agent, model, tool, workflow, and executor spans are emitted into the
-DevUI response stream and appear in its debug trace panel without requiring an
-OTLP collector. This is independent of the optional OTLP export below, so the
-same run can be inspected in both DevUI and the Aspire Dashboard.
-
-## Observability
-
-Agent instrumentation lives in `MafPlayground.AI`, while telemetry collection and
-export live in the reusable `MafPlayground.Observability` project. The CLI is only
-one host of those libraries; an ASP.NET Core or worker host can register the same
-services without referencing the CLI.
-
-Telemetry export is disabled by default. To export traces, metrics, and structured
-logs to an OTLP-compatible collector such as the Aspire Dashboard, set:
-
-```bash
-export OBSERVABILITY__ENABLED=true
-export OBSERVABILITY__SERVICENAME=maf-playground-cli
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-dotnet run --project src/MafPlayground.CLI -- agent basic --model ollama:llama3.1:8b
-```
-
-Prompts, responses, and tool payloads are excluded by default. Sensitive capture
-can be enabled explicitly for a secured local environment with
-`OBSERVABILITY__AGENTFRAMEWORK__ENABLESENSITIVEDATA=true`.
-
-Estimated model-call cost can also be emitted as the
-`maf_playground.gen_ai.cost` metric and the `maf_playground.gen_ai.cost`
-span attribute. Prices use the common provider convention of currency units per
-one million input or output tokens:
+The installed .NET DevUI preview exposes workflow input as a chat string. For the
+translation workflow, enter:
 
 ```text
-cost = (input tokens × input rate + output tokens × output rate) / 1,000,000
+json:{"text":"Hello","targetLanguages":["es","fr"]}
 ```
 
-Each provider owns how its prices are represented and exposes normalized pricing
-through a provider-neutral contract. The host supplies the actual values. The
-CLI's `appsettings.json` configures a synthetic USD 0.01-per-million rate under
-`AI:Providers:Ollama:Pricing`, even though a local Ollama call has no provider
-charge. Set both rates to `0`, or add model objects to that provider's `Models`
-array, to represent other pricing. Environment variables can still override
-individual settings when a deployment requires it. An estimate is emitted only
-when both a matching price and provider-reported input/output usage are
-available; it is not an invoice or an authoritative billing record.
+The CLI contains a temporary adapter that unwraps the DevUI string envelope and
+forwards a typed `TranslationWorkflowInput`. This can be removed when structured
+workflow input is supported natively by the installed DevUI package.
 
-Future web or worker hosts can compose the reusable infrastructure with:
+DevUI tracing uses a local response-stream bridge. OTLP export is separate: the
+same execution can appear in DevUI and an external dashboard independently.
 
-```csharp
-services.AddAIServices(modelSelection);
-services.AddMafPlaygroundObservability(configuration);
-```
+## Configuration
 
-The host must also register an `IUserContextAccessor`. The CLI's
-`AddLocalUserContext()` implementation is intended only for local development;
-request-based hosts should provide their own registration.
+The local host combines `appsettings.json`, process environment variables, and
+command options. Command options take precedence where available.
 
-## Local infrastructure
+| Setting | Purpose |
+| --- | --- |
+| `AI_MODEL` | Chat model selector in `provider:model` format. |
+| `AI_EMBEDDING_MODEL` | Embedding selector in `provider:model` format. |
+| `AI__PROVIDERS__OLLAMA__ENDPOINT` | Ollama endpoint. |
+| `AI:Resilience:ModelCallTimeout` | Timeout applied by the shared chat-client decorator. |
+| `AI:Retrieval:*` | Collection, vector dimension, chunking, and search settings. |
+| `AI:Retrieval:Postgres:ConnectionString` | Current retrieval store connection. |
+| `AI:Workflows:Translation:*` | Supported languages, limits, retries, and confidence. |
+| `Observability:*` | OTLP enablement, service identity, sensitive-data policy, and cost tracking. |
+| `DEVUI_URL` | Local DevUI listening URL. |
 
-The root `compose.yaml` provides development infrastructure shared by any local
-host. It starts the standalone Aspire Dashboard and PostgreSQL with pgvector.
+.NET configuration maps `__` in environment variables to `:`. Secrets and
+production endpoints must come from environment variables, a secret store, or
+the hosting platform rather than committed settings.
 
-Copy the example environment, enable observability, and start the stack:
+## Observability and local infrastructure
+
+The root `compose.yaml` starts PostgreSQL/pgvector and the standalone Aspire
+Dashboard:
 
 ```bash
-cp .env.example .env
-# Set OBSERVABILITY__ENABLED=true in .env
+# Set OBSERVABILITY__ENABLED=true in .env first.
 docker compose up -d
 set -a; source .env; set +a
 dotnet run --project src/MafPlayground.CLI -- agent basic
 ```
 
-Open the dashboard at `http://localhost:18888`. The local stack accepts OTLP/gRPC
-on `http://localhost:4317` and OTLP/HTTP on `http://localhost:4318`.
+Open Aspire Dashboard at `http://localhost:18888`. OTLP/gRPC is exposed at
+`http://localhost:4317` and OTLP/HTTP at `http://localhost:4318`.
 
-Anonymous dashboard access is enabled only for local convenience. Set
-`ASPIRE_DASHBOARD_ALLOW_ANONYMOUS=false` to use its login-token flow instead.
-Telemetry is held in memory by the standalone dashboard and is lost when the
-container restarts.
+Telemetry includes structured logs, MAF agent/workflow traces, tool/model spans,
+metrics, and an estimated `maf_playground.gen_ai.cost` when both provider pricing
+and token usage are available. Rates use currency units per one million tokens:
 
-Stop the local infrastructure with:
+```text
+cost = (input tokens × input rate + output tokens × output rate) / 1,000,000
+```
+
+The configured local Ollama rate is synthetic for testing and is not a bill.
+Prompt, response, tool, and retrieved-document payloads are excluded by default.
+
+Stop local infrastructure without deleting its named PostgreSQL volume:
 
 ```bash
 docker compose down
 ```
 
-# Codex starter for Microsoft Agent Framework on .NET
+## Build and test
 
-## Repository layout
-
-```text
-AGENTS.md
-.agents/
-  skills/
-    maf-architecture/
-    maf-implementation/
-    maf-review/
-.codex/
-  config.toml.example
-docs/
-  codex-setup.md
+```bash
+dotnet restore
+dotnet format --verify-no-changes
+dotnet build --no-restore
+dotnet test --no-build
 ```
 
-## Important distinction
+The default test project is deterministic and does not require a model or
+containers. PostgreSQL integration tests are opt-in:
 
-- `AGENTS.md`: durable instructions committed with the repository.
-- `.agents/skills/`: repository-scoped Codex skills.
-- `~/.codex/AGENTS.md`: optional personal instructions applied across repositories.
-- `~/.codex/config.toml`: personal Codex configuration.
-- `.codex/config.toml.example`: documentation only; copy settings manually to the user-level configuration if desired.
-
-Codex currently discovers repository skills from `.agents/skills`, not `.codex/skills`.
-
-
-## Non-negotiable provider neutrality
-
-This starter treats Azure, Microsoft Foundry, Azure OpenAI, and OpenAI as optional concrete integrations only.
-
-The core architecture must remain portable across providers and clouds. Provider SDKs belong in adapters and composition roots; agents, workflows, tools, validators, prompts, persistence contracts, and core tests must remain provider-neutral.
-
-## Installation
-
-Copy `AGENTS.md` and `.agents/` to the root of your .NET repository.
-
-Optionally copy settings from `.codex/config.toml.example` into `~/.codex/config.toml`.
-
-Start a new Codex session in the repository and run:
-
-```text
-Summarize the AGENTS.md instructions and list the available MAF skills.
+```bash
+RAG_TEST_CONNECTION_STRING='Host=localhost;Database=maf_playground;Username=postgres;Password=postgres' \
+  dotnet test tests/MafPlayground.IntegrationTests
 ```
 
-Then invoke a skill explicitly when useful:
+Without `RAG_TEST_CONNECTION_STRING`, the database test is reported as skipped.
 
-```text
-$maf-architecture Design the translation workflow.
-$maf-implementation Implement the approved design.
-$maf-implementation Expose the agent and native workflow through a local DevUI command.
-$maf-review Review the current MAF implementation.
-$maf-review Check DevUI discovery, duplicate registrations, hosted execution, and tracing.
-```
+## Extending the playground
 
-Skills can also activate implicitly from their descriptions.
+- Add a model provider by implementing `IChatClientProvider`; add embeddings with
+  `IEmbeddingGeneratorProvider`; keep SDK types inside a `Providers.*` adapter.
+- Add a document type by implementing and registering `IDocumentExtractor`.
+- Replace pgvector by implementing `IKnowledgeStore` and
+  `IRetrievalDatabaseInitializer` in another infrastructure project.
+- Add an agent for open-ended semantic behavior; put deterministic capabilities
+  in typed tools and services.
+- Add a workflow when ordering, branching, concurrency, validation, retry,
+  approval, or durable transitions must be explicit.
+- Add a web or worker host as a new composition root. Do not make reusable
+  projects depend on the CLI or DevUI.
 
-## Customization
+Repository-specific implementation and review guidance is in [`AGENTS.md`](AGENTS.md)
+and the MAF skills under [`.agents/skills`](.agents/skills).
 
-Replace generic build commands with the exact commands used by your solution and CI.
+## Current limitations
 
-Add nested `AGENTS.override.md` files only when a subdirectory genuinely needs different rules.
-
-Keep the root `AGENTS.md` stable and concise. Put task-specific procedures and longer references into skills.
+- DevUI packages are preview and its structured workflow input is adapted through
+  a temporary chat protocol.
+- The RAG schema currently fixes vectors at 768 dimensions.
+- PDF extraction supports text only; OCR and additional formats are pending.
+- RAG uses one shared collection without tenant, ACL, or metadata filters.
+- The CLI and DevUI are local development tools, not secured production hosts.
+- The Aspire Dashboard stores telemetry in memory and local anonymous access is
+  enabled by default for convenience.
