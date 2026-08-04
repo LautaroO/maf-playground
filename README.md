@@ -31,6 +31,9 @@ The Basic agent exposes the reusable `get_current_date_time` operation. It accep
 an IANA or system time-zone identifier and returns the exact current date, time,
 weekday, resolved time-zone ID, and UTC offset.
 
+See the [Basic agent documentation](src/MafPlayground.AI/Agents/BasicAgent/README.md)
+for its architecture, request flow, failure behavior, and extension points.
+
 The CLI supplies `TimeZoneInfo.Local.Id` as its local-development user context.
 The context contract is a generic key/value bag and a MAF context provider adds
 its values per invocation, so future hosts can supply other trusted fields without
@@ -93,6 +96,10 @@ text. OCR is intentionally deferred behind the extraction abstraction. Answers
 must use exact citations with document title, stable source ID, and page where
 available. Retrieval is automatic, with at most one refined model-requested search.
 
+See the [Basic RAG agent documentation](src/MafPlayground.AI/Agents/BasicRagAgent/README.md)
+for the ingestion and query pipelines, citation enforcement, state ownership,
+replaceable boundaries, and current limitations.
+
 ## Run the translation workflow
 
 The translation workflow creates one branch per requested language. Translation
@@ -123,6 +130,10 @@ Concurrency limits, input size, validation confidence, retry attempts, and the
 per-call timeout are configured under `AI:Workflows:Translation` in the CLI's
 `appsettings.json`. Other hosts can configure `TranslationWorkflowOptions`
 through their own composition root.
+
+See the [translation workflow documentation](src/MafPlayground.AI/Workflows/Translation/README.md)
+for the native graph, typed contracts, retry and fan-in behavior, DevUI adapter,
+and test strategy.
 
 ## Inspect and watch local AI entities
 
