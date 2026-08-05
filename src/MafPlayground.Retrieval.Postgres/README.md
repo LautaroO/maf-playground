@@ -11,11 +11,11 @@ the RAG agent.
 
 | Component | Responsibility |
 | --- | --- |
-| `KnowledgeDbContext` | Maps collections, documents, chunks, JSON metadata, pgvector columns, and indexes. |
-| `PostgresKnowledgeStore` | Implements document state lookup, transactional replacement, and cosine search. |
+| `KnowledgeDbContext` | Maps collections, documents, chunks, JSON metadata, pgvector columns, and HNSW/GIN indexes. |
+| `PostgresKnowledgeStore` | Implements document state lookup, transactional replacement, metadata filtering, and cosine search. |
 | `PostgresRetrievalDatabaseInitializer` | Applies EF Core migrations. |
 | `PostgresRetrievalOptions` | Owns the PostgreSQL connection string. |
-| `Migrations/` | Versioned schema including the `vector` extension and HNSW index. |
+| `Migrations/` | Versioned schema including the `vector` extension and HNSW/GIN indexes. |
 
 ## Schema
 
@@ -47,9 +47,9 @@ erDiagram
     }
 ```
 
-Search uses cosine distance, filters by collection and configured minimum
-similarity, orders nearest chunks first, and applies `TopK`. Document replacement
-runs in a transaction and cascades old chunks.
+Search filters by collection and exact document metadata containment, then uses
+cosine distance, the configured minimum similarity, nearest-first ordering, and
+`TopK`. Document replacement runs in a transaction and cascades old chunks.
 
 ## Registration and configuration
 
@@ -72,7 +72,9 @@ must supply credentials through environment variables or a secret store.
 docker compose up -d postgres
 dotnet run --project src/MafPlayground.CLI -- rag database migrate
 dotnet run --project src/MafPlayground.CLI -- \
-  rag ingest --path ./documents/help.pdf --source-root ./documents
+  rag ingest --knowledge-base Help \
+  --path ./documents/help.pdf --source-root ./documents \
+  --metadata audience=customer --metadata product=support
 ```
 
 The schema currently maps `vector(768)`. The configured embedding model must
@@ -82,6 +84,13 @@ migration or separate store design, not only an options change.
 Collections persist embedding identity and reject incompatible writes. Changing
 the embedding model may require a new collection or explicit re-indexing even
 when dimensions match, because different models do not share a vector space.
+
+Document metadata is persisted as JSONB and indexed with GIN. Filters contain
+normalized lowercase keys and exact string values; multiple entries use JSONB
+containment/AND semantics. Chunk metadata remains reserved and is not currently
+part of the public retrieval contract. At larger scale, benchmark filtered HNSW
+queries and tune the PostgreSQL index/search strategy for the expected filter
+selectivity.
 
 ## Reliability and tests
 

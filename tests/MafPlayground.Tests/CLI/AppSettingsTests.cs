@@ -48,4 +48,28 @@ public sealed class AppSettingsTests
         Assert.Equal(TimeSpan.FromMinutes(1), configuration.GetValue<TimeSpan>(
             "AI:Resilience:ModelCallTimeout"));
     }
+
+    [Fact]
+    public void CliAppSettings_ConfiguresBasicRagKnowledgeBaseAndSearchPolicy()
+    {
+        string appSettingsPath = Path.Combine(
+            Path.GetDirectoryName(typeof(MafPlayground.CLI.Parser).Assembly.Location)!,
+            "appsettings.json");
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddJsonFile(appSettingsPath, optional: false)
+            .Build();
+
+        Assert.Equal("Help", configuration["AI:Agents:BasicRag:KnowledgeBase"]);
+        Assert.Equal(5, configuration.GetValue<int>(
+            "AI:Agents:BasicRag:Retrieval:TopK"));
+        Assert.Empty(configuration
+            .GetSection("AI:Agents:BasicRag:Retrieval:MetadataFilters")
+            .GetChildren());
+        Assert.Equal("basic-rag", configuration["AI:KnowledgeBases:Help:Collection"]);
+        Assert.Equal(
+            "ollama:nomic-embed-text",
+            configuration["AI:KnowledgeBases:Help:EmbeddingModel"]);
+        Assert.Equal(768, configuration.GetValue<int>(
+            "AI:KnowledgeBases:Help:EmbeddingDimensions"));
+    }
 }

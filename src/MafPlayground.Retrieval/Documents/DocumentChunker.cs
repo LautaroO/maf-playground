@@ -1,13 +1,14 @@
-using Microsoft.Extensions.Options;
-
 namespace MafPlayground.Retrieval.Documents;
 
-public sealed class DocumentChunker(IOptions<RetrievalOptions> options)
+public sealed class DocumentChunker
 {
-    private readonly RetrievalOptions _options = options.Value;
-
-    public IReadOnlyList<DocumentChunk> Chunk(ExtractedDocument document)
+    public IReadOnlyList<DocumentChunk> Chunk(
+        ExtractedDocument document,
+        KnowledgeIngestionSettings options)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(options);
+
         List<DocumentChunk> chunks = [];
         foreach (ExtractedDocumentSection section in document.Sections)
         {
@@ -15,12 +16,12 @@ public sealed class DocumentChunker(IOptions<RetrievalOptions> options)
             int start = 0;
             while (start < text.Length)
             {
-                int length = Math.Min(_options.ChunkSizeCharacters, text.Length - start);
+                int length = Math.Min(options.ChunkSizeCharacters, text.Length - start);
                 int end = FindBoundary(text, start, length);
                 string content = text[start..end].Trim();
                 if (content.Length > 0) chunks.Add(new(chunks.Count, content, section.PageNumber, section.Name));
                 if (end >= text.Length) break;
-                start = Math.Max(start + 1, end - _options.ChunkOverlapCharacters);
+                start = Math.Max(start + 1, end - options.ChunkOverlapCharacters);
             }
         }
         return chunks;

@@ -11,8 +11,10 @@ runs do not accidentally depend on Docker, network access, or paid model calls.
 1. applies the retrieval migrations;
 2. creates a unique collection;
 3. replaces a document with a 768-dimensional vector chunk;
-4. performs cosine semantic search;
-5. verifies stable source and page metadata round-trip.
+4. round-trips normalized document metadata;
+5. performs filtered cosine semantic search;
+6. verifies matching metadata includes the result and mismatched metadata excludes
+   it before `TopK`.
 
 The collection name is unique per run. The test adds data to the configured
 database and does not currently delete its collection afterward; use a local test
@@ -45,4 +47,3 @@ system. New integration tests should:
 
 Tests that need real-model quality scoring should be categorized as evaluations
 and documented separately from storage/provider contract tests.
-

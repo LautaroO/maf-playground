@@ -3,6 +3,7 @@ using MafPlayground.Retrieval;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace MafPlayground.CLI.Commands;
 
@@ -13,10 +14,16 @@ public static class RagIngestCommand
         runAsync ??= RunAsync;
         Option<string?> path = new("--path") { Description = "Document file to ingest." };
         Option<string?> sourceRoot = new("--source-root") { Description = "Optional root used to create stable relative source identifiers." };
-        Option<string?> embeddingModel = new("--embedding-model") { Description = "Embedding model in provider:model format. Falls back to AI_EMBEDDING_MODEL." };
+        Option<string?> knowledgeBase = new("--knowledge-base") { Description = "Configured knowledge base to ingest into." };
+        Option<string[]> metadata = new("--metadata")
+        {
+            Description = "Document metadata in key=value format. Repeat for multiple values.",
+            Arity = ArgumentArity.OneOrMore,
+            AllowMultipleArgumentsPerToken = true,
+        };
         Command command = new("ingest", "Extract, chunk, embed, and index a document.");
-        command.Options.Add(path); command.Options.Add(sourceRoot); command.Options.Add(embeddingModel);
-        command.SetAction((result, cancellationToken) => runAsync(new(result.GetValue(path), result.GetValue(sourceRoot), result.GetValue(embeddingModel)), cancellationToken));
+        command.Options.Add(path); command.Options.Add(sourceRoot); command.Options.Add(knowledgeBase); command.Options.Add(metadata);
+        command.SetAction((result, cancellationToken) => runAsync(new(result.GetValue(path), result.GetValue(sourceRoot), result.GetValue(knowledgeBase), result.GetValue(metadata) ?? []), cancellationToken));
         return command;
     }
 
@@ -25,22 +32,42 @@ public static class RagIngestCommand
         using ILoggerFactory loggerFactory = CommandLogging.CreateLoggerFactory();
         ILogger logger = loggerFactory.CreateLogger(typeof(RagIngestCommand));
         if (string.IsNullOrWhiteSpace(commandOptions.Path)) { logger.LogError("--path is required."); return 2; }
-        HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { ContentRootPath = AppContext.BaseDirectory });
-        if (!EmbeddingModelSelection.TryParse(commandOptions.EmbeddingModel ?? builder.Configuration["AI_EMBEDDING_MODEL"], out EmbeddingModelSelection? selection))
+        if (string.IsNullOrWhiteSpace(commandOptions.KnowledgeBase)) { logger.LogError("--knowledge-base is required."); return 2; }
+        KnowledgeMetadata metadata;
+        try
         {
-            logger.LogError("An embedding model is required in provider:model format. Use --embedding-model or AI_EMBEDDING_MODEL");
+            metadata = MetadataOptionParser.Parse(commandOptions.Metadata, "--metadata");
+        }
+        catch (ArgumentException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
             return 2;
         }
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { ContentRootPath = AppContext.BaseDirectory });
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
-        builder.Services.AddConfiguredRetrieval(builder.Configuration, selection!);
+        try
+        {
+            builder.Services.AddConfiguredRetrieval(builder.Configuration);
+        }
+        catch (KnowledgeBaseConfigurationException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         try
         {
             using IHost host = builder.Build();
             IngestionResult result = await host.Services
                 .GetRequiredService<KnowledgeIngestionService>()
-                .IngestAsync(commandOptions.Path, commandOptions.SourceRoot, cancellationToken);
+                .IngestAsync(
+                    new KnowledgeBaseId(commandOptions.KnowledgeBase),
+                    commandOptions.Path,
+                    commandOptions.SourceRoot,
+                    metadata,
+                    cancellationToken);
             logger.LogInformation(
-                "Document {SourceId}: {Chunks} chunks. Skipped: {Skipped}",
+                "Knowledge base {KnowledgeBase}, document {SourceId}: {Chunks} chunks. Skipped: {Skipped}",
+                result.KnowledgeBase,
                 result.SourceId,
                 result.Chunks,
                 result.Skipped);
@@ -62,6 +89,14 @@ public static class RagIngestCommand
             logger.LogError("{ErrorMessage}", exception.Message);
             return 2;
         }
+        catch (Exception exception) when (
+            exception is KnowledgeBaseConfigurationException or
+            EmbeddingProviderNotFoundException or
+            OptionsValidationException)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return 130;
@@ -69,4 +104,8 @@ public static class RagIngestCommand
     }
 }
 
-public sealed record RagIngestCommandOptions(string? Path, string? SourceRoot, string? EmbeddingModel);
+public sealed record RagIngestCommandOptions(
+    string? Path,
+    string? SourceRoot,
+    string? KnowledgeBase,
+    string[] Metadata);

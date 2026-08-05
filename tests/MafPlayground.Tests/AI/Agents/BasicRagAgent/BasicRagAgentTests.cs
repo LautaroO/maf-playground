@@ -1,7 +1,6 @@
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.Retrieval;
 using Microsoft.Agents.AI;
-using Microsoft.Extensions.Options;
 
 namespace MafPlayground.Tests.AI.Agents.BasicRagAgent;
 
@@ -19,7 +18,7 @@ public sealed class BasicRagAgentTests
         RagInvocationContextAccessor invocationContextAccessor = new();
         RagContextProvider contextProvider = new(
             search,
-            Options.Create(new RetrievalOptions { MaximumAdditionalSearches = 1 }),
+            new RagRetrievalOptions { MaximumAdditionalSearches = 1 },
             invocationContextAccessor);
         MafPlayground.AI.Agents.BasicRagAgent.BasicRagAgent agent = new(
             chatClient,
@@ -47,7 +46,7 @@ public sealed class BasicRagAgentTests
         RagInvocationContextAccessor invocationContextAccessor = new();
         RagContextProvider contextProvider = new(
             search,
-            Options.Create(new RetrievalOptions { MaximumAdditionalSearches = 1 }),
+            new RagRetrievalOptions { MaximumAdditionalSearches = 1 },
             invocationContextAccessor);
         MafPlayground.AI.Agents.BasicRagAgent.BasicRagAgent agent = new(
             chatClient,
@@ -81,7 +80,7 @@ public sealed class BasicRagAgentTests
         RagInvocationContextAccessor invocationContextAccessor = new();
         RagContextProvider contextProvider = new(
             search,
-            Options.Create(new RetrievalOptions { MaximumAdditionalSearches = 1 }),
+            new RagRetrievalOptions { MaximumAdditionalSearches = 1 },
             invocationContextAccessor);
         MafPlayground.AI.Agents.BasicRagAgent.BasicRagAgent agent = new(
             chatClient,

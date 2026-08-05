@@ -3,13 +3,12 @@ using System.Text;
 using MafPlayground.Retrieval;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 
 namespace MafPlayground.AI.Agents.BasicRagAgent;
 
 public sealed class RagContextProvider(
     IKnowledgeSearch search,
-    IOptions<RetrievalOptions> options,
+    RagRetrievalOptions options,
     RagInvocationContextAccessor invocationContextAccessor) : AIContextProvider
 {
     protected override async ValueTask<AIContext> ProvideAIContextAsync(InvokingContext context, CancellationToken cancellationToken)
@@ -26,7 +25,7 @@ public sealed class RagContextProvider(
         AIFunction refineSearch = AIFunctionFactory.Create(
             async ([Description("A concise, refined semantic search query.")] string refinedQuery, CancellationToken toolCancellationToken) =>
             {
-                if (invocationContext.AdditionalSearches >= options.Value.MaximumAdditionalSearches)
+                if (invocationContext.AdditionalSearches >= options.MaximumAdditionalSearches)
                 {
                     return new RagSearchToolResult([], "The additional-search budget is exhausted.");
                 }

@@ -5,6 +5,8 @@ namespace MafPlayground.Retrieval.Postgres;
 
 public sealed class KnowledgeDbContext(DbContextOptions<KnowledgeDbContext> options) : DbContext(options)
 {
+    public const int EmbeddingDimensions = 768;
+
     public DbSet<KnowledgeCollectionEntity> Collections => Set<KnowledgeCollectionEntity>();
     public DbSet<KnowledgeDocumentEntity> Documents => Set<KnowledgeDocumentEntity>();
     public DbSet<KnowledgeChunkEntity> Chunks => Set<KnowledgeChunkEntity>();
@@ -32,6 +34,9 @@ public sealed class KnowledgeDbContext(DbContextOptions<KnowledgeDbContext> opti
             entity.Property(value => value.EmbeddingIdentity).HasMaxLength(500);
             entity.Property(value => value.ChunkingIdentity).HasMaxLength(500);
             entity.Property(value => value.MetadataJson).HasColumnType("jsonb");
+            entity.HasIndex(value => value.MetadataJson)
+                .HasDatabaseName("ix_knowledge_documents_metadata")
+                .HasMethod("gin");
             entity.HasOne(value => value.Collection).WithMany(value => value.Documents).HasForeignKey(value => value.CollectionId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<KnowledgeChunkEntity>(entity =>
@@ -39,7 +44,8 @@ public sealed class KnowledgeDbContext(DbContextOptions<KnowledgeDbContext> opti
             entity.ToTable("knowledge_chunks");
             entity.HasKey(value => value.Id);
             entity.HasIndex(value => new { value.DocumentId, value.ChunkIndex }).IsUnique();
-            entity.Property(value => value.Embedding).HasColumnType("vector(768)");
+            entity.Property(value => value.Embedding)
+                .HasColumnType($"vector({EmbeddingDimensions})");
             entity.Property(value => value.MetadataJson).HasColumnType("jsonb");
             entity.HasIndex(value => value.Embedding).HasMethod("hnsw").HasOperators("vector_cosine_ops");
             entity.HasOne(value => value.Document).WithMany(value => value.Chunks).HasForeignKey(value => value.DocumentId).OnDelete(DeleteBehavior.Cascade);

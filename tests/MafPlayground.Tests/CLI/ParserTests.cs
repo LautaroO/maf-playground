@@ -1,10 +1,30 @@
 using MafPlayground.CLI;
 using MafPlayground.CLI.Commands;
+using MafPlayground.Retrieval;
 
 namespace MafPlayground.Tests;
 
 public sealed class ParserTests
 {
+    [Fact]
+    public void MetadataOptionParser_RejectsInvalidKeyValueSyntax()
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
+            MetadataOptionParser.Parse(["audience"], "--metadata"));
+
+        Assert.Contains("key=value", exception.Message);
+    }
+
+    [Fact]
+    public void MetadataOptionParser_NormalizesKeys()
+    {
+        KnowledgeMetadata metadata = MetadataOptionParser.Parse(
+            [" Audience =customer"],
+            "--metadata");
+
+        Assert.Equal("customer", metadata.Values["audience"]);
+    }
+
     [Fact]
     public async Task BasicCommand_MapsOptions()
     {
@@ -47,6 +67,59 @@ public sealed class ParserTests
         Assert.Equal(
             new DevUICommandOptions("ollama:qwen3:4b", "http://localhost:6060"),
             captured);
+    }
+
+    [Fact]
+    public async Task BasicRagCommand_MapsOptionsWithoutGlobalEmbeddingOverride()
+    {
+        BasicRagAgentCommandOptions? captured = null;
+        var rootCommand = Parser.CreateRootCommand(
+            runBasicRagAgentAsync: (options, _) =>
+            {
+                captured = options;
+                return Task.FromResult(0);
+            });
+
+        int exitCode = await rootCommand.Parse(
+            ["agent", "basic-rag", "--model", "ollama:qwen3:4b", "--prompt", "help", "--watch", "--filter", "audience=customer", "--filter", "product=support"])
+            .InvokeAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.NotNull(captured);
+        Assert.Equal("ollama:qwen3:4b", captured.Model);
+        Assert.Equal("help", captured.Prompt);
+        Assert.True(captured.Watch);
+        Assert.Equal(["audience=customer", "product=support"], captured.Filters);
+    }
+
+    [Fact]
+    public async Task RagIngestCommand_MapsKnowledgeBase()
+    {
+        RagIngestCommandOptions? captured = null;
+        var rootCommand = Parser.CreateRootCommand(
+            runRagIngestAsync: (options, _) =>
+            {
+                captured = options;
+                return Task.FromResult(0);
+            });
+
+        int exitCode = await rootCommand.Parse(
+            [
+                "rag", "ingest",
+                "--knowledge-base", "Help",
+                "--path", "documents/help.pdf",
+                "--source-root", "documents",
+                "--metadata", "audience=customer",
+                "--metadata", "product=support",
+            ])
+            .InvokeAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.NotNull(captured);
+        Assert.Equal("documents/help.pdf", captured.Path);
+        Assert.Equal("documents", captured.SourceRoot);
+        Assert.Equal("Help", captured.KnowledgeBase);
+        Assert.Equal(["audience=customer", "product=support"], captured.Metadata);
     }
 
     [Fact]

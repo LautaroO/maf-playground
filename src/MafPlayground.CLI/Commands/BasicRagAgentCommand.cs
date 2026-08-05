@@ -17,15 +17,20 @@ public static class BasicRagAgentCommand
     {
         runAsync ??= RunAsync;
         Option<string?> model = new("--model", "-m") { Description = "Chat model in provider:model format. Falls back to AI_MODEL." };
-        Option<string?> embeddingModel = new("--embedding-model") { Description = "Embedding model in provider:model format. Falls back to AI_EMBEDDING_MODEL." };
         Option<string?> prompt = new("--prompt", "-p") { Description = "Run one prompt and exit. Omit for an interactive session." };
         Option<bool> watch = new("--watch") { Description = "Show agent lifecycle events while streaming." };
+        Option<string[]> filters = new("--filter")
+        {
+            Description = "Require document metadata in key=value format. Repeat for multiple filters.",
+            Arity = ArgumentArity.OneOrMore,
+            AllowMultipleArgumentsPerToken = true,
+        };
         Command command = new("basic-rag", "Run the grounded Basic RAG agent.");
         command.Options.Add(model);
-        command.Options.Add(embeddingModel);
         command.Options.Add(prompt);
         command.Options.Add(watch);
-        command.SetAction((result, cancellationToken) => runAsync(new(result.GetValue(model), result.GetValue(embeddingModel), result.GetValue(prompt), result.GetValue(watch)), cancellationToken));
+        command.Options.Add(filters);
+        command.SetAction((result, cancellationToken) => runAsync(new(result.GetValue(model), result.GetValue(prompt), result.GetValue(watch), result.GetValue(filters) ?? []), cancellationToken));
         return command;
     }
 
@@ -33,6 +38,18 @@ public static class BasicRagAgentCommand
     {
         using ILoggerFactory loggerFactory = CommandLogging.CreateLoggerFactory();
         ILogger logger = loggerFactory.CreateLogger(typeof(BasicRagAgentCommand));
+        KnowledgeMetadata filterOverrides;
+        try
+        {
+            filterOverrides = MetadataOptionParser.Parse(
+                commandOptions.Filters,
+                "--filter");
+        }
+        catch (ArgumentException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { ContentRootPath = AppContext.BaseDirectory });
         builder.Logging.ClearProviders();
 
@@ -41,18 +58,28 @@ public static class BasicRagAgentCommand
             logger.LogError("A chat model is required in provider:model format. Use --model or AI_MODEL");
             return 2;
         }
-        if (!EmbeddingModelSelection.TryParse(commandOptions.EmbeddingModel ?? builder.Configuration["AI_EMBEDDING_MODEL"], out EmbeddingModelSelection? embeddingSelection))
-        {
-            logger.LogError("An embedding model is required in provider:model format. Use --embedding-model or AI_EMBEDDING_MODEL");
-            return 2;
-        }
-
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(chatSelection);
+        builder.Services.Configure<BasicRagAgentOptions>(
+            builder.Configuration.GetSection(BasicRagAgentOptions.ConfigurationSectionName));
+        if (filterOverrides.Count > 0)
+        {
+            builder.Services.PostConfigure<BasicRagAgentOptions>(options =>
+                options.Retrieval.MetadataFilters =
+                    new Dictionary<string, string>(filterOverrides.Values));
+        }
         builder.Services.Configure<AIResilienceOptions>(
             builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
-        builder.Services.AddConfiguredRetrieval(builder.Configuration, embeddingSelection!);
+        try
+        {
+            builder.Services.AddConfiguredRetrieval(builder.Configuration);
+        }
+        catch (KnowledgeBaseConfigurationException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);
         builder.Services.AddSingleton<InteractiveAgentConsole>();
 
@@ -73,7 +100,7 @@ public static class BasicRagAgentCommand
             }
             finally { await host.StopAsync(CancellationToken.None); }
         }
-        catch (Exception exception) when (exception is AIProviderNotFoundException or EmbeddingProviderNotFoundException or OptionsValidationException)
+        catch (Exception exception) when (exception is AIProviderNotFoundException or EmbeddingProviderNotFoundException or KnowledgeBaseConfigurationException or OptionsValidationException)
         {
             logger.LogError("{ErrorMessage}", exception.Message);
             return 2;
@@ -84,6 +111,6 @@ public static class BasicRagAgentCommand
 
 public sealed record BasicRagAgentCommandOptions(
     string? Model,
-    string? EmbeddingModel,
     string? Prompt,
-    bool Watch = false);
+    bool Watch,
+    string[] Filters);

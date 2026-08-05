@@ -36,21 +36,14 @@ public static class DevUICommand
         {
             Description = "HTTP URL for DevUI. Falls back to DEVUI_URL."
         };
-        Option<string?> embeddingModelOption = new("--embedding-model")
-        {
-            Description = "Embedding model selector in provider:model format. Falls back to AI_EMBEDDING_MODEL."
-        };
-
         Command command = new("devui", "Run the local Agent Framework DevUI.");
         command.Options.Add(modelOption);
         command.Options.Add(urlOption);
-        command.Options.Add(embeddingModelOption);
         command.SetAction((parseResult, cancellationToken) =>
             runAsync(
                 new DevUICommandOptions(
                     parseResult.GetValue(modelOption),
-                    parseResult.GetValue(urlOption),
-                    parseResult.GetValue(embeddingModelOption)),
+                    parseResult.GetValue(urlOption)),
                 cancellationToken));
         return command;
     }
@@ -77,14 +70,6 @@ public static class DevUICommand
                 "An AI model is required in provider:model format. Use --model or set AI_MODEL");
             return 2;
         }
-        if (!EmbeddingModelSelection.TryParse(
-                commandOptions.EmbeddingModel ?? builder.Configuration["AI_EMBEDDING_MODEL"],
-                out EmbeddingModelSelection? embeddingSelection))
-        {
-            logger.LogError("An embedding model is required in provider:model format. Use --embedding-model or set AI_EMBEDDING_MODEL");
-            return 2;
-        }
-
         string url = commandOptions.Url
             ?? builder.Configuration["DEVUI_URL"]
             ?? "http://localhost:5050";
@@ -92,12 +77,22 @@ public static class DevUICommand
 
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(modelSelection);
+        builder.Services.Configure<BasicRagAgentOptions>(
+            builder.Configuration.GetSection(BasicRagAgentOptions.ConfigurationSectionName));
         builder.Services.Configure<AIResilienceOptions>(
             builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.Configure<TranslationWorkflowOptions>(
             builder.Configuration.GetSection("AI:Workflows:Translation"));
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
-        builder.Services.AddConfiguredRetrieval(builder.Configuration, embeddingSelection!);
+        try
+        {
+            builder.Services.AddConfiguredRetrieval(builder.Configuration);
+        }
+        catch (KnowledgeBaseConfigurationException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);
         builder.Services.AddDevUITracing();
         foreach (LocalEntityDescriptor descriptor in LocalEntityCatalog.All)
@@ -148,6 +143,11 @@ public static class DevUICommand
             logger.LogError("{ErrorMessage}", exception.Message);
             return 2;
         }
+        catch (KnowledgeBaseConfigurationException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         catch (OptionsValidationException exception)
         {
             logger.LogError("{ErrorMessage}", exception.Message);
@@ -160,4 +160,4 @@ public static class DevUICommand
     }
 }
 
-public sealed record DevUICommandOptions(string? Model, string? Url, string? EmbeddingModel = null);
+public sealed record DevUICommandOptions(string? Model, string? Url);

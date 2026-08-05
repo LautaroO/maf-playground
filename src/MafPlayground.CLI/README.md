@@ -58,13 +58,14 @@ Commands build only the services they need. Common registrations are:
 ```csharp
 services.AddAIServices(modelSelection);
 services.AddConfiguredAIProviders(configuration);
-services.AddConfiguredRetrieval(configuration, embeddingSelection);
+services.AddConfiguredRetrieval(configuration);
 services.AddMafPlaygroundObservability(configuration);
 ```
 
-The model and embedding selectors use `provider:model`. Provider endpoint
-configuration remains owned by the provider adapter. PostgreSQL configuration
-remains owned by its retrieval adapter.
+The chat model selector uses `provider:model`. Each configured knowledge base owns
+its embedding selector in the same format. Provider endpoint configuration remains
+owned by the provider adapter, while PostgreSQL configuration remains owned by
+its retrieval adapter.
 
 ## Configuration
 
@@ -76,10 +77,18 @@ cp .env.example .env
 set -a; source .env; set +a
 ```
 
-Frequently used values are `AI_MODEL`, `AI_EMBEDDING_MODEL`, `DEVUI_URL`,
-`AI__PROVIDERS__OLLAMA__ENDPOINT`, retrieval settings under `AI__RETRIEVAL`, and
+Frequently used values are `AI_MODEL`, `DEVUI_URL`,
+`AI__PROVIDERS__OLLAMA__ENDPOINT`, knowledge bases under `AI__KNOWLEDGEBASES`,
+agent search policy under `AI__AGENTS`, store settings under `AI__RETRIEVAL`, and
 observability settings under `OBSERVABILITY`. CLI options override model, prompt,
-URL, input, and watch behavior where provided.
+URL, input, and watch behavior where provided. `rag ingest` requires an explicit
+`--knowledge-base`; embedding models are not overridden globally by commands.
+
+RAG ingestion accepts repeatable `--metadata key=value` options. The Basic RAG
+agent accepts repeatable `--filter key=value` options; they override its static
+`MetadataFilters` for that CLI run. Multiple entries use AND semantics. DevUI
+uses the static filters from `appsettings.json` because it hosts a shared agent
+registration rather than one command-scoped instance.
 
 ## Local testing surfaces
 
@@ -111,4 +120,3 @@ propagate so they are not confused with grounded no-evidence answers.
 Parser, commands, interactive streaming, entity input rendering, workflow event
 rendering, DevUI trace translation, and composition are covered in
 [`MafPlayground.Tests`](../../tests/MafPlayground.Tests/README.md).
-

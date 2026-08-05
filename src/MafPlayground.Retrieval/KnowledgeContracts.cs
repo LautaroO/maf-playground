@@ -12,15 +12,39 @@ public interface IKnowledgeSearch
     Task<IReadOnlyList<KnowledgeSearchResult>> SearchAsync(string query, CancellationToken cancellationToken = default);
 }
 
+public interface IKnowledgeSearchFactory
+{
+    IKnowledgeSearch Create(
+        KnowledgeBaseId knowledgeBaseId,
+        KnowledgeSearchOptions searchOptions);
+}
+
 public interface IRetrievalDatabaseInitializer
 {
     Task MigrateAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed record StoredDocumentState(string ContentHash, string EmbeddingIdentity, string ChunkingIdentity);
-public sealed record KnowledgeDocument(string Collection, string SourceId, string Title, string Path, string ContentHash, string EmbeddingIdentity, string ChunkingIdentity);
+public sealed record StoredDocumentState(
+    string ContentHash,
+    string EmbeddingIdentity,
+    string ChunkingIdentity,
+    KnowledgeMetadata Metadata);
+public sealed record KnowledgeDocument(
+    string Collection,
+    string SourceId,
+    string Title,
+    string Path,
+    string ContentHash,
+    string EmbeddingIdentity,
+    string ChunkingIdentity,
+    KnowledgeMetadata Metadata);
 public sealed record KnowledgeChunk(int Index, string Text, int? PageNumber, string? SectionName, float[] Embedding);
-public sealed record KnowledgeSearchRequest(string Collection, float[] Embedding, int TopK, double MinimumSimilarity);
+public sealed record KnowledgeSearchRequest(
+    string Collection,
+    float[] Embedding,
+    int TopK,
+    double MinimumSimilarity,
+    KnowledgeMetadata MetadataFilters);
 public sealed record KnowledgeSearchResult(string SourceId, string Title, string Text, int? PageNumber, string? SectionName, double Similarity)
 {
     public string Citation => PageNumber is int page

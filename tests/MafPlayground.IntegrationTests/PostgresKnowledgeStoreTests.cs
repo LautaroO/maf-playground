@@ -29,14 +29,48 @@ public sealed class PostgresKnowledgeStoreTests
             string collection = $"integration-{Guid.NewGuid():N}";
             float[] vector = new float[768];
             vector[0] = 1;
-            KnowledgeDocument document = new(collection, "manual/help.pdf", "Help", "/manual/help.pdf", "hash", "test:model/768", "test-chunks");
+            KnowledgeMetadata metadata = KnowledgeMetadata.Create(
+                new Dictionary<string, string>
+                {
+                    ["audience"] = "customer",
+                    ["product"] = "support",
+                });
+            KnowledgeDocument document = new(collection, "manual/help.pdf", "Help", "/manual/help.pdf", "hash", "test:model/768", "test-chunks", metadata);
             await store.ReplaceDocumentAsync(document, [new(0, "Reset the account from Settings.", 3, "Page 3", vector)], CancellationToken.None);
 
-            IReadOnlyList<KnowledgeSearchResult> results = await store.SearchAsync(new(collection, vector, 3, 0.9), CancellationToken.None);
+            StoredDocumentState? state = await store.GetDocumentStateAsync(
+                collection,
+                "manual/help.pdf",
+                CancellationToken.None);
+            IReadOnlyList<KnowledgeSearchResult> results = await store.SearchAsync(
+                new(
+                    collection,
+                    vector,
+                    3,
+                    0.9,
+                    KnowledgeMetadata.Create(new Dictionary<string, string>
+                    {
+                        ["audience"] = "customer",
+                    })),
+                CancellationToken.None);
+            IReadOnlyList<KnowledgeSearchResult> excluded = await store.SearchAsync(
+                new(
+                    collection,
+                    vector,
+                    3,
+                    0.9,
+                    KnowledgeMetadata.Create(new Dictionary<string, string>
+                    {
+                        ["audience"] = "internal",
+                    })),
+                CancellationToken.None);
 
+            Assert.NotNull(state);
+            Assert.Equal(metadata, state.Metadata);
             KnowledgeSearchResult result = Assert.Single(results);
             Assert.Equal("manual/help.pdf", result.SourceId);
             Assert.Equal(3, result.PageNumber);
+            Assert.Empty(excluded);
         }
     }
 }

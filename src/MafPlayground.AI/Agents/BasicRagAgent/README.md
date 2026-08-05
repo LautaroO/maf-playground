@@ -96,7 +96,8 @@ but it cannot write to the knowledge base.
    retains overlap plus page and section metadata.
 6. Chunks are embedded in batches and every vector dimension is validated.
 7. The store replaces the document and chunks in one transaction. It skips work
-   when content hash, embedding identity, and chunking identity are unchanged.
+   when content hash, embedding identity, chunking identity, and normalized
+   document metadata are unchanged.
 
 Collections record their embedding identity. Incompatible provider/model/vector
 combinations are rejected instead of being mixed in one vector space.
@@ -105,10 +106,10 @@ combinations are rejected instead of being mixed in one vector space.
 
 1. Before the chat model runs, `RagContextProvider` takes the latest user message
    and performs the initial semantic search.
-2. `KnowledgeSearchService` embeds it and passes the collection, `TopK`, and
-   `MinimumSimilarity` to the store.
-3. The PostgreSQL adapter calculates cosine distance, filters and orders chunks,
-   and returns at most `TopK` results.
+2. `KnowledgeSearchService` embeds it and passes the collection, trusted document
+   metadata filters, `TopK`, and `MinimumSimilarity` to the store.
+3. The PostgreSQL adapter applies exact metadata containment, calculates cosine
+   distance, filters and orders chunks, and returns at most `TopK` results.
 4. The context provider injects only those bounded chunks. Each includes an exact
    citation generated from its stored title, page, and stable source ID.
 5. It also exposes `search_knowledge_base`, a narrow read-only tool for one
@@ -169,23 +170,52 @@ the CLI.
 
 ## Configuration
 
-The CLI binds `AI:Retrieval` in `appsettings.json`:
+RAG configuration has three ownership levels:
 
-| Key | Default | Meaning |
-| --- | ---: | --- |
-| `Collection` | `basic-rag` | Logical collection searched by the agent. |
-| `EmbeddingDimensions` | `768` | Vector size; must match provider and schema. |
-| `ChunkSizeCharacters` | `1200` | Approximate maximum chunk size. |
-| `ChunkOverlapCharacters` | `200` | Context repeated between adjacent chunks. |
-| `EmbeddingBatchSize` | `16` | Chunks embedded per provider call. |
-| `TopK` | `5` | Maximum chunks returned per search. |
-| `MinimumSimilarity` | `0.65` | Minimum cosine similarity. |
-| `MaximumAdditionalSearches` | `1` | Model-requested refined searches per run. |
-| `Postgres:ConnectionString` | local development connection | Current store adapter configuration. |
+- `AI:KnowledgeBases:Help` owns collection, embedding identity, dimensions, and
+  ingestion/chunking policy;
+- `AI:Agents:BasicRag` references `Help` and owns `TopK`, similarity threshold,
+  metadata filters, and additional-search budget;
+- `AI:Retrieval:Postgres` owns the current store connection.
 
-`AI_EMBEDDING_MODEL` or `--embedding-model` selects embeddings with the
+This allows multiple agents to share one indexed knowledge base while using
+different search policies. Knowledge-base embedding models use the
 `provider:model` convention. `AI_MODEL` or `--model` independently selects the
 chat model.
+
+```json
+{
+  "AI": {
+    "KnowledgeBases": {
+      "Help": {
+        "Collection": "basic-rag",
+        "EmbeddingModel": "ollama:nomic-embed-text",
+        "EmbeddingDimensions": 768,
+        "Ingestion": {
+          "ChunkSizeCharacters": 1200,
+          "ChunkOverlapCharacters": 200,
+          "EmbeddingBatchSize": 16
+        }
+      }
+    },
+    "Agents": {
+      "BasicRag": {
+        "KnowledgeBase": "Help",
+        "Retrieval": {
+          "TopK": 5,
+          "MinimumSimilarity": 0.65,
+          "MaximumAdditionalSearches": 1,
+          "MetadataFilters": {}
+        }
+      }
+    }
+  }
+}
+```
+
+Unknown knowledge bases, invalid chunk/search values, incompatible embedding
+identities on a shared collection, and dimensions unsupported by the selected
+store fail explicitly. They never fall back to another knowledge base.
 
 ## Local setup
 
@@ -196,7 +226,9 @@ docker compose up -d postgres
 ollama pull nomic-embed-text
 dotnet run --project src/MafPlayground.CLI -- rag database migrate
 dotnet run --project src/MafPlayground.CLI -- \
-  rag ingest --path ./documents/help.pdf --source-root ./documents
+  rag ingest --knowledge-base Help \
+  --path ./documents/help.pdf --source-root ./documents \
+  --metadata audience=customer --metadata product=support
 ```
 
 The included `documents/help.pdf` is a four-page test guide. With the source root
@@ -208,11 +240,24 @@ Run a grounded request or an interactive session:
 ```bash
 dotnet run --project src/MafPlayground.CLI -- \
   agent basic-rag \
+  --filter audience=customer \
   --prompt "How long does a password-reset link remain valid?" \
   --watch
 
 dotnet run --project src/MafPlayground.CLI -- agent basic-rag
 ```
+
+`--metadata` labels the complete document. `--filter` restricts both automatic
+retrieval and every refined search made by the agent. Repeat either option for
+AND semantics. Keys are trimmed and normalized to lowercase; values are trimmed
+and compared exactly, including case. CLI filters override configured filters
+for that run. For DevUI, configure the same values under
+`AI:Agents:BasicRag:Retrieval:MetadataFilters` and ingest matching metadata.
+
+Metadata filtering is deterministic application policy, not a tool argument.
+The model cannot remove or replace the bound filter. A production host must
+derive tenant and ACL filters from authenticated application context rather than
+from user text or model output.
 
 Inspect it or open the same entity in DevUI:
 
@@ -261,7 +306,8 @@ search limits, invocation isolation, citation acceptance, repair, and fallback.
 Retrieval tests cover extraction, chunking, source IDs, and ingestion skipping.
 The PostgreSQL integration test is opt-in because it requires infrastructure.
 
-Current deliberate limits are text-based PDFs only, one shared collection with no
-tenant/metadata filters, character-based chunking, a fixed 768-dimensional schema,
+Current deliberate limits are text-based PDFs only, exact string document
+metadata filters rather than a tenant/ACL authorization model, character-based
+chunking, a fixed 768-dimensional schema,
 structural rather than entailment-based citation validation, and no ingestion
 scheduler, deletion command, document ACL, or authorization model.

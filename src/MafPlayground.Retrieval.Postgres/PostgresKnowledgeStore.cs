@@ -9,10 +9,23 @@ public sealed class PostgresKnowledgeStore(IDbContextFactory<KnowledgeDbContext>
     public async Task<StoredDocumentState?> GetDocumentStateAsync(string collection, string sourceId, CancellationToken cancellationToken)
     {
         await using KnowledgeDbContext db = await contextFactory.CreateDbContextAsync(cancellationToken);
-        return await db.Documents.AsNoTracking()
+        var state = await db.Documents.AsNoTracking()
             .Where(value => value.Collection.Name == collection && value.SourceId == sourceId)
-            .Select(value => new StoredDocumentState(value.ContentHash, value.EmbeddingIdentity, value.ChunkingIdentity))
+            .Select(value => new
+            {
+                value.ContentHash,
+                value.EmbeddingIdentity,
+                value.ChunkingIdentity,
+                value.MetadataJson,
+            })
             .SingleOrDefaultAsync(cancellationToken);
+        return state is null
+            ? null
+            : new StoredDocumentState(
+                state.ContentHash,
+                state.EmbeddingIdentity,
+                state.ChunkingIdentity,
+                KnowledgeMetadataJson.Deserialize(state.MetadataJson));
     }
 
     public async Task ReplaceDocumentAsync(KnowledgeDocument document, IReadOnlyList<KnowledgeChunk> chunks, CancellationToken cancellationToken)
@@ -35,7 +48,7 @@ public sealed class PostgresKnowledgeStore(IDbContextFactory<KnowledgeDbContext>
             .SingleOrDefaultAsync(value => value.CollectionId == collection.Id && value.SourceId == document.SourceId, cancellationToken);
         if (entity is null)
         {
-            entity = new() { Id = Guid.NewGuid(), Collection = collection, CollectionId = collection.Id, SourceId = document.SourceId, Title = document.Title, Path = document.Path, ContentHash = document.ContentHash, EmbeddingIdentity = document.EmbeddingIdentity, ChunkingIdentity = document.ChunkingIdentity };
+            entity = new() { Id = Guid.NewGuid(), Collection = collection, CollectionId = collection.Id, SourceId = document.SourceId, Title = document.Title, Path = document.Path, ContentHash = document.ContentHash, EmbeddingIdentity = document.EmbeddingIdentity, ChunkingIdentity = document.ChunkingIdentity, MetadataJson = KnowledgeMetadataJson.Serialize(document.Metadata) };
             db.Documents.Add(entity);
         }
         else
@@ -46,6 +59,7 @@ public sealed class PostgresKnowledgeStore(IDbContextFactory<KnowledgeDbContext>
             entity.ContentHash = document.ContentHash;
             entity.EmbeddingIdentity = document.EmbeddingIdentity;
             entity.ChunkingIdentity = document.ChunkingIdentity;
+            entity.MetadataJson = KnowledgeMetadataJson.Serialize(document.Metadata);
         }
 
         entity.Chunks = chunks.Select(chunk => new KnowledgeChunkEntity
@@ -69,8 +83,19 @@ public sealed class PostgresKnowledgeStore(IDbContextFactory<KnowledgeDbContext>
         await using KnowledgeDbContext db = await contextFactory.CreateDbContextAsync(cancellationToken);
         Vector query = new(request.Embedding);
         double maximumDistance = 1 - request.MinimumSimilarity;
-        return await db.Chunks.AsNoTracking()
-            .Where(value => value.Document.Collection.Name == request.Collection)
+        IQueryable<KnowledgeChunkEntity> chunks = db.Chunks.AsNoTracking()
+            .Where(value => value.Document.Collection.Name == request.Collection);
+        if (request.MetadataFilters.Count > 0)
+        {
+            string metadataFilterJson = KnowledgeMetadataJson.Serialize(
+                request.MetadataFilters);
+            chunks = chunks.Where(value =>
+                EF.Functions.JsonContains(
+                    value.Document.MetadataJson,
+                    metadataFilterJson));
+        }
+
+        return await chunks
             .Select(value => new
             {
                 value.Document.SourceId,

@@ -130,9 +130,12 @@ docker compose up -d postgres
 ollama pull nomic-embed-text
 dotnet run --project src/MafPlayground.CLI -- rag database migrate
 dotnet run --project src/MafPlayground.CLI -- \
-  rag ingest --path ./documents/help.pdf --source-root ./documents
+  rag ingest --knowledge-base Help \
+  --path ./documents/help.pdf --source-root ./documents \
+  --metadata audience=customer --metadata product=support
 dotnet run --project src/MafPlayground.CLI -- \
   agent basic-rag \
+  --filter audience=customer \
   --prompt "How long does a password-reset link remain valid?" \
   --watch
 ```
@@ -142,6 +145,12 @@ page-specific test facts. Ingestion extracts text, chunks it, generates semantic
 embeddings, and writes them to pgvector. Answers must contain exact citations
 from the current retrieval invocation. Textless PDF pages are reported; OCR is a
 future extension behind `IDocumentExtractor`.
+
+Document metadata uses normalized lowercase keys and exact, case-sensitive
+values. Repeat `--metadata` while ingesting and `--filter` while querying;
+multiple entries use AND semantics and are enforced before the final `TopK`.
+Static agent filters can instead be configured under
+`AI:Agents:BasicRag:Retrieval:MetadataFilters`, including for DevUI.
 
 Read the [RAG architecture guide](src/MafPlayground.AI/Agents/BasicRagAgent/README.md)
 for the full ingestion/query flow, state model, failure behavior, and extension
@@ -222,10 +231,10 @@ command options. Command options take precedence where available.
 | Setting | Purpose |
 | --- | --- |
 | `AI_MODEL` | Chat model selector in `provider:model` format. |
-| `AI_EMBEDDING_MODEL` | Embedding selector in `provider:model` format. |
 | `AI__PROVIDERS__OLLAMA__ENDPOINT` | Ollama endpoint. |
 | `AI:Resilience:ModelCallTimeout` | Timeout applied by the shared chat-client decorator. |
-| `AI:Retrieval:*` | Collection, vector dimension, chunking, and search settings. |
+| `AI:KnowledgeBases:<name>` | Collection, embedding model/dimension, and ingestion policy for one reusable knowledge base. |
+| `AI:Agents:BasicRag` | Knowledge-base reference and search policy owned by the Basic RAG agent. |
 | `AI:Retrieval:Postgres:ConnectionString` | Current retrieval store connection. |
 | `AI:Workflows:Translation:*` | Supported languages, limits, retries, and confidence. |
 | `Observability:*` | OTLP enablement, service identity, sensitive-data policy, and cost tracking. |
@@ -291,6 +300,8 @@ Without `RAG_TEST_CONNECTION_STRING`, the database test is reported as skipped.
 - Add a model provider by implementing `IChatClientProvider`; add embeddings with
   `IEmbeddingGeneratorProvider`; keep SDK types inside a `Providers.*` adapter.
 - Add a document type by implementing and registering `IDocumentExtractor`.
+- Add or share a knowledge base through `AI:KnowledgeBases`; agents reference it
+  independently and keep their own search policy.
 - Replace pgvector by implementing `IKnowledgeStore` and
   `IRetrievalDatabaseInitializer` in another infrastructure project.
 - Add an agent for open-ended semantic behavior; put deterministic capabilities
@@ -309,7 +320,8 @@ and the MAF skills under [`.agents/skills`](.agents/skills).
   a temporary chat protocol.
 - The RAG schema currently fixes vectors at 768 dimensions.
 - PDF extraction supports text only; OCR and additional formats are pending.
-- RAG uses one shared collection without tenant, ACL, or metadata filters.
+- Metadata filtering is exact-match and document-scoped. It is an example scope,
+  not a complete tenant/ACL authorization model.
 - The CLI and DevUI are local development tools, not secured production hosts.
 - The Aspire Dashboard stores telemetry in memory and local anonymous access is
   enabled by default for convenience.

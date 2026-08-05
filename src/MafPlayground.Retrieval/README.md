@@ -28,48 +28,55 @@ flowchart LR
 | `DocumentChunker` | Normalizes and overlaps character-bounded chunks while preserving page/section metadata. |
 | `IEmbeddingGeneratorProvider` | Provider adapter port for embedding models. |
 | `EmbeddingProviderRegistry` | Resolves `provider:model` embedding selections. |
-| `IKnowledgeStore` | Persistence port for document state, atomic replacement, and vector search. |
+| `KnowledgeBaseCatalog` | Validates named knowledge bases, embedding identities, and ingestion policies. |
+| `IKnowledgeSearchFactory` | Creates a search service bound to one knowledge base and one agent search policy. |
+| `IKnowledgeStore` | Persistence port for document state, metadata, atomic replacement, and filtered vector search. |
 | `KnowledgeIngestionService` | Hashes, extracts, chunks, embeds, validates, and stores a document explicitly. |
 | `IKnowledgeSearch` / `KnowledgeSearchService` | Embeds queries and performs configured semantic search. |
 
 ## Registration
 
 ```csharp
-services.Configure<RetrievalOptions>(configuration.GetSection("AI:Retrieval"));
-services.AddRetrievalCore(embeddingModelSelection);
+KnowledgeBaseCatalog catalog = new(catalogOptions);
+services.AddRetrievalCore(catalog);
 ```
 
-The host must additionally register at least one
-`IEmbeddingGeneratorProvider` and one `IKnowledgeStore`. The CLI currently uses
-Ollama and PostgreSQL/pgvector.
+The host builds `KnowledgeBaseCatalogOptions` from its configuration and must
+additionally register at least one `IEmbeddingGeneratorProvider` and one
+`IKnowledgeStore`. The CLI currently uses Ollama and PostgreSQL/pgvector.
 
 ## Ingestion invariants
 
 - Source IDs are file names or normalized paths relative to an optional source
   root; absolute machine paths are not used as citations.
-- Content hash, embedding identity, and chunking identity make unchanged
-  ingestion idempotent.
+- Content hash, embedding identity, chunking identity, and normalized document
+  metadata make unchanged ingestion idempotent.
 - Embeddings are generated in batches and vector dimensions are checked.
 - A document replacement is delegated to the store as one logical operation.
 - Unsupported formats and empty extraction are explicit outcomes.
 - Caller cancellation propagates through file reads, extraction, embeddings, and
   persistence.
 
-## Configuration defaults
+## Configuration ownership
 
-| Option | Default |
+| Knowledge-base option | Default |
 | --- | ---: |
-| `Collection` | `basic-rag` |
 | `EmbeddingDimensions` | `768` |
-| `ChunkSizeCharacters` | `1200` |
-| `ChunkOverlapCharacters` | `200` |
-| `EmbeddingBatchSize` | `16` |
+| `Ingestion:ChunkSizeCharacters` | `1200` |
+| `Ingestion:ChunkOverlapCharacters` | `200` |
+| `Ingestion:EmbeddingBatchSize` | `16` |
+
+`Collection` and `EmbeddingModel` are required for every named knowledge base.
+Search settings are supplied by the consuming agent:
+
+| Search option | Default |
+| --- | ---: |
 | `TopK` | `5` |
 | `MinimumSimilarity` | `0.65` |
-| `MaximumAdditionalSearches` | `1` |
+| `MetadataFilters` | Empty |
 
-`MaximumAdditionalSearches` is consumed by the RAG context provider but remains
-in retrieval options because it bounds retrieval behavior.
+The RAG agent separately owns `MaximumAdditionalSearches` because it controls
+model-selected refinement rather than storage search.
 
 ## Extending formats and storage
 
@@ -79,12 +86,13 @@ vector database by implementing `IKnowledgeStore` and, when migrations are
 needed, `IRetrievalDatabaseInitializer` in an infrastructure project.
 
 Retrieved documents are untrusted input. Agents must inject them as data and
-enforce authorization/filtering before retrieval when tenant or ACL support is
-added.
+enforce authorization before constructing metadata filters when tenant or ACL
+support is added. Filters use normalized lowercase keys, exact case-sensitive
+string values, and AND semantics. Model-selected refined searches reuse the same
+bound filters and cannot widen their scope.
 
 ## Tests
 
 Deterministic tests cover model selection, registry conflicts, PDF extraction and
 warnings, chunk boundaries/overlap, source IDs, ingestion skipping, embedding
 validation, and search contracts. Store round trips belong in integration tests.
-

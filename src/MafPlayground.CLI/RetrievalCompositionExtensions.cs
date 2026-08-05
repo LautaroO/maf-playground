@@ -9,11 +9,20 @@ public static class RetrievalCompositionExtensions
 {
     public static IServiceCollection AddConfiguredRetrieval(
         this IServiceCollection services,
-        IConfiguration configuration,
-        EmbeddingModelSelection selection)
+        IConfiguration configuration)
     {
-        services.Configure<RetrievalOptions>(configuration.GetSection(RetrievalOptions.ConfigurationSectionName));
-        services.AddRetrievalCore(selection);
+        Dictionary<string, KnowledgeBaseOptions> definitions = configuration
+            .GetSection(KnowledgeBaseCatalogOptions.ConfigurationSectionName)
+            .Get<Dictionary<string, KnowledgeBaseOptions>>() ?? [];
+        KnowledgeBaseCatalog catalog = new(new KnowledgeBaseCatalogOptions
+        {
+            KnowledgeBases = definitions,
+        });
+        catalog.ValidateEmbeddingDimensions(
+            KnowledgeDbContext.EmbeddingDimensions,
+            "the PostgreSQL retrieval store");
+
+        services.AddRetrievalCore(catalog);
         services.AddPostgresRetrieval(configuration);
         return services;
     }

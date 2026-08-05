@@ -1,21 +1,23 @@
 using MafPlayground.Retrieval.Documents;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace MafPlayground.Retrieval;
 
 public static class RetrievalServiceExtensions
 {
-    public static IServiceCollection AddRetrievalCore(this IServiceCollection services, EmbeddingModelSelection selection)
+    public static IServiceCollection AddRetrievalCore(
+        this IServiceCollection services,
+        KnowledgeBaseCatalog catalog)
     {
-        services.AddSingleton(selection);
-        services.AddOptions<RetrievalOptions>();
+        ArgumentNullException.ThrowIfNull(catalog);
+
+        services.AddSingleton(catalog);
         services.AddSingleton<EmbeddingProviderRegistry>();
-        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(provider => provider.GetRequiredService<EmbeddingProviderRegistry>().Create(selection));
+        services.AddSingleton<KnowledgeBaseRuntime>();
         services.AddSingleton<IDocumentExtractor, PdfDocumentExtractor>();
         services.AddSingleton<DocumentExtractorRegistry>();
         services.AddSingleton<DocumentChunker>();
-        services.AddSingleton<IKnowledgeSearch, KnowledgeSearchService>();
+        services.AddSingleton<IKnowledgeSearchFactory, KnowledgeSearchFactory>();
         services.AddSingleton<KnowledgeIngestionService>();
         return services;
     }

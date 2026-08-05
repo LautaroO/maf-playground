@@ -2,6 +2,7 @@ using MafPlayground.AI.Resilience;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace MafPlayground.AI;
 
@@ -40,8 +41,40 @@ public static class AIServiceExtensions
         serviceCollection.AddSingleton<Tools.CurrentDateTimeTool>();
         serviceCollection.AddSingleton<UserContextProvider>();
         serviceCollection.AddSingleton<Agents.BasicAgent.BasicAgent>();
+        serviceCollection.AddOptions<Agents.BasicRagAgent.BasicRagAgentOptions>()
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.KnowledgeBase),
+                "Basic RAG agent requires a knowledge base.")
+            .Validate(
+                options => options.Retrieval.TopK > 0,
+                "Basic RAG agent retrieval TopK must be greater than zero.")
+            .Validate(
+                options => options.Retrieval.MinimumSimilarity is >= 0 and <= 1,
+                "Basic RAG agent retrieval MinimumSimilarity must be between zero and one.")
+            .Validate(
+                options => options.Retrieval.MaximumAdditionalSearches >= 0,
+                "Basic RAG agent retrieval MaximumAdditionalSearches cannot be negative.");
         serviceCollection.AddSingleton<Agents.BasicRagAgent.RagInvocationContextAccessor>();
-        serviceCollection.AddSingleton<Agents.BasicRagAgent.RagContextProvider>();
+        serviceCollection.AddSingleton<Agents.BasicRagAgent.RagContextProvider>(provider =>
+        {
+            Agents.BasicRagAgent.BasicRagAgentOptions options = provider
+                .GetRequiredService<IOptions<Agents.BasicRagAgent.BasicRagAgentOptions>>()
+                .Value;
+            Retrieval.IKnowledgeSearch search = provider
+                .GetRequiredService<Retrieval.IKnowledgeSearchFactory>()
+                .Create(
+                    new Retrieval.KnowledgeBaseId(options.KnowledgeBase),
+                    new Retrieval.KnowledgeSearchOptions
+                    {
+                        TopK = options.Retrieval.TopK,
+                        MinimumSimilarity = options.Retrieval.MinimumSimilarity,
+                        MetadataFilters = options.Retrieval.MetadataFilters,
+                    });
+            return new Agents.BasicRagAgent.RagContextProvider(
+                search,
+                options.Retrieval,
+                provider.GetRequiredService<Agents.BasicRagAgent.RagInvocationContextAccessor>());
+        });
         serviceCollection.AddSingleton<Agents.BasicRagAgent.CitationValidator>();
         serviceCollection.AddSingleton<Agents.BasicRagAgent.BasicRagAgent>();
         serviceCollection.AddOptions<Workflows.Translation.TranslationWorkflowOptions>()
