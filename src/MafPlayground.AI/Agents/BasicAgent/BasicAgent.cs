@@ -1,3 +1,4 @@
+using MafPlayground.AI.Guards;
 using MafPlayground.AI.Tools;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -11,11 +12,15 @@ public sealed class BasicAgent
         IChatClient chatClient,
         CurrentDateTimeTool currentDateTimeTool,
         UserContextProvider userContextProvider,
+        AgentGuardPipeline guardPipeline,
+        IOptions<BasicAgentOptions> options,
         IOptions<AgentTelemetryOptions>? telemetryOptions = null)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(currentDateTimeTool);
         ArgumentNullException.ThrowIfNull(userContextProvider);
+        ArgumentNullException.ThrowIfNull(guardPipeline);
+        ArgumentNullException.ThrowIfNull(options);
 
         AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
         {
@@ -36,9 +41,12 @@ public sealed class BasicAgent
             AIContextProviders = [userContextProvider],
         });
 
+        AIAgent guardedAgent = guardPipeline.Apply(
+            agent,
+            options.Value.GuardProfile);
+
         bool enableSensitiveData = telemetryOptions?.Value.EnableSensitiveData ?? false;
-        Agent = agent
-            .AsBuilder()
+        Agent = guardedAgent.AsBuilder()
             .UseOpenTelemetry(
                 sourceName: AITelemetry.AgentSourceName,
                 configure: telemetry => telemetry.EnableSensitiveData = enableSensitiveData)

@@ -234,6 +234,108 @@ public sealed class KnowledgeBaseProfilesTests
         }
     }
 
+    [Fact]
+    public async Task Ingestion_RejectsDocumentOutsideSourceRoot()
+    {
+        KnowledgeBaseCatalog catalog = new(new KnowledgeBaseCatalogOptions
+        {
+            KnowledgeBases = new Dictionary<string, KnowledgeBaseOptions>
+            {
+                ["Help"] = CreateKnowledgeBase("help", "fake:model"),
+            },
+        });
+        using KnowledgeBaseRuntime runtime = new(
+            catalog,
+            new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
+        KnowledgeIngestionService ingestion = new(
+            new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
+            new DocumentChunker(),
+            runtime,
+            new RecordingKnowledgeStore());
+        string sourceRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"maf-root-{Guid.NewGuid():N}");
+        string outsidePath = Path.Combine(
+            Path.GetTempPath(),
+            $"maf-outside-{Guid.NewGuid():N}.txt");
+        Directory.CreateDirectory(sourceRoot);
+        await File.WriteAllTextAsync(outsidePath, "test");
+
+        try
+        {
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+                await ingestion.IngestAsync(
+                    new KnowledgeBaseId("Help"),
+                    outsidePath,
+                    sourceRoot));
+        }
+        finally
+        {
+            File.Delete(outsidePath);
+            Directory.Delete(sourceRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Ingestion_RejectsFileBeforeReadingWhenSizeLimitIsExceeded()
+    {
+        KnowledgeBaseOptions knowledgeBase = CreateKnowledgeBase("help", "fake:model");
+        knowledgeBase.Ingestion.MaxFileBytes = 3;
+        KnowledgeBaseCatalog catalog = new(new KnowledgeBaseCatalogOptions
+        {
+            KnowledgeBases = new Dictionary<string, KnowledgeBaseOptions>
+            {
+                ["Help"] = knowledgeBase,
+            },
+        });
+        using KnowledgeBaseRuntime runtime = new(
+            catalog,
+            new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
+        KnowledgeIngestionService ingestion = new(
+            new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
+            new DocumentChunker(),
+            runtime,
+            new RecordingKnowledgeStore());
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"maf-large-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(path, "test");
+
+        try
+        {
+            await Assert.ThrowsAsync<DocumentResourceLimitException>(async () =>
+                await ingestion.IngestAsync(new KnowledgeBaseId("Help"), path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Search_RejectsOversizedQueryBeforeGeneratingEmbedding()
+    {
+        KnowledgeBaseCatalog catalog = new(new KnowledgeBaseCatalogOptions
+        {
+            KnowledgeBases = new Dictionary<string, KnowledgeBaseOptions>
+            {
+                ["Help"] = CreateKnowledgeBase("help", "fake:model"),
+            },
+        });
+        RecordingEmbeddingProvider embeddingProvider = new();
+        using KnowledgeBaseRuntime runtime = new(
+            catalog,
+            new EmbeddingProviderRegistry([embeddingProvider]));
+        IKnowledgeSearch search = new KnowledgeSearchFactory(
+            runtime,
+            new RecordingKnowledgeStore()).Create(
+                new KnowledgeBaseId("Help"),
+                new KnowledgeSearchOptions { MaximumQueryCharacters = 4 });
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await search.SearchAsync("12345"));
+    }
+
     private static KnowledgeBaseOptions CreateKnowledgeBase(
         string collection,
         string embeddingModel) => new()

@@ -50,6 +50,27 @@ public sealed class AppSettingsTests
     }
 
     [Fact]
+    public void CliAppSettings_ContainsReusableGuardProfileAndEntityAssignments()
+    {
+        string appSettingsPath = Path.Combine(
+            Path.GetDirectoryName(typeof(MafPlayground.CLI.Parser).Assembly.Location)!,
+            "appsettings.json");
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddJsonFile(appSettingsPath, optional: false)
+            .Build();
+
+        Assert.True(configuration.GetValue<bool>(
+            "AI:Guards:Profiles:Default:Content:Enabled"));
+        Assert.True(configuration.GetValue<bool>(
+            "AI:Guards:Profiles:Default:Budget:Enabled"));
+        Assert.Equal(0.05m, configuration.GetValue<decimal>(
+            "AI:Guards:Profiles:Default:Budget:MaxCostPerRun"));
+        Assert.Equal("Default", configuration["AI:Agents:Basic:GuardProfile"]);
+        Assert.Equal("Default", configuration["AI:Agents:BasicRag:GuardProfile"]);
+        Assert.Equal("Default", configuration["AI:Workflows:Translation:GuardProfile"]);
+    }
+
+    [Fact]
     public void CliAppSettings_ConfiguresBasicRagKnowledgeBaseAndSearchPolicy()
     {
         string appSettingsPath = Path.Combine(

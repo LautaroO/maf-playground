@@ -1,10 +1,13 @@
+using MafPlayground.AI.Guards;
+using MafPlayground.AI.Guards.Budget;
 using Microsoft.Extensions.Options;
 
 namespace MafPlayground.AI.Workflows.Translation;
 
 public sealed class TranslationService(
     ITranslationModel translationModel,
-    IOptions<TranslationWorkflowOptions> options)
+    IOptions<TranslationWorkflowOptions> options,
+    WorkflowGuardCoordinator guards)
 {
     private readonly TranslationWorkflowOptions _options = options.Value;
 
@@ -15,6 +18,8 @@ public sealed class TranslationService(
         int attempts = state.Attempts + 1;
         try
         {
+            using GuardExecutionScope guardScope = guards.EnterScope(
+                state.GuardExecutionId);
             string translatedText = await translationModel.TranslateAsync(
                 state.SourceText,
                 state.TargetLanguage,
@@ -36,6 +41,19 @@ public sealed class TranslationService(
         {
             throw;
         }
+        catch (BudgetExceededException exception)
+        {
+            return state with
+            {
+                Attempts = attempts,
+                IsValid = false,
+                Confidence = 0,
+                Feedback = null,
+                ShouldRetry = false,
+                Error = $"The AI execution budget for '{exception.Resource}' was exceeded.",
+                ErrorType = exception.GetType().FullName,
+            };
+        }
         catch (Exception exception)
         {
             return state with
@@ -45,7 +63,7 @@ public sealed class TranslationService(
                 Confidence = 0,
                 Feedback = null,
                 ShouldRetry = false,
-                Error = exception.Message,
+                Error = "The translation model call failed.",
                 ErrorType = exception.GetType().FullName,
             };
         }
@@ -75,6 +93,8 @@ public sealed class TranslationService(
             }
             else
             {
+                using GuardExecutionScope guardScope = guards.EnterScope(
+                    state.GuardExecutionId);
                 validation = await translationModel.ValidateAsync(
                     state.SourceText,
                     state.TargetLanguage,
@@ -86,11 +106,18 @@ public sealed class TranslationService(
         {
             throw;
         }
+        catch (BudgetExceededException exception)
+        {
+            return FailedState(
+                state,
+                $"The AI execution budget for '{exception.Resource}' was exceeded.",
+                exception.GetType().FullName ?? exception.GetType().Name);
+        }
         catch (Exception exception)
         {
             return FailedState(
                 state,
-                $"Validation failed: {exception.Message}",
+                "The translation validation call failed.",
                 exception.GetType().FullName ?? exception.GetType().Name);
         }
 

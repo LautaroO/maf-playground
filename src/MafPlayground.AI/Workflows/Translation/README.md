@@ -107,6 +107,12 @@ Cross-cutting model-call timeout is applied by the shared `IChatClient` decorato
 Semantic repair remains an explicit workflow transition rather than a hidden
 service loop.
 
+The workflow guard coordinator creates one execution ledger before fan-out. Its
+internal ID travels with branch state, so translations, validations, retries,
+and concurrent languages all reserve against the same budget. The aggregator
+applies output PII policy and releases the execution context after fan-in. This
+works through both the typed runner and the native DevUI graph.
+
 ## CLI usage
 
 ```bash
@@ -166,6 +172,7 @@ The CLI binds `AI:Workflows:Translation`:
 | `MaxInputCharacters` | `10000` | Maximum source length. |
 | `MaxTranslationRetries` | `1` | Additional attempts after a failed review. |
 | `MinimumValidationConfidence` | `0.7` | Confidence required with `isValid: true`. |
+| `GuardProfile` | `Default` | Reusable PII and budget policy selected for this workflow. |
 
 Changing supported languages changes the factory's native topology. The CLI can
 request any subset; DevUI shows all configured branches and activates the

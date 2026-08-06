@@ -28,6 +28,7 @@ public sealed class KnowledgeSearchFactory(
             {
                 TopK = searchOptions.TopK,
                 MinimumSimilarity = searchOptions.MinimumSimilarity,
+                MaximumQueryCharacters = searchOptions.MaximumQueryCharacters,
                 MetadataFilters = metadataFilters.Values,
             });
     }
@@ -45,6 +46,13 @@ public sealed class KnowledgeSearchFactory(
             throw new KnowledgeBaseConfigurationException(
                 "Knowledge search requires MinimumSimilarity between zero and one.");
         }
+
+
+        if (options.MaximumQueryCharacters <= 0)
+        {
+            throw new KnowledgeBaseConfigurationException(
+                "Knowledge search requires MaximumQueryCharacters greater than zero.");
+        }
     }
 }
 
@@ -59,6 +67,12 @@ public sealed class KnowledgeSearchService(
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (query.Length > searchOptions.MaximumQueryCharacters)
+        {
+            throw new ArgumentException(
+                $"Knowledge search query cannot exceed {searchOptions.MaximumQueryCharacters} characters.",
+                nameof(query));
+        }
         ReadOnlyMemory<float> vector = await embeddingGenerator.GenerateVectorAsync(
             query,
             cancellationToken: cancellationToken);
@@ -115,6 +129,15 @@ public sealed class KnowledgeIngestionService(
 
         KnowledgeBaseRuntimeSelection selection = runtime.Resolve(knowledgeBaseId);
         ResolvedKnowledgeBase knowledgeBase = selection.KnowledgeBase;
+        ValidateSourcePath(fullPath, sourceRoot);
+        FileInfo file = new(fullPath);
+        if (file.Length > knowledgeBase.Ingestion.MaxFileBytes)
+        {
+            throw new DocumentResourceLimitException(
+                $"Document size {file.Length} bytes exceeds the configured maximum of " +
+                $"{knowledgeBase.Ingestion.MaxFileBytes} bytes.");
+        }
+
         byte[] bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
         string hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         string sourceId = CreateSourceId(fullPath, sourceRoot);
@@ -134,6 +157,20 @@ public sealed class KnowledgeIngestionService(
 
         ExtractedDocument extracted = await extractors.Resolve(fullPath)
             .ExtractAsync(fullPath, cancellationToken);
+        if (extracted.Sections.Count > knowledgeBase.Ingestion.MaxDocumentSections)
+        {
+            throw new DocumentResourceLimitException(
+                $"Document contains {extracted.Sections.Count} sections; the configured maximum is " +
+                $"{knowledgeBase.Ingestion.MaxDocumentSections}.");
+        }
+
+        long extractedCharacters = extracted.Sections.Sum(section => (long)section.Text.Length);
+        if (extractedCharacters > knowledgeBase.Ingestion.MaxExtractedCharacters)
+        {
+            throw new DocumentResourceLimitException(
+                $"Extracted document text contains {extractedCharacters} characters; the configured maximum is " +
+                $"{knowledgeBase.Ingestion.MaxExtractedCharacters}.");
+        }
         IReadOnlyList<DocumentChunk> drafts = chunker.Chunk(
             extracted,
             knowledgeBase.Ingestion);
@@ -200,7 +237,41 @@ public sealed class KnowledgeIngestionService(
             : Path.GetRelativePath(Path.GetFullPath(sourceRoot), fullPath);
         return value.Replace(Path.DirectorySeparatorChar, '/');
     }
+
+    private static void ValidateSourcePath(string fullPath, string? sourceRoot)
+    {
+        if (sourceRoot is null)
+        {
+            return;
+        }
+
+        string rootPath = Path.GetFullPath(sourceRoot);
+        string relativePath = Path.GetRelativePath(rootPath, fullPath);
+        if (Path.IsPathRooted(relativePath) ||
+            relativePath.Equals("..", StringComparison.Ordinal) ||
+            relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException(
+                "The document must be located below the configured source root.");
+        }
+
+        string resolvedRoot = new DirectoryInfo(rootPath)
+            .ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? rootPath;
+        string resolvedFile = new FileInfo(fullPath)
+            .ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? fullPath;
+        string resolvedRelative = Path.GetRelativePath(resolvedRoot, resolvedFile);
+        if (Path.IsPathRooted(resolvedRelative) ||
+            resolvedRelative.Equals("..", StringComparison.Ordinal) ||
+            resolvedRelative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException(
+                "The document symbolic-link target must remain below the configured source root.");
+        }
+    }
 }
+
+public sealed class DocumentResourceLimitException(string message)
+    : InvalidOperationException(message);
 
 public sealed record IngestionResult(
     KnowledgeBaseId KnowledgeBase,

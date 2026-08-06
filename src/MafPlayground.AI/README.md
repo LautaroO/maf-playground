@@ -18,6 +18,7 @@ endpoints, PostgreSQL, DevUI, OTLP exporters, or a specific hosting model.
 | `AIProviderRegistry` | Adapter registry | Resolves provider-qualified chat models without provider SDK leakage. |
 | `IChatClientDecorator` | Cross-cutting port | Composes timeout, cost, or future policies around `IChatClient`. |
 | `Resilience` | Infrastructure-neutral middleware | Applies a configurable timeout to model calls. |
+| `Guards` | Deterministic middleware and policies | Applies per-entity PII handling, input limits, tool limits, and shared model/token/cost budgets. |
 
 ## Dependency direction
 
@@ -48,7 +49,7 @@ also register:
 - one or more `IChatClientProvider` implementations;
 - `IUserContextAccessor` when the Basic agent is used;
 - retrieval services and `IKnowledgeStore` when the RAG agent is used;
-- configuration for `AIResilienceOptions`, telemetry, and workflow options.
+- configuration for guard profiles, `AIResilienceOptions`, telemetry, and workflow options.
 
 `AIModelSelection` uses `provider:model`. The parser splits only on the first
 colon, so provider model names can contain additional colons.
@@ -62,6 +63,27 @@ colon, so provider model names can contain additional colons.
 - Caller cancellation propagates. Shared timeout behavior wraps model calls.
 - RAG citation failures receive one bounded repair before a safe fallback.
 - Translation model failures become per-language partial failures.
+- Agent runs and workflow branches share thread-safe budget ledgers. Retries,
+  tool-induced model turns, and parallel branches consume the same run budget.
+- PII policies inspect user input, retrieved content, tool arguments/results, and
+  final output. The built-in regex inspector is a replaceable baseline, not a
+  comprehensive DLP product.
+
+## Guard pipeline
+
+`AI:Guards:Profiles` defines reusable policies. Each agent or workflow selects a
+profile through its own `GuardProfile` option. Agent guards use a MAF
+`DelegatingAIAgent` plus function-invocation middleware; workflows carry an
+internal execution ID so parallel branches enter the same guard context.
+
+Monetary budgets use `IModelPricingSource`. `Hard` enforcement reserves a
+pessimistic upper bound before a provider call and requires matching pricing;
+`Soft` enforcement can continue without pricing but cannot guarantee a strict
+monetary ceiling. Token and call limits remain deterministic in either mode.
+
+Output PII inspection buffers an agent response before exposing it. This is
+intentional: forwarding arbitrary streaming fragments before inspection cannot
+guarantee that sensitive values never escape.
 
 ## Detailed documentation
 
@@ -85,4 +107,3 @@ rather than exact natural-language wording.
   retries, approvals, or resumability.
 - Keep provider SDK types, credentials, endpoints, persistence entities, and host
   concerns outside this project.
-

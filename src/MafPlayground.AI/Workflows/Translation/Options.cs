@@ -1,3 +1,5 @@
+using MafPlayground.AI.Guards;
+
 namespace MafPlayground.AI.Workflows.Translation;
 
 public sealed class TranslationWorkflowOptions
@@ -6,6 +8,8 @@ public sealed class TranslationWorkflowOptions
     public const int DefaultMaxInputCharacters = 10_000;
 
     public string[] SupportedTargetLanguages { get; set; } = ["es", "fr", "pt-BR"];
+
+    public string GuardProfile { get; set; } = GuardProfileNames.Default;
 
     public int MaxTargetLanguages { get; set; } = DefaultMaxTargetLanguages;
 

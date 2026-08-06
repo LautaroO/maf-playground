@@ -1,6 +1,7 @@
 using System.CommandLine;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
+using MafPlayground.AI.Guards;
 using MafPlayground.AI.Resilience;
 using MafPlayground.Observability;
 using Microsoft.Extensions.Configuration;
@@ -72,6 +73,10 @@ public static class BasicAgentCommand
 
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(modelSelection);
+        builder.Services.Configure<BasicAgentOptions>(
+            configuration.GetSection(BasicAgentOptions.ConfigurationSectionName));
+        builder.Services.Configure<AIGuardOptions>(
+            configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
         builder.Services.Configure<AIResilienceOptions>(
             configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.AddConfiguredAIProviders(configuration);

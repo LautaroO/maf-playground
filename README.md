@@ -235,10 +235,11 @@ command options. Command options take precedence where available.
 | `AI:Resilience:ModelCallTimeout` | Timeout applied by the shared chat-client decorator. |
 | `AI:KnowledgeBases:<name>` | Collection, embedding model/dimension, and ingestion policy for one reusable knowledge base. |
 | `AI:Agents:BasicRag` | Knowledge-base reference and search policy owned by the Basic RAG agent. |
+| `AI:Guards:Profiles` | Reusable PII, input, tool, token, model-call, and monetary-budget policies. |
 | `AI:Retrieval:Postgres:ConnectionString` | Current retrieval store connection. |
 | `AI:Workflows:Translation:*` | Supported languages, limits, retries, and confidence. |
 | `Observability:*` | OTLP enablement, service identity, sensitive-data policy, and cost tracking. |
-| `DEVUI_URL` | Local DevUI listening URL. |
+| `DEVUI_URL` | Loopback-only HTTP URL for the local DevUI host. Non-loopback and credentialed URLs are rejected. |
 
 .NET configuration maps `__` in environment variables to `:`. Secrets and
 production endpoints must come from environment variables, a secret store, or
@@ -335,5 +336,8 @@ and the MAF skills under [`.agents/skills`](.agents/skills).
 - Metadata filtering is exact-match and document-scoped. It is an example scope,
   not a complete tenant/ACL authorization model.
 - The CLI and DevUI are local development tools, not secured production hosts.
+- The included regex PII detector is a deterministic sample boundary. Replace
+  `IContentInspector` with a production detector when broader entity coverage or
+  jurisdiction-specific policy is required.
 - The Aspire Dashboard stores telemetry in memory and local anonymous access is
   enabled by default for convenience.

@@ -26,6 +26,12 @@ public sealed class KnowledgeIngestionOptions
     public int ChunkOverlapCharacters { get; set; } = 200;
 
     public int EmbeddingBatchSize { get; set; } = 16;
+
+    public long MaxFileBytes { get; set; } = 20 * 1024 * 1024;
+
+    public int MaxDocumentSections { get; set; } = 1_000;
+
+    public int MaxExtractedCharacters { get; set; } = 2_000_000;
 }
 
 public sealed class KnowledgeSearchOptions
@@ -34,6 +40,8 @@ public sealed class KnowledgeSearchOptions
 
     public double MinimumSimilarity { get; set; } = 0.65;
 
+    public int MaximumQueryCharacters { get; set; } = 2_000;
+
     public IReadOnlyDictionary<string, string> MetadataFilters { get; set; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 }
@@ -41,7 +49,14 @@ public sealed class KnowledgeSearchOptions
 public sealed record KnowledgeIngestionSettings(
     int ChunkSizeCharacters,
     int ChunkOverlapCharacters,
-    int EmbeddingBatchSize);
+    int EmbeddingBatchSize)
+{
+    public long MaxFileBytes { get; init; } = 20 * 1024 * 1024;
+
+    public int MaxDocumentSections { get; init; } = 1_000;
+
+    public int MaxExtractedCharacters { get; init; } = 2_000_000;
+}
 
 public sealed record KnowledgeBaseId
 {
@@ -196,6 +211,14 @@ public sealed class KnowledgeBaseCatalog
                 $"Knowledge base '{name}' requires a positive embedding batch size.");
         }
 
+        if (ingestion.MaxFileBytes <= 0 ||
+            ingestion.MaxDocumentSections <= 0 ||
+            ingestion.MaxExtractedCharacters <= 0)
+        {
+            throw new KnowledgeBaseConfigurationException(
+                $"Knowledge base '{name}' requires positive ingestion resource limits.");
+        }
+
         return new ResolvedKnowledgeBase(
             new KnowledgeBaseId(name),
             definition.Collection.Trim(),
@@ -204,7 +227,12 @@ public sealed class KnowledgeBaseCatalog
             new KnowledgeIngestionSettings(
                 ingestion.ChunkSizeCharacters,
                 ingestion.ChunkOverlapCharacters,
-                ingestion.EmbeddingBatchSize));
+                ingestion.EmbeddingBatchSize)
+            {
+                MaxFileBytes = ingestion.MaxFileBytes,
+                MaxDocumentSections = ingestion.MaxDocumentSections,
+                MaxExtractedCharacters = ingestion.MaxExtractedCharacters,
+            });
     }
 }
 

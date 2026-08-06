@@ -65,6 +65,9 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 | `Ingestion:ChunkSizeCharacters` | `1200` |
 | `Ingestion:ChunkOverlapCharacters` | `200` |
 | `Ingestion:EmbeddingBatchSize` | `16` |
+| `Ingestion:MaxFileBytes` | `20971520` |
+| `Ingestion:MaxDocumentSections` | `1000` |
+| `Ingestion:MaxExtractedCharacters` | `2000000` |
 
 `Collection` and `EmbeddingModel` are required for every named knowledge base.
 Search settings are supplied by the consuming agent:
@@ -73,10 +76,15 @@ Search settings are supplied by the consuming agent:
 | --- | ---: |
 | `TopK` | `5` |
 | `MinimumSimilarity` | `0.65` |
+| `MaximumQueryCharacters` | `2000` |
 | `MetadataFilters` | Empty |
 
 The RAG agent separately owns `MaximumAdditionalSearches` because it controls
 model-selected refinement rather than storage search.
+
+When ingestion receives a source root, both the lexical file path and final
+symbolic-link target must remain below it. Resource limits are checked before
+embedding and persistence.
 
 ## Extending formats and storage
 

@@ -1,6 +1,7 @@
 using System.CommandLine;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.AI.Guards;
 using MafPlayground.AI.Resilience;
 using MafPlayground.Observability;
 using MafPlayground.Retrieval;
@@ -60,6 +61,8 @@ public static class BasicRagAgentCommand
         }
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(chatSelection);
+        builder.Services.Configure<AIGuardOptions>(
+            builder.Configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
         builder.Services.Configure<BasicRagAgentOptions>(
             builder.Configuration.GetSection(BasicRagAgentOptions.ConfigurationSectionName));
         if (filterOverrides.Count > 0)

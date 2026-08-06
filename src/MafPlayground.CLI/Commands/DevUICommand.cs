@@ -1,6 +1,7 @@
 using System.CommandLine;
 using MafPlayground.AI;
 using MafPlayground.AI.Resilience;
+using MafPlayground.AI.Guards;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Workflows.Translation;
@@ -73,10 +74,23 @@ public static class DevUICommand
         string url = commandOptions.Url
             ?? builder.Configuration["DEVUI_URL"]
             ?? "http://localhost:5050";
+        try
+        {
+            _ = DevUIEndpointPolicy.ValidateLoopback(url);
+        }
+        catch (ArgumentException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         builder.WebHost.UseUrls(url);
 
         builder.Services.AddLocalUserContext();
         builder.Services.AddAIServices(modelSelection);
+        builder.Services.Configure<BasicAgentOptions>(
+            builder.Configuration.GetSection(BasicAgentOptions.ConfigurationSectionName));
+        builder.Services.Configure<AIGuardOptions>(
+            builder.Configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
         builder.Services.Configure<BasicRagAgentOptions>(
             builder.Configuration.GetSection(BasicRagAgentOptions.ConfigurationSectionName));
         builder.Services.Configure<AIResilienceOptions>(

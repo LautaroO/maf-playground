@@ -89,6 +89,16 @@ public static class RagIngestCommand
             logger.LogError("{ErrorMessage}", exception.Message);
             return 2;
         }
+        catch (UnauthorizedAccessException)
+        {
+            logger.LogError("The document is outside the allowed source root.");
+            return 2;
+        }
+        catch (DocumentResourceLimitException exception)
+        {
+            logger.LogError("{ErrorMessage}", exception.Message);
+            return 2;
+        }
         catch (Exception exception) when (
             exception is KnowledgeBaseConfigurationException or
             EmbeddingProviderNotFoundException or

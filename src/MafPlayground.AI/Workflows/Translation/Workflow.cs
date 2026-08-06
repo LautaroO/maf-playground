@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using MafPlayground.AI.Guards;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Options;
 
@@ -7,7 +8,8 @@ namespace MafPlayground.AI.Workflows.Translation;
 public sealed class TranslationWorkflowFactory(
     TranslationService translationService,
     IOptions<TranslationWorkflowOptions> options,
-    IOptions<AgentTelemetryOptions> telemetryOptions)
+    IOptions<AgentTelemetryOptions> telemetryOptions,
+    WorkflowGuardCoordinator guards)
 {
     private readonly TranslationWorkflowOptions _options = options.Value;
     private readonly AgentTelemetryOptions _telemetryOptions = telemetryOptions.Value;
@@ -27,11 +29,12 @@ public sealed class TranslationWorkflowFactory(
         string[] supportedLanguages = TranslationWorkflowHelpers.ValidateSupportedLanguages(
             _options.SupportedTargetLanguages);
 
-        TranslationInputExecutor input = new(_options);
+        TranslationInputExecutor input = new(_options, guards);
         List<ExecutorBinding> translators = [];
         List<ExecutorBinding> validators = [];
         TranslationAggregatorExecutor aggregator = new(
-            emitAgentResponse: useChatProtocol);
+            emitAgentResponse: useChatProtocol,
+            guards);
 
         foreach (string language in supportedLanguages)
         {
@@ -69,11 +72,11 @@ public sealed class TranslationWorkflowFactory(
                 "validates each translation, and retries invalid results with validator feedback.")
             .WithOpenTelemetry(telemetry =>
                 telemetry.EnableSensitiveData = _telemetryOptions.EnableSensitiveData)
-            .AddFanOutEdge<TranslationWorkflowRequest>(
+            .AddFanOutEdge<GuardedTranslationRequest>(
                 input,
                 translators,
                 (request, _) => TranslationWorkflowHelpers.SelectTargetIndexes(
-                    request ?? throw new ArgumentNullException(nameof(request)),
+                    request?.Request ?? throw new ArgumentNullException(nameof(request)),
                     supportedLanguages));
 
         for (int index = 0; index < translators.Count; index++)

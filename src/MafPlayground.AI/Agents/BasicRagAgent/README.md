@@ -110,8 +110,10 @@ combinations are rejected instead of being mixed in one vector space.
    metadata filters, `TopK`, and `MinimumSimilarity` to the store.
 3. The PostgreSQL adapter applies exact metadata containment, calculates cosine
    distance, filters and orders chunks, and returns at most `TopK` results.
-4. The context provider injects only those bounded chunks. Each includes an exact
-   citation generated from its stored title, page, and stable source ID.
+4. The context provider sanitizes retrieved text according to the agent's guard
+   profile and injects bounded chunks as a user-role evidence message, not as
+   system instructions. Each includes an exact citation generated from its
+   stored title, page, and stable source ID.
 5. It also exposes `search_knowledge_base`, a narrow read-only tool for one
    refined semantic query by default. Its results join the same citation allowlist.
 6. The model drafts an answer from automatic and optionally refined evidence.
@@ -175,7 +177,8 @@ RAG configuration has three ownership levels:
 - `AI:KnowledgeBases:Help` owns collection, embedding identity, dimensions, and
   ingestion/chunking policy;
 - `AI:Agents:BasicRag` references `Help` and owns `TopK`, similarity threshold,
-  metadata filters, and additional-search budget;
+  metadata filters, maximum query length, additional-search budget, and guard
+  profile;
 - `AI:Retrieval:Postgres` owns the current store connection.
 
 This allows multiple agents to share one indexed knowledge base while using
@@ -194,17 +197,22 @@ chat model.
         "Ingestion": {
           "ChunkSizeCharacters": 1200,
           "ChunkOverlapCharacters": 200,
-          "EmbeddingBatchSize": 16
+          "EmbeddingBatchSize": 16,
+          "MaxFileBytes": 20971520,
+          "MaxDocumentSections": 1000,
+          "MaxExtractedCharacters": 2000000
         }
       }
     },
     "Agents": {
       "BasicRag": {
         "KnowledgeBase": "Help",
+        "GuardProfile": "Default",
         "Retrieval": {
           "TopK": 5,
           "MinimumSimilarity": 0.65,
           "MaximumAdditionalSearches": 1,
+          "MaximumQueryCharacters": 2000,
           "MetadataFilters": {}
         }
       }
@@ -216,6 +224,10 @@ chat model.
 Unknown knowledge bases, invalid chunk/search values, incompatible embedding
 identities on a shared collection, and dimensions unsupported by the selected
 store fail explicitly. They never fall back to another knowledge base.
+
+Ingestion also rejects files outside `--source-root`, symbolic-link escapes,
+oversized files, excessive extracted sections, and excessive extracted text
+before embedding or persistence.
 
 ## Local setup
 

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text.Json;
 using MafPlayground.AI;
 using MafPlayground.AI.Resilience;
+using MafPlayground.AI.Guards;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.Observability;
 using Microsoft.Extensions.Configuration;
@@ -82,6 +83,8 @@ public static class TranslateWorkflowCommand
             languages);
 
         builder.Services.AddAIServices(modelSelection);
+        builder.Services.Configure<AIGuardOptions>(
+            configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
         builder.Services.Configure<AIResilienceOptions>(
             configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.Configure<TranslationWorkflowOptions>(

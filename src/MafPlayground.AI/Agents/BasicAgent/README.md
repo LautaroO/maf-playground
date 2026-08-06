@@ -17,6 +17,7 @@ flowchart LR
     Agent --> Tool[get_current_date_time]
     Tool --> Time[TimeProvider]
     Agent --> Telemetry[MAF OpenTelemetry middleware]
+    Agent --> Guards[PII and budget guards]
 ```
 
 | Component | Kind | Responsibility |
@@ -41,6 +42,8 @@ flowchart LR
    returns a typed `CurrentDateTimeResult`.
 6. Agent instructions require exact dates, numbers, identifiers, amounts, and
    units returned by tools to be preserved in the final answer.
+7. The selected guard profile inspects input/output, counts tool calls, and
+   applies one shared budget to every model turn in the run.
 
 The CLI's local `IUserContextAccessor` supplies `TimeZoneInfo.Local.Id`. A web
 host should replace it with a request-aware implementation derived from trusted
@@ -103,6 +106,10 @@ dotnet run --project src/MafPlayground.CLI -- devui
 - Model timeouts are applied by the shared `IChatClient` resilience decorator,
   not by the agent or tool.
 - Provider and host startup failures are handled by the host surface.
+- PII can be allowed, redacted, or blocked independently at input, output, and
+  tool boundaries. Strong output inspection intentionally produces buffered
+  rather than token-by-token streaming.
+- Budget exhaustion short-circuits before the next model or tool call.
 
 ## Testing and extension points
 

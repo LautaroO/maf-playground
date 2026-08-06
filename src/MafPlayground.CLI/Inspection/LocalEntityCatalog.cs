@@ -1,6 +1,8 @@
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.AI.Guards;
+using MafPlayground.AI.Guards.Content;
 using MafPlayground.AI.Workflows.Translation;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
@@ -69,13 +71,24 @@ internal static class LocalEntityCatalog
             .GetSection("AI:Workflows:Translation")
             .Get<TranslationWorkflowOptions>() ?? new TranslationWorkflowOptions();
         IOptions<TranslationWorkflowOptions> workflowOptions = Options.Create(options);
+        AIGuardOptions guardOptions = configuration
+            .GetSection(AIGuardOptions.ConfigurationSectionName)
+            .Get<AIGuardOptions>() ?? new AIGuardOptions();
+        GuardProfileResolver profiles = new(Options.Create(guardOptions));
+        GuardExecutionContextAccessor contextAccessor = new();
+        WorkflowGuardCoordinator guards = new(
+            profiles,
+            contextAccessor,
+            new ContentGuard(new RegexPiiContentInspector()));
         TranslationService service = new(
             new DiagramOnlyTranslationModel(),
-            workflowOptions);
+            workflowOptions,
+            guards);
         TranslationWorkflowFactory factory = new(
             service,
             workflowOptions,
-            Options.Create(new AgentTelemetryOptions()));
+            Options.Create(new AgentTelemetryOptions()),
+            guards);
         return factory.Create();
     }
 

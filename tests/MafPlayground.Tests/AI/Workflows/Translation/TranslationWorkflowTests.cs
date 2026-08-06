@@ -4,6 +4,8 @@ using System.Diagnostics.Metrics;
 using System.Text;
 using MafPlayground.AI;
 using MafPlayground.AI.Workflows.Translation;
+using MafPlayground.AI.Guards;
+using MafPlayground.AI.Guards.Content;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -72,7 +74,7 @@ public sealed class TranslationWorkflowTests
         Assert.Equal(2, result.Translations.Count);
         Assert.All(result.Translations, translation => Assert.False(translation.IsValid));
         Assert.All(result.Translations, translation =>
-            Assert.Contains("provider unavailable", translation.Error, StringComparison.Ordinal));
+            Assert.Equal("The translation model call failed.", translation.Error));
     }
 
     [Fact]
@@ -346,11 +348,18 @@ public sealed class TranslationWorkflowTests
     {
         IOptions<TranslationWorkflowOptions> options = Options.Create(
             new TranslationWorkflowOptions());
-        TranslationService service = new(model, options);
+        GuardProfileResolver profiles = new(Options.Create(new AIGuardOptions()));
+        GuardExecutionContextAccessor contextAccessor = new();
+        WorkflowGuardCoordinator guards = new(
+            profiles,
+            contextAccessor,
+            new ContentGuard(new RegexPiiContentInspector()));
+        TranslationService service = new(model, options, guards);
         return new TranslationWorkflowFactory(
             service,
             options,
-            Options.Create(new AgentTelemetryOptions()));
+            Options.Create(new AgentTelemetryOptions()),
+            guards);
     }
 
     private sealed class ParallelTranslationModel : ITranslationModel

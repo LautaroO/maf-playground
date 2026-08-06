@@ -59,6 +59,7 @@ public static class ObservabilityServiceExtensions
                 .AddMeter(
                     AITelemetry.AgentSourceName,
                     AITelemetry.OperationMeterName,
+                    MafPlayground.AI.Guards.GuardTelemetry.MeterName,
                     ObservabilityTelemetry.CostMeterName)
                 .AddOtlpExporter());
 

@@ -4,8 +4,12 @@ using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
+using MafPlayground.AI.Guards;
+using MafPlayground.AI.Guards.Content;
 using MafPlayground.AI.Tools;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace MafPlayground.Tests;
 
@@ -20,6 +24,83 @@ public sealed class BasicAgentTests
         string response = (await basicAgent.Agent.RunAsync("Hello")).Text;
 
         Assert.Equal("Hello from the fake model.", response);
+    }
+
+    [Fact]
+    public async Task Agent_GuardsRedactPiiInInputAndOutput()
+    {
+        using FakeChatClient chatClient = new("Contact support@example.com.");
+        ServiceCollection services = new();
+        services.AddSingleton<IChatClientProvider>(new FakeProvider(chatClient));
+        services.AddSingleton<IUserContextAccessor>(
+            new FakeUserContextAccessor(new UserContext([])));
+        services.AddAIServices(AIModelSelection.Parse("fake:pii"));
+        services.Configure<AIGuardOptions>(options =>
+            options.Profiles = new Dictionary<string, GuardProfileOptions>
+            {
+                ["pii"] = new()
+                {
+                    Content = new ContentGuardOptions
+                    {
+                        Enabled = true,
+                        InputAction = GuardAction.Redact,
+                        OutputAction = GuardAction.Redact,
+                    },
+                },
+            });
+        services.Configure<BasicAgentOptions>(options => options.GuardProfile = "pii");
+        using ServiceProvider provider = services.BuildServiceProvider();
+        Assert.True(provider.GetRequiredService<GuardProfileResolver>()
+            .Resolve("pii").Content.Enabled);
+        BasicAgent agent = provider.GetRequiredService<BasicAgent>();
+
+        string response = (await agent.Agent.RunAsync(
+            "My email is customer@example.com.")).Text;
+
+        Assert.Equal("Contact <EMAIL_1>.", response);
+        Assert.Contains("<EMAIL_1>", Assert.Single(chatClient.Requests).Single().Text);
+        Assert.DoesNotContain("customer@example.com", chatClient.Requests[0][0].Text);
+    }
+
+    [Fact]
+    public async Task Agent_GuardsCountToolCallsAndBlockBeforeSecondInvocation()
+    {
+        using TwoToolCallsChatClient chatClient = new();
+        CountingTimeProvider timeProvider = new();
+        ServiceCollection services = new();
+        services.AddSingleton<IChatClientProvider>(new FakeProvider(chatClient));
+        services.AddSingleton<TimeProvider>(timeProvider);
+        services.AddSingleton<IUserContextAccessor>(
+            new FakeUserContextAccessor(new UserContext([])));
+        services.AddAIServices(AIModelSelection.Parse("fake:tools"));
+        services.Configure<AIGuardOptions>(options =>
+            options.Profiles = new Dictionary<string, GuardProfileOptions>
+            {
+                ["tool-budget"] = new()
+                {
+                    Budget = new BudgetGuardOptions
+                    {
+                        Enabled = true,
+                        MaxModelCalls = 4,
+                        MaxToolCalls = 1,
+                        MaxInputTokens = 10_000,
+                        MaxOutputTokens = 4_096,
+                        MaxOutputTokensPerCall = 1_024,
+                    },
+                },
+            });
+        services.Configure<BasicAgentOptions>(options =>
+            options.GuardProfile = "tool-budget");
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Exception? exception = await Record.ExceptionAsync(async () =>
+            await provider.GetRequiredService<BasicAgent>().Agent.RunAsync(
+                "Run both time lookups."));
+
+        Assert.NotNull(exception);
+        Assert.Contains("tool_calls", exception.ToString(), StringComparison.Ordinal);
+        Assert.Equal(1, timeProvider.Calls);
+        Assert.InRange(chatClient.ModelCalls, 1, 4);
     }
 
     [Fact]
@@ -201,7 +282,9 @@ public sealed class BasicAgentTests
         return new BasicAgent(
             chatClient,
             currentDateTimeTool,
-            userContextProvider);
+            userContextProvider,
+            AgentGuardPipeline.CreateDisabled(),
+            Options.Create(new BasicAgentOptions()));
     }
 
     private sealed class InvalidTimeZoneToolCallingChatClient : IChatClient
@@ -247,6 +330,73 @@ public sealed class BasicAgentTests
 
         public void Dispose()
         {
+        }
+    }
+
+    private sealed class FakeProvider(IChatClient chatClient) : IChatClientProvider
+    {
+        public string Name => "fake";
+
+        public IChatClient CreateChatClient(string model) => chatClient;
+    }
+
+    private sealed class TwoToolCallsChatClient : IChatClient
+    {
+        private int _modelCalls;
+
+        public int ModelCalls => _modelCalls;
+
+        public ChatClientMetadata Metadata { get; } = new("fake");
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Increment(ref _modelCalls);
+            return Task.FromResult(new ChatResponse(new ChatMessage(
+                ChatRole.Assistant,
+                [
+                    new FunctionCallContent(
+                        "time-1",
+                        CurrentDateTimeTool.FunctionName,
+                        new Dictionary<string, object?> { ["timeZoneId"] = "UTC" }),
+                    new FunctionCallContent(
+                        "time-2",
+                        CurrentDateTimeTool.FunctionName,
+                        new Dictionary<string, object?> { ["timeZoneId"] = "Europe/Madrid" }),
+                ])));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
+            yield break;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) =>
+            serviceType.IsInstanceOfType(this) ? this : null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CountingTimeProvider : TimeProvider
+    {
+        private int _calls;
+
+        public int Calls => _calls;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            Interlocked.Increment(ref _calls);
+            return DateTimeOffset.UnixEpoch;
         }
     }
 }

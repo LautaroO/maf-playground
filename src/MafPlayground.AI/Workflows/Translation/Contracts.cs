@@ -8,10 +8,15 @@ public sealed record TranslationWorkflowRequest(
     string Text,
     IReadOnlyList<string> TargetLanguages);
 
+internal sealed record GuardedTranslationRequest(
+    TranslationWorkflowRequest Request,
+    string GuardExecutionId);
+
 internal sealed record TranslationBranchState(
     string SourceText,
     IReadOnlyList<string> RequestedTargetLanguages,
     string TargetLanguage,
+    string GuardExecutionId,
     string? TranslatedText = null,
     int Attempts = 0,
     bool IsValid = false,
@@ -42,4 +47,5 @@ public sealed record TranslationWorkflowResult(
 internal sealed record ValidatedTranslationMessage(
     string SourceText,
     IReadOnlyList<string> RequestedTargetLanguages,
-    ValidatedTranslation Translation);
+    ValidatedTranslation Translation,
+    string GuardExecutionId);

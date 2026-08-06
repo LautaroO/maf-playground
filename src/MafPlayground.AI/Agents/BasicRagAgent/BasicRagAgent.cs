@@ -1,3 +1,4 @@
+using MafPlayground.AI.Guards;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -11,6 +12,8 @@ public sealed class BasicRagAgent
         RagContextProvider contextProvider,
         RagInvocationContextAccessor invocationContextAccessor,
         CitationValidator citationValidator,
+        AgentGuardPipeline guardPipeline,
+        IOptions<BasicRagAgentOptions> options,
         IOptions<AgentTelemetryOptions>? telemetryOptions = null)
     {
         AIAgent inner = chatClient.AsAIAgent(new ChatClientAgentOptions
@@ -24,8 +27,7 @@ public sealed class BasicRagAgent
             AIContextProviders = [contextProvider],
         });
 
-        bool sensitiveData = telemetryOptions?.Value.EnableSensitiveData ?? false;
-        Agent = inner.AsBuilder()
+        AIAgentBuilder builder = inner.AsBuilder()
             .Use(async (messages, session, runOptions, agent, cancellationToken) =>
             {
                 using RagInvocationScope invocationScope =
@@ -64,7 +66,13 @@ public sealed class BasicRagAgent
                 return new AgentResponse(new ChatMessage(
                     ChatRole.Assistant,
                     CitationValidator.NoEvidenceAnswer));
-            }, null)
+            }, null);
+        AIAgent guardedAgent = guardPipeline.Apply(
+            builder.Build(),
+            options.Value.GuardProfile);
+
+        bool sensitiveData = telemetryOptions?.Value.EnableSensitiveData ?? false;
+        Agent = guardedAgent.AsBuilder()
             .UseOpenTelemetry(AITelemetry.AgentSourceName, telemetry => telemetry.EnableSensitiveData = sensitiveData)
             .Build();
     }

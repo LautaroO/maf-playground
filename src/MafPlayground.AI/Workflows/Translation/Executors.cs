@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using MafPlayground.AI.Guards;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
@@ -8,20 +9,30 @@ using Microsoft.Extensions.AI;
 namespace MafPlayground.AI.Workflows.Translation;
 
 internal sealed class TranslationInputExecutor(
-    TranslationWorkflowOptions options)
-    : Executor<TranslationWorkflowInput, TranslationWorkflowRequest>(
+    TranslationWorkflowOptions options,
+    WorkflowGuardCoordinator guards)
+    : Executor<TranslationWorkflowInput, GuardedTranslationRequest>(
         "translation-input",
         declareCrossRunShareable: true)
 {
-    public override ValueTask<TranslationWorkflowRequest> HandleAsync(
+    public override async ValueTask<GuardedTranslationRequest> HandleAsync(
         TranslationWorkflowInput message,
         IWorkflowContext context,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(TranslationWorkflowHelpers.ValidateRequest(
+        CancellationToken cancellationToken = default)
+    {
+        TranslationWorkflowRequest request = TranslationWorkflowHelpers.ValidateRequest(
             new TranslationWorkflowRequest(
                 message.Text,
                 message.TargetLanguages),
-            options));
+            options);
+        GuardedWorkflowInput guarded = await guards.StartAsync(
+            options.GuardProfile,
+            request.Text,
+            cancellationToken);
+        return new GuardedTranslationRequest(
+            request with { Text = guarded.Content },
+            guarded.ExecutionId);
+    }
 }
 
 internal sealed class TranslationExecutor(
@@ -31,16 +42,18 @@ internal sealed class TranslationExecutor(
     : Executor(id, declareCrossRunShareable: false)
 {
     private async ValueTask HandleInitialRequestAsync(
-        TranslationWorkflowRequest request,
+        GuardedTranslationRequest guardedRequest,
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
+        TranslationWorkflowRequest request = guardedRequest.Request;
         Stopwatch elapsed = Stopwatch.StartNew();
         TranslationBranchState state = await translationService.TranslateAsync(
             new TranslationBranchState(
                 request.Text,
                 request.TargetLanguages,
-                targetLanguage),
+                targetLanguage,
+                guardedRequest.GuardExecutionId),
             cancellationToken);
         TranslationWorkflowHelpers.RecordBranchOperation(
             "translation.translate",
@@ -69,7 +82,7 @@ internal sealed class TranslationExecutor(
         protocolBuilder
             .ConfigureRoutes(routes =>
             {
-                routes.AddHandler<TranslationWorkflowRequest>(HandleInitialRequestAsync);
+                routes.AddHandler<GuardedTranslationRequest>(HandleInitialRequestAsync);
                 routes.AddHandler<TranslationBranchState>(HandleRetryAsync);
             })
             .SendsMessage<TranslationBranchState>();
@@ -109,7 +122,8 @@ internal sealed class TranslationValidationExecutor(
             new ValidatedTranslationMessage(
                 validatedState.SourceText,
                 validatedState.RequestedTargetLanguages,
-                TranslationService.Complete(validatedState)),
+                TranslationService.Complete(validatedState),
+                validatedState.GuardExecutionId),
             TranslationAggregatorExecutor.ExecutorId,
             cancellationToken);
     }
@@ -329,7 +343,8 @@ internal sealed class TranslationChatInputExecutor()
 [YieldsOutput(typeof(TranslationWorkflowResult))]
 [YieldsOutput(typeof(ChatMessage))]
 internal sealed class TranslationAggregatorExecutor(
-    bool emitAgentResponse)
+    bool emitAgentResponse,
+    WorkflowGuardCoordinator guards)
     : Executor<ValidatedTranslationMessage>(ExecutorId)
 {
     public const string ExecutorId = "translation-aggregate";
@@ -353,6 +368,17 @@ internal sealed class TranslationAggregatorExecutor(
             return;
         }
 
+        string guardExecutionId = message.GuardExecutionId;
+        if (_translations.Values.Any(value =>
+                !string.Equals(
+                    value.GuardExecutionId,
+                    guardExecutionId,
+                    StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                "Translations from different guarded executions cannot be aggregated.");
+        }
+
         ValidatedTranslation[] orderedTranslations = message.RequestedTargetLanguages
             .Select(language => _translations[language].Translation)
             .ToArray();
@@ -360,25 +386,71 @@ internal sealed class TranslationAggregatorExecutor(
         string sourceText = firstTranslation.SourceText;
         _translations.Clear();
 
-        TranslationWorkflowResult result = new(sourceText, orderedTranslations);
-        await context.YieldOutputAsync(result, cancellationToken);
-
-        if (emitAgentResponse)
+        try
         {
-            string json = JsonSerializer.Serialize(result, JsonSerializerOptions.Web);
-            string responseId = $"translation-{Guid.NewGuid():N}";
-            AgentResponseUpdate update = new(ChatRole.Assistant, json)
+            for (int index = 0; index < orderedTranslations.Length; index++)
             {
-                AgentId = "translation-workflow",
-                ResponseId = responseId,
-                MessageId = responseId,
-            };
-            await context.AddEventAsync(
-                new AgentResponseUpdateEvent("translation-aggregate", update),
-                cancellationToken);
-            await context.YieldOutputAsync(
-                new ChatMessage(ChatRole.Assistant, json),
-                cancellationToken);
+                ValidatedTranslation translation = orderedTranslations[index];
+                orderedTranslations[index] = translation with
+                {
+                    TranslatedText = await guards.GuardOutputAsync(
+                        guardExecutionId,
+                        translation.TranslatedText,
+                        cancellationToken),
+                    Issues = await GuardStringsAsync(
+                        guardExecutionId,
+                        translation.Issues,
+                        guards,
+                        cancellationToken),
+                    Error = await guards.GuardOutputAsync(
+                        guardExecutionId,
+                        translation.Error,
+                        cancellationToken),
+                };
+            }
+
+            TranslationWorkflowResult result = new(sourceText, orderedTranslations);
+            await context.YieldOutputAsync(result, cancellationToken);
+
+            if (emitAgentResponse)
+            {
+                string json = JsonSerializer.Serialize(result, JsonSerializerOptions.Web);
+                string responseId = $"translation-{Guid.NewGuid():N}";
+                AgentResponseUpdate update = new(ChatRole.Assistant, json)
+                {
+                    AgentId = "translation-workflow",
+                    ResponseId = responseId,
+                    MessageId = responseId,
+                };
+                await context.AddEventAsync(
+                    new AgentResponseUpdateEvent("translation-aggregate", update),
+                    cancellationToken);
+                await context.YieldOutputAsync(
+                    new ChatMessage(ChatRole.Assistant, json),
+                    cancellationToken);
+            }
         }
+        finally
+        {
+            guards.Complete(guardExecutionId);
+        }
+    }
+
+    private static async ValueTask<IReadOnlyList<string>> GuardStringsAsync(
+        string executionId,
+        IReadOnlyList<string> values,
+        WorkflowGuardCoordinator guards,
+        CancellationToken cancellationToken)
+    {
+        string[] guarded = new string[values.Count];
+        for (int index = 0; index < values.Count; index++)
+        {
+            guarded[index] = await guards.GuardOutputAsync(
+                executionId,
+                values[index],
+                cancellationToken) ?? string.Empty;
+        }
+
+        return guarded;
     }
 }

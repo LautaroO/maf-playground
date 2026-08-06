@@ -146,6 +146,10 @@ public sealed class InteractiveAgentConsoleTests
         Assert.DoesNotContain(
             activity.TagObjects,
             tag => Equals(tag.Value, "Sensitive provider details."));
+        Assert.DoesNotContain(
+            "Sensitive provider details.",
+            error.ToString(),
+            StringComparison.Ordinal);
         AssertOperationMetrics(
             telemetry.Measurements,
             "error",
@@ -217,7 +221,9 @@ public sealed class InteractiveAgentConsoleTests
         return new BasicAgent(
             chatClient,
             currentDateTimeTool,
-            new UserContextProvider(accessor));
+            new UserContextProvider(accessor),
+            MafPlayground.AI.Guards.AgentGuardPipeline.CreateDisabled(),
+            Microsoft.Extensions.Options.Options.Create(new BasicAgentOptions()));
     }
 
     private sealed record MetricMeasurement(

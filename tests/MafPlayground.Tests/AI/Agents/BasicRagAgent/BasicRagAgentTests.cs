@@ -24,7 +24,9 @@ public sealed class BasicRagAgentTests
             chatClient,
             contextProvider,
             invocationContextAccessor,
-            new CitationValidator());
+            new CitationValidator(),
+            MafPlayground.AI.Guards.AgentGuardPipeline.CreateDisabled(),
+            Microsoft.Extensions.Options.Options.Create(new BasicRagAgentOptions()));
 
         AgentSession session = await agent.Agent.CreateSessionAsync();
         string response = (await agent.Agent.RunAsync(
@@ -32,6 +34,19 @@ public sealed class BasicRagAgentTests
             session)).Text;
 
         Assert.Contains("30 minutes", response);
+        Assert.DoesNotContain(
+            "The reset link expires",
+            Assert.Single(chatClient.RequestOptions)!.Instructions,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            Assert.Single(chatClient.Requests),
+            message => message.Role == Microsoft.Extensions.AI.ChatRole.User &&
+                message.Text.Contains(
+                    "<knowledge_base_evidence>",
+                    StringComparison.Ordinal) &&
+                message.Text.Contains(
+                    "The reset link expires",
+                    StringComparison.Ordinal));
     }
 
     [Fact]
@@ -52,7 +67,9 @@ public sealed class BasicRagAgentTests
             chatClient,
             contextProvider,
             invocationContextAccessor,
-            new CitationValidator());
+            new CitationValidator(),
+            MafPlayground.AI.Guards.AgentGuardPipeline.CreateDisabled(),
+            Microsoft.Extensions.Options.Options.Create(new BasicRagAgentOptions()));
         AgentSession session = await agent.Agent.CreateSessionAsync();
         List<string> updates = [];
 
@@ -86,7 +103,9 @@ public sealed class BasicRagAgentTests
             chatClient,
             contextProvider,
             invocationContextAccessor,
-            new CitationValidator());
+            new CitationValidator(),
+            MafPlayground.AI.Guards.AgentGuardPipeline.CreateDisabled(),
+            Microsoft.Extensions.Options.Options.Create(new BasicRagAgentOptions()));
         AgentSession session = await agent.Agent.CreateSessionAsync();
 
         string response = (await agent.Agent.RunAsync(

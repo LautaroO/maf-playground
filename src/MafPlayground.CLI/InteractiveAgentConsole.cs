@@ -248,7 +248,8 @@ public sealed class InteractiveAgentConsole
             _logger.LogError(
                 "Agent test turn failed with {ExceptionType}",
                 exception.GetType().FullName);
-            await _error.WriteLineAsync($"Agent request failed: {exception.Message}");
+            await _error.WriteLineAsync(
+                $"Agent request failed ({exception.GetType().Name}). Check structured logs for details.");
             return false;
         }
         finally
