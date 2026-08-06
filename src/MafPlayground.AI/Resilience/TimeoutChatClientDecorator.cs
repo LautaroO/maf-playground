@@ -10,6 +10,8 @@ internal sealed class TimeoutChatClientDecorator(
 {
     private readonly TimeSpan _modelCallTimeout = options.Value.ModelCallTimeout;
 
+    public int Order => ChatClientDecoratorOrder.Timeout;
+
     public IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection)
     {
         ArgumentNullException.ThrowIfNull(chatClient);

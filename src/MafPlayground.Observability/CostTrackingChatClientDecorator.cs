@@ -15,6 +15,8 @@ internal sealed class CostTrackingChatClientDecorator : IChatClientDecorator
 
     private readonly IReadOnlyDictionary<string, IModelPricingSource> _pricingSources;
 
+    public int Order => ChatClientDecoratorOrder.CostTelemetry;
+
     public CostTrackingChatClientDecorator(IEnumerable<IModelPricingSource> pricingSources)
     {
         ArgumentNullException.ThrowIfNull(pricingSources);

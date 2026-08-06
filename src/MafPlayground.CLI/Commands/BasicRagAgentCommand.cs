@@ -60,7 +60,9 @@ public static class BasicRagAgentCommand
             return 2;
         }
         builder.Services.AddLocalUserContext();
-        builder.Services.AddAIServices(chatSelection);
+        builder.Services
+            .AddAICore(chatSelection)
+            .AddBasicRagAgent();
         builder.Services.Configure<AIGuardOptions>(
             builder.Configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
         builder.Services.Configure<BasicRagAgentOptions>(

@@ -82,7 +82,9 @@ public static class TranslateWorkflowCommand
             commandOptions.Text ?? string.Empty,
             languages);
 
-        builder.Services.AddAIServices(modelSelection);
+        builder.Services
+            .AddAICore(modelSelection)
+            .AddTranslationWorkflow();
         builder.Services.Configure<AIGuardOptions>(
             configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
         builder.Services.Configure<AIResilienceOptions>(

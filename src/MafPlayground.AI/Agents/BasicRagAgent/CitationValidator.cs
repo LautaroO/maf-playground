@@ -1,18 +1,96 @@
-using System.Text.RegularExpressions;
-
 namespace MafPlayground.AI.Agents.BasicRagAgent;
 
-public sealed partial class CitationValidator
+public sealed class CitationValidator
 {
-    public const string NoEvidenceAnswer = "The knowledge base does not contain enough information to answer that question.";
+    public const string NoEvidenceAnswer =
+        "The knowledge base does not contain enough information to answer that question.";
 
-    public bool IsValid(string response, IReadOnlySet<string> allowedCitations)
+    public RagAnswerValidationResult Validate(
+        RagAnswerDraft? draft,
+        IReadOnlyDictionary<string, RagEvidence> evidence)
     {
-        if (allowedCitations.Count == 0) return response.Contains(NoEvidenceAnswer, StringComparison.Ordinal);
-        MatchCollection citations = CitationRegex().Matches(response);
-        return citations.Count > 0 && citations.All(match => allowedCitations.Contains(match.Value));
+        List<string> issues = [];
+        if (draft is null)
+        {
+            return new RagAnswerValidationResult(false, ["The response was empty."]);
+        }
+
+        IReadOnlyList<RagClaim> claims = draft.Claims ?? [];
+        if (draft.InsufficientEvidence)
+        {
+            if (claims.Count > 0)
+            {
+                issues.Add("An insufficient-evidence response cannot contain claims.");
+            }
+
+            return new RagAnswerValidationResult(issues.Count == 0, issues);
+        }
+
+        if (evidence.Count == 0)
+        {
+            issues.Add("Claims cannot be returned when no evidence was retrieved.");
+        }
+
+        if (claims.Count == 0)
+        {
+            issues.Add("A supported answer requires at least one claim.");
+        }
+
+        for (int index = 0; index < claims.Count; index++)
+        {
+            RagClaim claim = claims[index];
+            if (string.IsNullOrWhiteSpace(claim.Text))
+            {
+                issues.Add($"Claim {index + 1} has no text.");
+            }
+
+            IReadOnlyList<string> citationIds = claim.CitationIds ?? [];
+            if (citationIds.Count == 0)
+            {
+                issues.Add($"Claim {index + 1} has no citation IDs.");
+                continue;
+            }
+
+            foreach (string citationId in citationIds)
+            {
+                if (string.IsNullOrWhiteSpace(citationId) ||
+                    !evidence.ContainsKey(citationId))
+                {
+                    issues.Add($"Claim {index + 1} references an unknown citation ID.");
+                }
+            }
+        }
+
+        return new RagAnswerValidationResult(issues.Count == 0, issues);
     }
 
-    [GeneratedRegex(@"\[[^\]\r\n]+, (?:page \d+, )?source: [^\]\r\n]+\]", RegexOptions.CultureInvariant)]
-    private static partial Regex CitationRegex();
+    public string Render(
+        RagAnswerDraft draft,
+        IReadOnlyDictionary<string, RagEvidence> evidence)
+    {
+        RagAnswerValidationResult validation = Validate(draft, evidence);
+        if (!validation.IsValid)
+        {
+            throw new ArgumentException(
+                "Cannot render an invalid grounded answer.",
+                nameof(draft));
+        }
+
+        if (draft.InsufficientEvidence)
+        {
+            return NoEvidenceAnswer;
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            draft.Claims!.Select(claim =>
+            {
+                string citations = string.Join(
+                    " ",
+                    claim.CitationIds!
+                        .Distinct(StringComparer.Ordinal)
+                        .Select(id => evidence[id].Citation));
+                return $"{claim.Text!.Trim()} {citations}";
+            }));
+    }
 }

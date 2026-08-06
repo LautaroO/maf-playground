@@ -7,5 +7,15 @@ namespace MafPlayground.AI;
 /// </summary>
 public interface IChatClientDecorator
 {
+    int Order { get; }
+
     IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection);
+}
+
+public static class ChatClientDecoratorOrder
+{
+    public const int Timeout = 100;
+    public const int Budget = 200;
+    public const int ContentGuard = 300;
+    public const int CostTelemetry = 400;
 }

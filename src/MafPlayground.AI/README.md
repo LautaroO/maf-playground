@@ -36,15 +36,26 @@ Agents and workflows consume `IChatClient`, retrieval ports, typed options, and
 repository-owned contracts. A provider swap should require only adapter
 registration and configuration.
 
-## Main registrations
+## Feature registrations
 
 ```csharp
-services.AddAIServices(modelSelection);
+services
+    .AddAICore(modelSelection)
+    .AddBasicRagAgent();
 ```
 
-This registers the selected `IChatClient`, decorators, tools, context providers,
-agents, translation model/service, workflow factory, and runner. The host must
-also register:
+`AddAICore` registers the provider-neutral client pipeline, resilience, guards,
+and shared contracts. A host then selects any combination of `AddBasicAgent`,
+`AddBasicRagAgent`, and `AddTranslationWorkflow`. `AddAIServices` remains as a
+convenience aggregate for hosts that intentionally need every sample feature.
+
+Decorators have unique explicit order values. The effective call path is cost
+telemetry, content guard, budget reservation, timeout, and finally the provider;
+composition no longer depends on DI enumeration order. Typed options use
+`ValidateOnStart` so a host fails during startup rather than during its first
+request.
+
+The host must also register:
 
 - one or more `IChatClientProvider` implementations;
 - `IUserContextAccessor` when the Basic agent is used;
@@ -61,7 +72,8 @@ colon, so provider model names can contain additional colons.
 - Translation branch records are workflow execution state.
 - Durable documents and embeddings belong to `IKnowledgeStore`, not this project.
 - Caller cancellation propagates. Shared timeout behavior wraps model calls.
-- RAG citation failures receive one bounded repair before a safe fallback.
+- RAG produces structured atomic claims. Every claim requires evidence IDs, and
+  code renders the public citations after one bounded stateless repair.
 - Translation model failures become per-language partial failures.
 - Agent runs and workflow branches share thread-safe budget ledgers. Retries,
   tool-induced model turns, and parallel branches consume the same run budget.

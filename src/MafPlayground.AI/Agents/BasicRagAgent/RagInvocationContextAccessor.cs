@@ -27,9 +27,31 @@ public sealed class RagInvocationContextAccessor
 
 public sealed class RagInvocationContext
 {
-    public HashSet<string> AllowedCitations { get; } = new(StringComparer.Ordinal);
+    private int _nextCitationId;
+
+    public Dictionary<string, RagEvidence> Evidence { get; } =
+        new(StringComparer.Ordinal);
 
     public int AdditionalSearches { get; set; }
+
+    public RagEvidence AddEvidence(
+        string text,
+        string citation,
+        double similarity)
+    {
+        RagEvidence? existing = Evidence.Values.FirstOrDefault(item =>
+            string.Equals(item.Citation, citation, StringComparison.Ordinal) &&
+            string.Equals(item.Text, text, StringComparison.Ordinal));
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        string citationId = $"e{++_nextCitationId}";
+        RagEvidence evidence = new(citationId, text, citation, similarity);
+        Evidence.Add(citationId, evidence);
+        return evidence;
+    }
 }
 
 public sealed class RagInvocationScope : IDisposable

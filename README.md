@@ -49,7 +49,7 @@ flowchart TB
 | Trusted user data | `UserContextProvider` | `AIContextProvider` |
 | Current date/time | `CurrentDateTimeTool` | Deterministic tool/function |
 | RAG evidence | `RagContextProvider` | Retrieval-backed context plus one narrow search tool |
-| Citation enforcement | `CitationValidator` and agent middleware | Deterministic postcondition with bounded repair |
+| Citation enforcement | Structured claims, `CitationValidator`, and stateless repair | Deterministic claim-to-evidence mapping with bounded repair |
 | Translation orchestration | Native translation graph | Workflow executors, typed messages, fan-out/fan-in edges |
 | Timeouts and cost | Chat-client decorators | Provider-neutral cross-cutting infrastructure |
 | Documents and vector search | Retrieval services and store ports | Deterministic application logic and persistence boundary |
@@ -77,13 +77,15 @@ Detailed feature documentation:
 
 ## Prerequisites
 
-- .NET 10 SDK
+- .NET SDK version pinned by [`global.json`](global.json)
 - [Ollama](https://ollama.com/) for the included local provider adapter
 - Docker with Compose for PostgreSQL/pgvector and the Aspire Dashboard
 
-The solution pins MAF `1.16.0`; the .NET DevUI/hosting packages are preview
-builds. Installed NuGet APIs are authoritative because MAF and DevUI evolve
-quickly.
+Package versions are centralized in [`Directory.Packages.props`](Directory.Packages.props),
+including MAF `1.16.0` and the preview/alpha DevUI hosting packages. Shared
+nullable, analyzer, target-framework, and warnings-as-errors settings live in
+[`Directory.Build.props`](Directory.Build.props). Installed NuGet APIs remain
+authoritative because MAF and DevUI evolve quickly.
 
 ## Quick start: Basic agent
 
@@ -292,14 +294,22 @@ docker compose down
 ## Build and test
 
 ```bash
-dotnet restore
-dotnet format --verify-no-changes
-dotnet build --no-restore
-dotnet test --no-build
+./scripts/verify.sh
 ```
 
-The default test project is deterministic and does not require a model or
-containers. PostgreSQL integration tests are opt-in:
+This runs restore, format verification, the complete solution build, and the
+deterministic unit test project. Enable the repository-owned pre-push hook once
+per clone:
+
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+The hook runs the same verification and blocks a normal local push on failure.
+Like every Git hook, it is a developer safeguard rather than remote enforcement
+and can be bypassed with `--no-verify`.
+
+PostgreSQL, Ollama contract tests, and real-model evaluations remain opt-in:
 
 ```bash
 RAG_TEST_CONNECTION_STRING='Host=localhost;Database=maf_playground;Username=postgres;Password=postgres' \
@@ -307,6 +317,8 @@ RAG_TEST_CONNECTION_STRING='Host=localhost;Database=maf_playground;Username=post
 ```
 
 Without `RAG_TEST_CONNECTION_STRING`, the database test is reported as skipped.
+See [`MafPlayground.IntegrationTests`](tests/MafPlayground.IntegrationTests/README.md)
+for the Ollama and evaluation switches.
 
 ## Extending the playground
 

@@ -22,7 +22,8 @@ public static class OllamaServiceExtensions
                 "The Ollama endpoint must be an absolute HTTP or HTTPS URI.")
             .Validate(
                 static options => options.HasValidPricing(),
-                "Ollama pricing requires a currency, version, unique model names, and non-negative token prices.");
+                "Ollama pricing requires a currency, version, unique model names, and non-negative token prices.")
+            .ValidateOnStart();
 
         serviceCollection.AddSingleton<IChatClientProvider, OllamaChatClientProvider>();
         serviceCollection.AddSingleton<IEmbeddingGeneratorProvider, OllamaEmbeddingGeneratorProvider>();

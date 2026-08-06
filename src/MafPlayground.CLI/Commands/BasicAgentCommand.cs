@@ -72,7 +72,9 @@ public static class BasicAgentCommand
         }
 
         builder.Services.AddLocalUserContext();
-        builder.Services.AddAIServices(modelSelection);
+        builder.Services
+            .AddAICore(modelSelection)
+            .AddBasicAgent();
         builder.Services.Configure<BasicAgentOptions>(
             configuration.GetSection(BasicAgentOptions.ConfigurationSectionName));
         builder.Services.Configure<AIGuardOptions>(

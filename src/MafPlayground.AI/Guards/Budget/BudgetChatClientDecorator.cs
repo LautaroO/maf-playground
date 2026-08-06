@@ -11,6 +11,8 @@ internal sealed class BudgetChatClientDecorator(
     private readonly IReadOnlyDictionary<string, IModelPricingSource> _pricingSources =
         pricingSources.ToDictionary(source => source.Provider, StringComparer.OrdinalIgnoreCase);
 
+    public int Order => ChatClientDecoratorOrder.Budget;
+
     public IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection)
     {
         ArgumentNullException.ThrowIfNull(chatClient);

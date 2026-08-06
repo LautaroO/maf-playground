@@ -1,7 +1,10 @@
+using MafPlayground.AI.Agents.BasicAgent;
+using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Guards.Budget;
 using MafPlayground.AI.Guards.Content;
 using MafPlayground.AI.Resilience;
+using MafPlayground.AI.Workflows.Translation;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -11,7 +14,7 @@ namespace MafPlayground.AI;
 
 public static class AIServiceExtensions
 {
-    public static IServiceCollection AddAIServices(
+    public static IServiceCollection AddAICore(
         this IServiceCollection serviceCollection,
         AIModelSelection modelSelection)
     {
@@ -20,116 +23,62 @@ public static class AIServiceExtensions
 
         serviceCollection.AddOptions<AgentTelemetryOptions>();
         serviceCollection.AddOptions<AIGuardOptions>()
-            .Validate(ValidateGuardOptions, "AI guard configuration is invalid.");
-        serviceCollection.AddOptions<Agents.BasicAgent.BasicAgentOptions>()
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.GuardProfile),
-                "Basic agent requires a guard profile.");
+            .Validate(ValidateGuardOptions, "AI guard configuration is invalid.")
+            .ValidateOnStart();
         serviceCollection.AddOptions<AIResilienceOptions>()
             .Validate(
                 options => options.ModelCallTimeout > TimeSpan.Zero,
-                "AI:Resilience:ModelCallTimeout must be greater than zero.");
+                "AI:Resilience:ModelCallTimeout must be greater than zero.")
+            .ValidateOnStart();
         serviceCollection.TryAddSingleton(TimeProvider.System);
-        serviceCollection.AddSingleton(modelSelection);
-        serviceCollection.AddSingleton<AIProviderRegistry>();
-        serviceCollection.AddSingleton<GuardProfileResolver>();
-        serviceCollection.AddSingleton<GuardExecutionContextAccessor>();
-        serviceCollection.AddSingleton<IContentInspector, RegexPiiContentInspector>();
-        serviceCollection.AddSingleton<ContentGuard>();
-        serviceCollection.AddSingleton<AgentGuardPipeline>();
-        serviceCollection.AddSingleton<WorkflowGuardCoordinator>();
-        serviceCollection.AddSingleton<IChatClientDecorator, TimeoutChatClientDecorator>();
-        serviceCollection.AddSingleton<IChatClientDecorator, BudgetChatClientDecorator>();
-        serviceCollection.AddSingleton<IChatClientDecorator, ContentGuardChatClientDecorator>();
-        serviceCollection.AddSingleton<IChatClient>(serviceProvider =>
+        serviceCollection.TryAddSingleton(modelSelection);
+        serviceCollection.TryAddSingleton<AIProviderRegistry>();
+        serviceCollection.TryAddSingleton<GuardProfileResolver>();
+        serviceCollection.TryAddSingleton<GuardExecutionContextAccessor>();
+        serviceCollection.TryAddSingleton<IContentInspector, RegexPiiContentInspector>();
+        serviceCollection.TryAddSingleton<ContentGuard>();
+        serviceCollection.TryAddSingleton<AgentGuardPipeline>();
+        serviceCollection.TryAddSingleton<WorkflowGuardCoordinator>();
+        serviceCollection.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IChatClientDecorator, TimeoutChatClientDecorator>());
+        serviceCollection.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IChatClientDecorator, BudgetChatClientDecorator>());
+        serviceCollection.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IChatClientDecorator, ContentGuardChatClientDecorator>());
+        serviceCollection.TryAddSingleton<IChatClient>(serviceProvider =>
         {
             IChatClient chatClient = serviceProvider
                 .GetRequiredService<AIProviderRegistry>()
                 .CreateChatClient(modelSelection);
 
-            foreach (IChatClientDecorator decorator in
-                serviceProvider.GetServices<IChatClientDecorator>())
+            IChatClientDecorator[] decorators = serviceProvider
+                .GetServices<IChatClientDecorator>()
+                .OrderBy(decorator => decorator.Order)
+                .ToArray();
+            if (decorators.Select(decorator => decorator.Order).Distinct().Count() !=
+                decorators.Length)
+            {
+                throw new InvalidOperationException(
+                    "Chat-client decorators must have unique explicit order values.");
+            }
+
+            foreach (IChatClientDecorator decorator in decorators)
             {
                 chatClient = decorator.Decorate(chatClient, modelSelection);
             }
 
             return chatClient;
         });
-        serviceCollection.AddSingleton<Tools.CurrentDateTimeTool>();
-        serviceCollection.AddSingleton<UserContextProvider>();
-        serviceCollection.AddSingleton<Agents.BasicAgent.BasicAgent>();
-        serviceCollection.AddOptions<Agents.BasicRagAgent.BasicRagAgentOptions>()
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.KnowledgeBase),
-                "Basic RAG agent requires a knowledge base.")
-            .Validate(
-                options => options.Retrieval.TopK > 0,
-                "Basic RAG agent retrieval TopK must be greater than zero.")
-            .Validate(
-                options => options.Retrieval.MinimumSimilarity is >= 0 and <= 1,
-                "Basic RAG agent retrieval MinimumSimilarity must be between zero and one.")
-            .Validate(
-                options => options.Retrieval.MaximumAdditionalSearches >= 0,
-                "Basic RAG agent retrieval MaximumAdditionalSearches cannot be negative.")
-            .Validate(
-                options => options.Retrieval.MaximumQueryCharacters > 0,
-                "Basic RAG agent retrieval MaximumQueryCharacters must be greater than zero.")
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.GuardProfile),
-                "Basic RAG agent requires a guard profile.");
-        serviceCollection.AddSingleton<Agents.BasicRagAgent.RagInvocationContextAccessor>();
-        serviceCollection.AddSingleton<Agents.BasicRagAgent.RagContextProvider>(provider =>
-        {
-            Agents.BasicRagAgent.BasicRagAgentOptions options = provider
-                .GetRequiredService<IOptions<Agents.BasicRagAgent.BasicRagAgentOptions>>()
-                .Value;
-            Retrieval.IKnowledgeSearch search = provider
-                .GetRequiredService<Retrieval.IKnowledgeSearchFactory>()
-                .Create(
-                    new Retrieval.KnowledgeBaseId(options.KnowledgeBase),
-                    new Retrieval.KnowledgeSearchOptions
-                    {
-                        TopK = options.Retrieval.TopK,
-                        MinimumSimilarity = options.Retrieval.MinimumSimilarity,
-                        MaximumQueryCharacters = options.Retrieval.MaximumQueryCharacters,
-                        MetadataFilters = options.Retrieval.MetadataFilters,
-                    });
-            return new Agents.BasicRagAgent.RagContextProvider(
-                search,
-                options.Retrieval,
-                provider.GetRequiredService<Agents.BasicRagAgent.RagInvocationContextAccessor>(),
-                provider.GetRequiredService<ContentGuard>(),
-                provider.GetRequiredService<GuardProfileResolver>().Resolve(options.GuardProfile));
-        });
-        serviceCollection.AddSingleton<Agents.BasicRagAgent.CitationValidator>();
-        serviceCollection.AddSingleton<Agents.BasicRagAgent.BasicRagAgent>();
-        serviceCollection.AddOptions<Workflows.Translation.TranslationWorkflowOptions>()
-            .Validate(
-                options => options.MaxTargetLanguages > 0,
-                "TranslationWorkflow:MaxTargetLanguages must be greater than zero.")
-            .Validate(
-                options => options.MaxInputCharacters > 0,
-                "TranslationWorkflow:MaxInputCharacters must be greater than zero.")
-            .Validate(
-                options => options.MaxTranslationRetries >= 0,
-                "TranslationWorkflow:MaxTranslationRetries cannot be negative.")
-            .Validate(
-                options => options.MinimumValidationConfidence is >= 0 and <= 1,
-                "TranslationWorkflow:MinimumValidationConfidence must be between zero and one.")
-            .Validate(
-                options => options.SupportedTargetLanguages is { Length: > 0 },
-                "TranslationWorkflow:SupportedTargetLanguages must contain at least one language.")
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.GuardProfile),
-                "Translation workflow requires a guard profile.");
-        serviceCollection.AddSingleton<Workflows.Translation.ITranslationModel,
-            Workflows.Translation.ChatClientTranslationModel>();
-        serviceCollection.AddSingleton<Workflows.Translation.TranslationService>();
-        serviceCollection.AddSingleton<Workflows.Translation.TranslationWorkflowFactory>();
-        serviceCollection.AddSingleton<Workflows.Translation.TranslationWorkflowRunner>();
-
         return serviceCollection;
     }
+
+    public static IServiceCollection AddAIServices(
+        this IServiceCollection serviceCollection,
+        AIModelSelection modelSelection) => serviceCollection
+        .AddAICore(modelSelection)
+        .AddBasicAgent()
+        .AddBasicRagAgent()
+        .AddTranslationWorkflow();
 
     private static bool ValidateGuardOptions(AIGuardOptions options)
     {

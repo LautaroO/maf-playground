@@ -20,6 +20,12 @@ The collection name is unique per run. The test adds data to the configured
 database and does not currently delete its collection afterward; use a local test
 database, not a shared or production database.
 
+`OllamaProviderContractTests` checks real structured output, usage metadata, and
+streaming. `AgentEvaluationTests` contains a small real-model RAG grounding set
+and translation invariants. These two categories have separate switches so
+provider compatibility can be checked without automatically running quality
+evaluations.
+
 ## Run with local Compose infrastructure
 
 ```bash
@@ -30,6 +36,25 @@ RAG_TEST_CONNECTION_STRING='Host=localhost;Port=5432;Database=maf_playground;Use
 
 Without `RAG_TEST_CONNECTION_STRING`, `PostgresFactAttribute` reports the database
 test as skipped instead of failing the default solution test run.
+
+Run Ollama provider contract tests:
+
+```bash
+RUN_OLLAMA_TESTS=true AI_MODEL='ollama:llama3.1:8b' \
+  dotnet test tests/MafPlayground.IntegrationTests/MafPlayground.IntegrationTests.csproj \
+  --filter FullyQualifiedName~OllamaProviderContractTests
+```
+
+Run the real-model evaluation set:
+
+```bash
+RUN_MODEL_EVALUATIONS=true AI_MODEL='ollama:llama3.1:8b' \
+  dotnet test tests/MafPlayground.IntegrationTests/MafPlayground.IntegrationTests.csproj \
+  --filter FullyQualifiedName~AgentEvaluationTests
+```
+
+Both use `AI__PROVIDERS__OLLAMA__ENDPOINT` when supplied and otherwise target
+`http://localhost:11434`.
 
 ## Scope rules
 

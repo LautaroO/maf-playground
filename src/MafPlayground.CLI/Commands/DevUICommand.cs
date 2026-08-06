@@ -86,7 +86,11 @@ public static class DevUICommand
         builder.WebHost.UseUrls(url);
 
         builder.Services.AddLocalUserContext();
-        builder.Services.AddAIServices(modelSelection);
+        builder.Services
+            .AddAICore(modelSelection)
+            .AddBasicAgent()
+            .AddBasicRagAgent()
+            .AddTranslationWorkflow();
         builder.Services.Configure<BasicAgentOptions>(
             builder.Configuration.GetSection(BasicAgentOptions.ConfigurationSectionName));
         builder.Services.Configure<AIGuardOptions>(

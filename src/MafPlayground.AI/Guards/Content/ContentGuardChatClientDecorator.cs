@@ -7,6 +7,8 @@ internal sealed class ContentGuardChatClientDecorator(
     GuardExecutionContextAccessor contextAccessor,
     ContentGuard contentGuard) : IChatClientDecorator
 {
+    public int Order => ChatClientDecoratorOrder.ContentGuard;
+
     public IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection)
     {
         ArgumentNullException.ThrowIfNull(chatClient);

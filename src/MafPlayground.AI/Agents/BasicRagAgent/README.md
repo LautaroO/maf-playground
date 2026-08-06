@@ -22,11 +22,15 @@ The design requires the agent to:
 - treat retrieved document text as untrusted data, never as instructions;
 - preserve exact factual values and never invent a title, page, or source ID.
 
-`CitationValidator` is a structural guardrail. It verifies that at least one
-citation exists and that every citation-shaped value is in the current allowlist.
-It does not independently prove that each sentence is semantically entailed by
-its cited chunk. Production-critical use would benefit from a stronger
-claim-level grounding evaluator in addition to the current model instructions.
+The model does not return final prose. It returns a `RagAnswerDraft` containing
+an `insufficientEvidence` decision and atomic claims with citation IDs.
+`CitationValidator` deterministically requires every claim to have at least one
+ID from the frozen invocation evidence. Application code then renders the stable
+title/page/source citation, so the model cannot invent its public form.
+
+This proves citation coverage and allowlist membership. It does not independently
+prove semantic entailment between claim and chunk; production-critical use still
+needs a claim-level grounding evaluator and representative evaluations.
 
 ## System architecture
 
@@ -50,11 +54,12 @@ flowchart TB
         StoreSearch --> Evidence[Top-K chunks above threshold]
         Evidence --> Context
         Context --> Model[IChatClient]
-        Model --> Draft[Draft answer]
-        Draft --> Check[CitationValidator middleware]
-        Check -->|valid| Answer[Grounded answer]
-        Check -->|invalid, evidence exists| Repair[One citation repair]
-        Repair --> Model
+        Model --> Draft[Structured atomic claims]
+        Draft --> Check[Deterministic claim validator]
+        Check -->|valid| Render[Deterministic citation renderer]
+        Render --> Answer[Grounded answer]
+        Check -->|invalid, evidence exists| Repair[Stateless repair over frozen evidence]
+        Repair --> Check
         Check -->|still invalid or no evidence| Refusal[No-evidence answer]
     end
 
@@ -70,10 +75,12 @@ but it cannot write to the knowledge base.
 
 | Component | Kind | Responsibility |
 | --- | --- | --- |
-| [`BasicRagAgent.cs`](./BasicRagAgent.cs) | MAF agent and middleware | Creates the grounded agent, scopes invocation state, validates answers, performs one bounded citation repair, and applies telemetry. |
-| [`RagContextProvider.cs`](./RagContextProvider.cs) | MAF context provider | Retrieves initial evidence, creates the bounded refinement tool, injects grounding instructions, and allowlists citations. |
-| [`RagInvocationContextAccessor.cs`](./RagInvocationContextAccessor.cs) | Invocation state | Isolates allowed citations and the additional-search count with an `AsyncLocal` scope. It is not memory. |
-| [`CitationValidator.cs`](./CitationValidator.cs) | Deterministic validator | Accepts the no-evidence response when nothing was found, or exact citations present in the invocation allowlist. |
+| [`BasicRagAgent.cs`](./BasicRagAgent.cs) | MAF composition | Creates the chat agent and composes structured grounding, guards, and telemetry. |
+| [`StructuredRagAgent.cs`](./StructuredRagAgent.cs) | MAF agent middleware | Requests typed claims, stages session history, validates/repairs once, renders citations, and commits only the validated public exchange. |
+| [`RepairService.cs`](./RepairService.cs) | Bounded semantic service | Repairs one invalid draft through `IChatClient` using frozen evidence, without session, tools, or retrieval. |
+| [`RagContextProvider.cs`](./RagContextProvider.cs) | MAF context provider | Retrieves initial evidence, assigns invocation-local IDs, creates the bounded refinement tool, and injects untrusted evidence as data. |
+| [`RagInvocationContextAccessor.cs`](./RagInvocationContextAccessor.cs) | Invocation state | Isolates frozen evidence and the additional-search count with an `AsyncLocal` scope. It is not memory. |
+| [`CitationValidator.cs`](./CitationValidator.cs) | Deterministic validator/renderer | Requires citation IDs on every claim and renders only stable citations owned by retrieved evidence. |
 | `IKnowledgeSearch` | Application port | Converts a natural-language query into relevant `KnowledgeSearchResult` values. |
 | `KnowledgeSearchService` | Application service | Embeds a query and asks the store for top-K results above the similarity threshold. |
 | `KnowledgeIngestionService` | Application service | Extracts, chunks, embeds, and atomically replaces a document's indexed chunks. |
@@ -110,18 +117,18 @@ combinations are rejected instead of being mixed in one vector space.
    metadata filters, `TopK`, and `MinimumSimilarity` to the store.
 3. The PostgreSQL adapter applies exact metadata containment, calculates cosine
    distance, filters and orders chunks, and returns at most `TopK` results.
-4. The context provider sanitizes retrieved text according to the agent's guard
-   profile and injects bounded chunks as a user-role evidence message, not as
-   system instructions. Each includes an exact citation generated from its
-   stored title, page, and stable source ID.
-5. It also exposes `search_knowledge_base`, a narrow read-only tool for one
-   refined semantic query by default. Its results join the same citation allowlist.
-6. The model drafts an answer from automatic and optionally refined evidence.
-7. Middleware compares every citation-shaped value with the invocation allowlist.
-8. Invalid citations trigger one repair model invocation using the exact allowed
-   values. This is citation repair, not another retrieval retry.
-9. A second invalid answer, or an invocation with no evidence, becomes the fixed
-   no-evidence answer.
+4. The context provider sanitizes retrieved text, assigns IDs such as `e1`, and
+   injects bounded chunks as a user-role evidence message, not as system
+   instructions. The stable citation remains application-owned.
+5. It exposes `search_knowledge_base`, a narrow read-only tool for one refined
+   query by default. Additional results receive IDs in the same frozen invocation.
+6. The model returns `RagAnswerDraft`, never final citation text.
+7. The validator rejects the whole draft if any claim lacks an allowed evidence
+   ID, preventing one valid citation from covering unrelated prose.
+8. An invalid draft gets one stateless structured repair using only the question,
+   frozen evidence, draft, and validation issues. It cannot search again.
+9. Code renders each accepted claim with its application-owned citations. A
+   second invalid draft or no evidence becomes the fixed no-evidence answer.
 
 The optional refinement helps when the user's wording is not close enough to the
 indexed text. `MaximumAdditionalSearches` bounds the extra work and cost.
@@ -130,9 +137,9 @@ indexed text. `MaximumAdditionalSearches` bounds the extra work and cost.
 
 | State | Owner and lifetime |
 | --- | --- |
-| User question and chat history | MAF agent session; conversation-scoped. |
+| Validated user/assistant history | MAF in-memory agent session; conversation-scoped. Invalid structured drafts and repair prompts are not committed. |
 | Retrieved chunks | `AIContext`; ephemeral for the model invocation. |
-| Allowed citations and refinement count | `RagInvocationContext`; one outer agent run. |
+| Frozen evidence IDs and refinement count | `RagInvocationContext`; one outer agent run. |
 | Documents, chunks, embeddings, hashes, metadata | `IKnowledgeStore`; durable knowledge-base state. |
 | Extraction and retrieval configuration | Host configuration. |
 
@@ -302,7 +309,7 @@ invented citation.
 | Wrong embedding count/dimension | Ingestion fails before storing incompatible data. |
 | Different collection embedding identity | The store requires re-indexing or another collection. |
 | No result above threshold | The agent returns the fixed no-evidence answer. |
-| Missing or invented citations | One repair attempt, then no-evidence fallback. |
+| Missing citation on any claim or invented evidence ID | One stateless repair attempt, then exact no-evidence fallback. |
 | Cancellation | Propagates through extraction, embeddings, EF Core, MAF, and model calls. |
 | Database/provider unavailable | The infrastructure error reaches the host; it is not disguised as no evidence. |
 
@@ -314,9 +321,10 @@ Sensitive prompts, retrieved text, arguments, and responses are excluded by
 default.
 
 Unit tests use fake chat and retrieval services for automatic context, refined
-search limits, invocation isolation, citation acceptance, repair, and fallback.
-Retrieval tests cover extraction, chunking, source IDs, and ingestion skipping.
-The PostgreSQL integration test is opt-in because it requires infrastructure.
+search limits, invocation isolation, claim-level citation coverage, stateless
+repair, clean history, and exact fallback. Retrieval tests cover extraction,
+chunking, source IDs, and ingestion skipping. PostgreSQL tests, Ollama provider
+contracts, and real-model grounding evaluations are opt-in.
 
 Current deliberate limits are text-based PDFs only, exact string document
 metadata filters rather than a tenant/ACL authorization model, character-based

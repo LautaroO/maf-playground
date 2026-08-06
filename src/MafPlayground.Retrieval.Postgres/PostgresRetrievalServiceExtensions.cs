@@ -11,7 +11,10 @@ public static class PostgresRetrievalServiceExtensions
     {
         services.AddOptions<PostgresRetrievalOptions>()
             .Bind(configuration.GetSection(PostgresRetrievalOptions.ConfigurationSectionName))
-            .Validate(value => !string.IsNullOrWhiteSpace(value.ConnectionString), "A PostgreSQL connection string is required.");
+            .Validate(
+                value => !string.IsNullOrWhiteSpace(value.ConnectionString),
+                "A PostgreSQL connection string is required.")
+            .ValidateOnStart();
         services.AddPooledDbContextFactory<KnowledgeDbContext>((provider, options) =>
         {
             string connectionString = provider.GetRequiredService<IOptions<PostgresRetrievalOptions>>().Value.ConnectionString;
