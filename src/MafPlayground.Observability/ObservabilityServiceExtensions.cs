@@ -58,6 +58,7 @@ public static class ObservabilityServiceExtensions
             .WithMetrics(metrics => metrics
                 .AddMeter(
                     AITelemetry.AgentSourceName,
+                    AITelemetry.OperationMeterName,
                     ObservabilityTelemetry.CostMeterName)
                 .AddOtlpExporter());
 

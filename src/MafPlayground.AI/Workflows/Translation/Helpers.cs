@@ -104,6 +104,27 @@ internal static partial class TranslationWorkflowHelpers
     public static string NormalizeExecutorId(string language) =>
         language.ToLowerInvariant().Replace('-', '_');
 
+    public static void RecordBranchOperation(
+        string operationName,
+        TranslationBranchState state,
+        TimeSpan duration,
+        bool skippedForUpstreamError = false)
+    {
+        string outcome = skippedForUpstreamError
+            ? "skipped"
+            : state.ErrorType is not null
+                ? state.ShouldRetry ? "retry" : "error"
+                : "success";
+        AITelemetry.RecordOperation(
+            operationName,
+            "workflow",
+            "translation",
+            outcome,
+            duration,
+            skippedForUpstreamError ? null : state.ErrorType,
+            branchName: state.TargetLanguage);
+    }
+
     [GeneratedRegex("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", RegexOptions.CultureInvariant)]
     private static partial Regex LanguageIdentifierRegex();
 }

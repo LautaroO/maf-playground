@@ -18,7 +18,8 @@ internal sealed record TranslationBranchState(
     double Confidence = 0,
     IReadOnlyList<string>? Feedback = null,
     bool ShouldRetry = false,
-    string? Error = null);
+    string? Error = null,
+    string? ErrorType = null);
 
 public sealed record TranslationValidation(
     bool IsValid,

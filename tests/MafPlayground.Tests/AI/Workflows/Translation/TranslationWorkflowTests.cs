@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Text;
 using MafPlayground.AI;
 using MafPlayground.AI.Workflows.Translation;
@@ -94,6 +95,74 @@ public sealed class TranslationWorkflowTests
         Assert.DoesNotContain(
             stoppedActivities.SelectMany(activity => activity.TagObjects),
             tag => Equals(tag.Value, "Hello"));
+    }
+
+    [Fact]
+    public async Task RunAsync_FailedBranch_EmitsErrorTraceAndFailureMetric()
+    {
+        ConcurrentQueue<Activity> stoppedActivities = new();
+        using ActivityListener activityListener = new()
+        {
+            ShouldListenTo = source => source.Name == AITelemetry.WorkflowSourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = stoppedActivities.Enqueue,
+        };
+        ActivitySource.AddActivityListener(activityListener);
+
+        using Activity parent = new Activity("translation-failure-test").Start();
+        ActivityTraceId traceId = parent.TraceId;
+        ConcurrentQueue<(long Value, KeyValuePair<string, object?>[] Tags)> failures = new();
+        using MeterListener meterListener = new();
+        meterListener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == AITelemetry.OperationMeterName &&
+                instrument.Name == AITelemetry.OperationFailureMetricName)
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        meterListener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            if (Activity.Current?.TraceId == traceId)
+            {
+                failures.Enqueue((value, tags.ToArray()));
+            }
+        });
+        meterListener.Start();
+
+        TranslationWorkflowRunner runner = CreateRunner(new FailingTranslationModel());
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        Assert.False(Assert.Single(result.Translations).IsValid);
+        Activity errorActivity = Assert.Single(
+            stoppedActivities,
+            activity => activity.TraceId == traceId &&
+                activity.Status == ActivityStatusCode.Error &&
+                Equals(
+                    activity.GetTagItem("maf_playground.workflow.branch"),
+                    "es"));
+        Assert.Equal(
+            typeof(InvalidOperationException).FullName,
+            errorActivity.GetTagItem(AITelemetry.ErrorTypeTag));
+        Assert.Equal("error", errorActivity.GetTagItem(AITelemetry.OutcomeTag));
+        Assert.DoesNotContain(
+            errorActivity.TagObjects,
+            tag => Equals(tag.Value, "provider unavailable"));
+
+        (long failureCount, KeyValuePair<string, object?>[] metricTags) =
+            Assert.Single(failures);
+        Assert.Equal(1, failureCount);
+        Assert.Contains(metricTags, tag =>
+            tag.Key == AITelemetry.OperationNameTag &&
+            Equals(tag.Value, "translation.translate"));
+        Assert.Contains(metricTags, tag =>
+            tag.Key == "maf_playground.workflow.branch" && Equals(tag.Value, "es"));
+        Assert.Contains(metricTags, tag =>
+            tag.Key == AITelemetry.ErrorTypeTag &&
+            Equals(tag.Value, typeof(InvalidOperationException).FullName));
     }
 
     [Fact]

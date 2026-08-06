@@ -27,7 +27,7 @@ MafPlayground.Tests/
 | Resilience | Timeout wrapping, cancellation distinction, and streaming behavior. |
 | Translation workflow | Validation, parallel fan-out, ordered fan-in, retry feedback, partial failure, streaming events, topology, and DevUI input adaptation. |
 | CLI | Parser hierarchy, configuration defaults, composition, console streaming, inspection, and trace mapping. |
-| Observability | Opt-in registration, telemetry privacy, and cost estimation. |
+| Observability | Model/tool/timeout/workflow error spans, failure metrics, DevUI error mapping, telemetry privacy, per-call cost estimation, and sums across retries, tool turns, and parallel workflow branches. |
 | Retrieval | Extractor registry, PDF warnings, chunking, embedding selection, and ingestion behavior. |
 
 ## Test doubles
@@ -64,4 +64,3 @@ dotnet test tests/MafPlayground.Tests/MafPlayground.Tests.csproj --no-build
   capture is deliberately enabled for that test.
 - Move any test requiring external infrastructure to
   `MafPlayground.IntegrationTests` and make it explicitly opt-in.
-

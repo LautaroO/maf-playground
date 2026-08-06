@@ -24,7 +24,7 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
         RequestOptions.Add(options);
         return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, NextResponse()))
         {
-            Usage = usage,
+            Usage = CloneUsage(),
         });
     }
 
@@ -43,7 +43,7 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
         {
             yield return new ChatResponseUpdate
             {
-                Contents = [new UsageContent(usage)],
+                Contents = [new UsageContent(CloneUsage()!)],
             };
         }
     }
@@ -57,4 +57,13 @@ internal sealed class FakeChatClient(string responseText, UsageDetails? usage = 
 
     private string NextResponse() =>
         _responses.Count > 1 ? _responses.Dequeue() : _responses.Peek();
+
+    private UsageDetails? CloneUsage() => usage is null
+        ? null
+        : new UsageDetails
+        {
+            InputTokenCount = usage.InputTokenCount,
+            OutputTokenCount = usage.OutputTokenCount,
+            TotalTokenCount = usage.TotalTokenCount,
+        };
 }

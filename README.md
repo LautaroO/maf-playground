@@ -267,6 +267,18 @@ and token usage are available. Rates use currency units per one million tokens:
 cost = (input tokens × input rate + output tokens × output rate) / 1,000,000
 ```
 
+The metric emits once per model call, so its aggregated sum includes retries,
+model turns around tool execution, and calls from every workflow branch. For a
+single execution, sum model-call spans in the same trace; no duplicate parent
+total is emitted. Deterministic tools do not add model cost by themselves.
+
+Failure telemetry includes MAF model/tool error spans and the application metrics
+`maf_playground.ai.operation.count`,
+`maf_playground.ai.operation.failure.count`, and
+`maf_playground.ai.operation.duration`. Handled partial workflow failures remain
+visible by operation, branch, outcome, and stable `error.type` without exporting
+exception messages.
+
 The configured local Ollama rate is synthetic for testing and is not a bill.
 Prompt, response, tool, and retrieved-document payloads are excluded by default.
 

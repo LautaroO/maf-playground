@@ -29,6 +29,7 @@ public sealed class TranslationService(
                 Feedback = null,
                 ShouldRetry = false,
                 Error = null,
+                ErrorType = null,
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -45,6 +46,7 @@ public sealed class TranslationService(
                 Feedback = null,
                 ShouldRetry = false,
                 Error = exception.Message,
+                ErrorType = exception.GetType().FullName,
             };
         }
     }
@@ -55,7 +57,10 @@ public sealed class TranslationService(
     {
         if (state.Error is not null || string.IsNullOrWhiteSpace(state.TranslatedText))
         {
-            return FailedState(state, state.Error ?? "The translation was empty.");
+            return FailedState(
+                state,
+                state.Error ?? "The translation was empty.",
+                state.ErrorType ?? "invalid_translation");
         }
 
         TranslationValidation validation;
@@ -83,7 +88,10 @@ public sealed class TranslationService(
         }
         catch (Exception exception)
         {
-            return FailedState(state, $"Validation failed: {exception.Message}");
+            return FailedState(
+                state,
+                $"Validation failed: {exception.Message}",
+                exception.GetType().FullName ?? exception.GetType().Name);
         }
 
         bool accepted = validation.IsValid &&
@@ -100,6 +108,7 @@ public sealed class TranslationService(
             Confidence = validation.Confidence,
             Feedback = validationIssues,
             ShouldRetry = shouldRetry,
+            ErrorType = accepted ? null : "validation_rejected",
         };
     }
 
@@ -115,7 +124,8 @@ public sealed class TranslationService(
 
     private static TranslationBranchState FailedState(
         TranslationBranchState state,
-        string error) =>
+        string error,
+        string errorType) =>
         state with
         {
             IsValid = false,
@@ -123,5 +133,6 @@ public sealed class TranslationService(
             Feedback = [error],
             ShouldRetry = false,
             Error = error,
+            ErrorType = errorType,
         };
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Agents.AI;
@@ -34,12 +35,17 @@ internal sealed class TranslationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
+        Stopwatch elapsed = Stopwatch.StartNew();
         TranslationBranchState state = await translationService.TranslateAsync(
             new TranslationBranchState(
                 request.Text,
                 request.TargetLanguages,
                 targetLanguage),
             cancellationToken);
+        TranslationWorkflowHelpers.RecordBranchOperation(
+            "translation.translate",
+            state,
+            elapsed.Elapsed);
         await context.SendMessageAsync(state, cancellationToken);
     }
 
@@ -48,9 +54,14 @@ internal sealed class TranslationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
+        Stopwatch elapsed = Stopwatch.StartNew();
         TranslationBranchState translatedState = await translationService.TranslateAsync(
             state,
             cancellationToken);
+        TranslationWorkflowHelpers.RecordBranchOperation(
+            "translation.translate",
+            translatedState,
+            elapsed.Elapsed);
         await context.SendMessageAsync(translatedState, cancellationToken);
     }
 
@@ -75,9 +86,16 @@ internal sealed class TranslationValidationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
+        bool skippedForUpstreamError = state.ErrorType is not null;
+        Stopwatch elapsed = Stopwatch.StartNew();
         TranslationBranchState validatedState = await translationService.ValidateAsync(
             state,
             cancellationToken);
+        TranslationWorkflowHelpers.RecordBranchOperation(
+            "translation.validate",
+            validatedState,
+            elapsed.Elapsed,
+            skippedForUpstreamError);
         if (validatedState.ShouldRetry)
         {
             await context.SendMessageAsync(

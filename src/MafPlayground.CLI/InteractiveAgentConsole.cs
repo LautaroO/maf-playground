@@ -12,25 +12,50 @@ public sealed class InteractiveAgentConsole
 {
     private static readonly ActivitySource ActivitySource =
         new(ObservabilityTelemetry.TestHarnessSourceName);
-    private static readonly TimeSpan TurnTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DefaultTurnTimeout = TimeSpan.FromMinutes(5);
 
     private readonly TextReader _input;
     private readonly TextWriter _output;
     private readonly TextWriter _error;
     private readonly ILogger<InteractiveAgentConsole> _logger;
+    private readonly TimeSpan _turnTimeout;
 
     public InteractiveAgentConsole()
-        : this(Console.In, Console.Out, Console.Error, NullLogger<InteractiveAgentConsole>.Instance)
+        : this(
+            Console.In,
+            Console.Out,
+            Console.Error,
+            NullLogger<InteractiveAgentConsole>.Instance,
+            DefaultTurnTimeout)
     {
     }
 
     public InteractiveAgentConsole(ILogger<InteractiveAgentConsole> logger)
-        : this(Console.In, Console.Out, Console.Error, logger)
+        : this(Console.In, Console.Out, Console.Error, logger, DefaultTurnTimeout)
     {
     }
 
     public InteractiveAgentConsole(TextReader input, TextWriter output, TextWriter error)
-        : this(input, output, error, NullLogger<InteractiveAgentConsole>.Instance)
+        : this(
+            input,
+            output,
+            error,
+            NullLogger<InteractiveAgentConsole>.Instance,
+            DefaultTurnTimeout)
+    {
+    }
+
+    public InteractiveAgentConsole(
+        TextReader input,
+        TextWriter output,
+        TextWriter error,
+        TimeSpan turnTimeout)
+        : this(
+            input,
+            output,
+            error,
+            NullLogger<InteractiveAgentConsole>.Instance,
+            turnTimeout)
     {
     }
 
@@ -38,12 +63,21 @@ public sealed class InteractiveAgentConsole
         TextReader input,
         TextWriter output,
         TextWriter error,
-        ILogger<InteractiveAgentConsole> logger)
+        ILogger<InteractiveAgentConsole> logger,
+        TimeSpan turnTimeout)
     {
+        if (turnTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(turnTimeout),
+                "The turn timeout must be greater than zero.");
+        }
+
         _input = input ?? throw new ArgumentNullException(nameof(input));
         _output = output ?? throw new ArgumentNullException(nameof(output));
         _error = error ?? throw new ArgumentNullException(nameof(error));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _turnTimeout = turnTimeout;
     }
 
     public async Task<int> RunAsync(
@@ -123,13 +157,15 @@ public sealed class InteractiveAgentConsole
             modelSelection.Model,
             mode);
 
+        Stopwatch elapsed = Stopwatch.StartNew();
+        string outcome = "success";
+        string? errorType = null;
         using CancellationTokenSource timeoutSource =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(TurnTimeout);
+        timeoutSource.CancelAfter(_turnTimeout);
 
         try
         {
-            Stopwatch elapsed = Stopwatch.StartNew();
             Dictionary<string, (string Name, TimeSpan StartedAt)> toolCalls = [];
             if (watch)
             {
@@ -185,33 +221,47 @@ public sealed class InteractiveAgentConsole
                     elapsed,
                     $"agent completed in {elapsed.Elapsed.TotalMilliseconds:0} ms");
             }
-            activity?.SetTag("maf_playground.outcome", "success");
             _logger.LogInformation("Agent test turn completed successfully");
             return true;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (
+            timeoutSource.IsCancellationRequested &&
+            !cancellationToken.IsCancellationRequested)
         {
-            activity?.SetTag("maf_playground.outcome", "timeout");
-            activity?.SetStatus(ActivityStatusCode.Error, "Agent request timed out.");
-            _logger.LogWarning("Agent test turn timed out after {Timeout}", TurnTimeout);
-            await _error.WriteLineAsync($"The agent request timed out after {TurnTimeout.TotalMinutes:0} minutes.");
+            outcome = "timeout";
+            errorType = typeof(TimeoutException).FullName;
+            _logger.LogWarning("Agent test turn timed out after {Timeout}", _turnTimeout);
+            await _error.WriteLineAsync(
+                $"The agent request timed out after {_turnTimeout.TotalSeconds:0.###} seconds.");
             return false;
         }
         catch (OperationCanceledException)
         {
-            activity?.SetTag("maf_playground.outcome", "cancelled");
+            outcome = "cancelled";
             _logger.LogInformation("Agent test turn was cancelled");
             throw;
         }
         catch (Exception exception)
         {
-            activity?.SetTag("maf_playground.outcome", "error");
-            activity?.SetStatus(ActivityStatusCode.Error, exception.GetType().Name);
+            outcome = "error";
+            errorType = exception.GetType().FullName;
             _logger.LogError(
                 "Agent test turn failed with {ExceptionType}",
                 exception.GetType().FullName);
             await _error.WriteLineAsync($"Agent request failed: {exception.Message}");
             return false;
+        }
+        finally
+        {
+            AITelemetry.RecordOperation(
+                "agent.test.turn",
+                "agent",
+                agent.Name ?? "unnamed",
+                outcome,
+                elapsed.Elapsed,
+                errorType,
+                modelSelection.Provider,
+                modelSelection.Model);
         }
     }
 

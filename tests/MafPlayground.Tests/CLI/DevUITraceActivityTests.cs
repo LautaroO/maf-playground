@@ -36,6 +36,27 @@ public sealed class DevUITraceActivityTests
     }
 
     [Fact]
+    public void FromActivity_MapsErrorStatusAndStableErrorType()
+    {
+        using Activity activity = new("invoke_agent basic-agent");
+        activity.Start();
+        activity.SetTag(
+            AITelemetry.ErrorTypeTag,
+            typeof(InvalidOperationException).FullName);
+        activity.SetStatus(
+            ActivityStatusCode.Error,
+            typeof(InvalidOperationException).FullName);
+        activity.Stop();
+
+        DevUITraceActivity result = DevUITraceActivity.FromActivity(activity);
+
+        Assert.Equal("ERROR", result.Status);
+        Assert.Equal(
+            typeof(InvalidOperationException).FullName,
+            result.Attributes[AITelemetry.ErrorTypeTag]);
+    }
+
+    [Fact]
     public async Task ResponseStream_InsertsTraceEventBeforeNextResponseFrame()
     {
         await using MemoryStream output = new();
