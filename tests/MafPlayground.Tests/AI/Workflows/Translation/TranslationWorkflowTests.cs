@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text;
+using System.Text.Json;
 using MafPlayground.AI;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.AI.Guards;
@@ -28,6 +29,32 @@ public sealed class TranslationWorkflowTests
             result.Translations.Select(translation => translation.TargetLanguage));
         Assert.All(result.Translations, translation => Assert.True(translation.IsValid));
         Assert.Equal(3, model.MaximumConcurrentTranslations);
+    }
+
+    [Fact]
+    public async Task RunAsync_SupportsTwentyFiveLanguagesInParallel()
+    {
+        string[] languages =
+        [
+            "es", "fr", "pt-BR", "de", "it", "nl", "pl", "ru", "uk", "tr",
+            "ar", "he", "hi", "id", "ja", "ko", "zh-CN", "zh-TW", "sv", "no",
+            "da", "fi", "cs", "el", "ro",
+        ];
+        ParallelTranslationModel model = new(languages);
+        TranslationWorkflowRunner runner = CreateRunner(
+            model,
+            new TranslationWorkflowOptions
+            {
+                SupportedTargetLanguages = languages,
+                MaxTargetLanguages = languages.Length,
+            });
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", languages));
+
+        Assert.Equal(languages, result.Translations.Select(translation => translation.TargetLanguage));
+        Assert.All(result.Translations, translation => Assert.True(translation.IsValid));
+        Assert.Equal(languages.Length, model.MaximumConcurrentTranslations);
     }
 
     [Fact]
@@ -61,6 +88,21 @@ public sealed class TranslationWorkflowTests
         Assert.Contains("validate-es", graph, StringComparison.Ordinal);
         Assert.Contains("retry with feedback", graph, StringComparison.Ordinal);
         Assert.Contains("translation-aggregate", graph, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InputContract_ExposesPropertyDescriptionsInJsonSchema()
+    {
+        JsonElement schema = AIJsonUtilities.CreateJsonSchema(
+            typeof(TranslationWorkflowRequest));
+        JsonElement properties = schema.GetProperty("properties");
+
+        Assert.Equal(
+            "The source text to translate.",
+            properties.GetProperty("text").GetProperty("description").GetString());
+        Assert.Equal(
+            "IETF language identifiers for the requested translations, for example es or pt-BR.",
+            properties.GetProperty("targetLanguages").GetProperty("description").GetString());
     }
 
     [Fact]
@@ -341,13 +383,17 @@ public sealed class TranslationWorkflowTests
         Assert.Contains("es, fr, pt", exception.Message, StringComparison.Ordinal);
     }
 
-    private static TranslationWorkflowRunner CreateRunner(ITranslationModel model) =>
-        new(CreateFactory(model));
+    private static TranslationWorkflowRunner CreateRunner(
+        ITranslationModel model,
+        TranslationWorkflowOptions? workflowOptions = null) =>
+        new(CreateFactory(model, workflowOptions));
 
-    private static TranslationWorkflowFactory CreateFactory(ITranslationModel model)
+    private static TranslationWorkflowFactory CreateFactory(
+        ITranslationModel model,
+        TranslationWorkflowOptions? workflowOptions = null)
     {
         IOptions<TranslationWorkflowOptions> options = Options.Create(
-            new TranslationWorkflowOptions());
+            workflowOptions ?? new TranslationWorkflowOptions());
         GuardProfileResolver profiles = new(Options.Create(new AIGuardOptions()));
         GuardExecutionContextAccessor contextAccessor = new();
         WorkflowGuardCoordinator guards = new(

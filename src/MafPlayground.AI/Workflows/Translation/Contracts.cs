@@ -1,11 +1,21 @@
+using System.ComponentModel;
+
 namespace MafPlayground.AI.Workflows.Translation;
 
+[Description("Input for translating one source text into one or more target languages.")]
 public sealed record TranslationWorkflowInput(
+    [property: Description("The source text to translate.")]
     string Text,
+    [property: Description(
+        "IETF language identifiers for the requested translations, for example es or pt-BR.")]
     IReadOnlyList<string> TargetLanguages);
 
+[Description("A translation request containing source text and requested target languages.")]
 public sealed record TranslationWorkflowRequest(
+    [property: Description("The source text to translate.")]
     string Text,
+    [property: Description(
+        "IETF language identifiers for the requested translations, for example es or pt-BR.")]
     IReadOnlyList<string> TargetLanguages);
 
 internal sealed record GuardedTranslationRequest(
