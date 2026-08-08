@@ -28,7 +28,7 @@ public sealed class ChatClientTranslationModelTests
     public async Task ValidateAsync_NormalizesStructuredReview()
     {
         using FakeChatClient chatClient = new("""
-            {"isValid":false,"confidence":1.4,"issues":[" Wrong language ",""]}
+            {"isValid":false,"confidence":1.4,"issues":[{"severity":"Blocking","code":"WrongTargetLanguage","description":" Wrong language "}]}
             """);
         ChatClientTranslationModel model = new(chatClient);
 
@@ -40,6 +40,9 @@ public sealed class ChatClientTranslationModelTests
 
         Assert.False(result.IsValid);
         Assert.Equal(1, result.Confidence);
-        Assert.Equal(["Wrong language"], result.Issues);
+        TranslationIssue issue = Assert.Single(result.Issues);
+        Assert.Equal(TranslationIssueSeverity.Blocking, issue.Severity);
+        Assert.Equal(TranslationIssueCode.WrongTargetLanguage, issue.Code);
+        Assert.Equal("Wrong language", issue.Description);
     }
 }

@@ -32,6 +32,7 @@ public sealed class TranslationService(
                 IsValid = false,
                 Confidence = 0,
                 Feedback = null,
+                ValidationIssues = null,
                 ShouldRetry = false,
                 Error = null,
                 ErrorType = null,
@@ -49,6 +50,12 @@ public sealed class TranslationService(
                 IsValid = false,
                 Confidence = 0,
                 Feedback = null,
+                ValidationIssues =
+                [
+                    TranslationWorkflowHelpers.Blocking(
+                        TranslationIssueCode.BudgetExceeded,
+                        $"The AI execution budget for '{exception.Resource}' was exceeded."),
+                ],
                 ShouldRetry = false,
                 Error = $"The AI execution budget for '{exception.Resource}' was exceeded.",
                 ErrorType = exception.GetType().FullName,
@@ -62,6 +69,12 @@ public sealed class TranslationService(
                 IsValid = false,
                 Confidence = 0,
                 Feedback = null,
+                ValidationIssues =
+                [
+                    TranslationWorkflowHelpers.Blocking(
+                        TranslationIssueCode.ModelCallFailed,
+                        "The translation model call failed."),
+                ],
                 ShouldRetry = false,
                 Error = "The translation model call failed.",
                 ErrorType = exception.GetType().FullName,
@@ -81,26 +94,22 @@ public sealed class TranslationService(
                 state.ErrorType ?? "invalid_translation");
         }
 
+        IReadOnlyList<TranslationIssue> deterministicIssues =
+            TranslationWorkflowHelpers.ValidateDeterministic(
+                state.SourceText,
+                state.TranslatedText,
+                _options.MaxInputCharacters * 5);
+
         TranslationValidation validation;
         try
         {
-            if (state.TranslatedText.Length > _options.MaxInputCharacters * 5)
-            {
-                validation = new TranslationValidation(
-                    false,
-                    0,
-                    ["The translation exceeds the allowed output length."]);
-            }
-            else
-            {
-                using GuardExecutionScope guardScope = guards.EnterScope(
-                    state.GuardExecutionId);
-                validation = await translationModel.ValidateAsync(
-                    state.SourceText,
-                    state.TargetLanguage,
-                    state.TranslatedText,
-                    cancellationToken);
-            }
+            using GuardExecutionScope guardScope = guards.EnterScope(
+                state.GuardExecutionId);
+            validation = await translationModel.ValidateAsync(
+                state.SourceText,
+                state.TargetLanguage,
+                state.TranslatedText,
+                cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -121,19 +130,47 @@ public sealed class TranslationService(
                 exception.GetType().FullName ?? exception.GetType().Name);
         }
 
-        bool accepted = validation.IsValid &&
-            validation.Confidence >= _options.MinimumValidationConfidence;
-        IReadOnlyList<string> validationIssues = validation.Issues.Count > 0
-            ? validation.Issues
-            : accepted
-                ? []
-                : ["The validation confidence was below the required threshold."];
-        bool shouldRetry = !accepted && state.Attempts <= _options.MaxTranslationRetries;
+        List<TranslationIssue> validationIssues = [.. deterministicIssues];
+        validationIssues.AddRange(
+            TranslationWorkflowHelpers.NormalizeModelIssues(validation.Issues));
+
+        if (!validation.IsValid &&
+            !validationIssues.Any(issue =>
+                issue.Severity == TranslationIssueSeverity.Blocking))
+        {
+            validationIssues.Add(
+                TranslationWorkflowHelpers.Warning(
+                    TranslationIssueCode.ValidatorUncertain,
+                    "The validator was not confident enough to confirm the translation."));
+        }
+
+        if (validation.Confidence < _options.MinimumValidationConfidence &&
+            !validationIssues.Any(issue =>
+                issue.Severity == TranslationIssueSeverity.Blocking) &&
+            !validationIssues.Any(issue => issue.Code == TranslationIssueCode.LowConfidence))
+        {
+            validationIssues.Add(
+                TranslationWorkflowHelpers.Warning(
+                    TranslationIssueCode.LowConfidence,
+                    "The validator confidence was below the configured threshold."));
+        }
+
+        bool hasBlockingIssues = validationIssues.Any(issue =>
+            issue.Severity == TranslationIssueSeverity.Blocking);
+        bool accepted = !hasBlockingIssues;
+        IReadOnlyList<string> retryFeedback = validationIssues
+            .Where(issue => issue.Severity == TranslationIssueSeverity.Blocking)
+            .Select(issue => $"{issue.Code}: {issue.Description}")
+            .ToArray();
+        bool shouldRetry = hasBlockingIssues &&
+            state.Attempts <= _options.MaxTranslationRetries;
+
         return state with
         {
             IsValid = accepted,
             Confidence = validation.Confidence,
-            Feedback = validationIssues,
+            Feedback = retryFeedback,
+            ValidationIssues = validationIssues,
             ShouldRetry = shouldRetry,
             ErrorType = accepted ? null : "validation_rejected",
         };
@@ -145,7 +182,7 @@ public sealed class TranslationService(
             state.TranslatedText,
             state.IsValid,
             state.Confidence,
-            state.Feedback ?? [],
+            state.ValidationIssues ?? [],
             state.Attempts,
             state.Error);
 
@@ -158,8 +195,25 @@ public sealed class TranslationService(
             IsValid = false,
             Confidence = 0,
             Feedback = [error],
+            ValidationIssues =
+            [
+                TranslationWorkflowHelpers.Blocking(
+                    MapErrorCode(errorType),
+                    error),
+            ],
             ShouldRetry = false,
             Error = error,
             ErrorType = errorType,
+        };
+
+    private static TranslationIssueCode MapErrorCode(string errorType) =>
+        errorType switch
+        {
+            "invalid_translation" => TranslationIssueCode.EmptyTranslation,
+            _ when errorType.Contains("Budget", StringComparison.OrdinalIgnoreCase) =>
+                TranslationIssueCode.BudgetExceeded,
+            _ when errorType.Contains("Validation", StringComparison.OrdinalIgnoreCase) =>
+                TranslationIssueCode.ValidationCallFailed,
+            _ => TranslationIssueCode.ModelCallFailed,
         };
 }

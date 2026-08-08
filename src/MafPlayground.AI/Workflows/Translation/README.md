@@ -72,10 +72,13 @@ stateDiagram-v2
     Aggregate --> [*]: all requested branches completed
 ```
 
-A branch is accepted only when its structured review has `isValid: true` and
-confidence at or above the configured threshold. Otherwise, review issues become
-feedback for the next attempt. With the default `MaxTranslationRetries` of `1`, a
-branch can make at most two translation attempts.
+A branch is rejected only when it has at least one `Blocking` issue. Subjective
+issues such as tone, naturalness, punctuation, or regional preference are returned
+as warnings and do not trigger a retry. Low validator confidence is also surfaced
+as a warning when no blocking issue exists. The public result exposes `Accepted`,
+`AcceptedWithWarnings`, or `Rejected` through `ValidatedTranslation.Status`.
+With the default `MaxTranslationRetries` of `1`, a branch can make at most two
+translation attempts for blocking issues.
 
 The aggregator waits for exactly the requested branches and restores their input
 order. A failed language is represented inside its `ValidatedTranslation`; it
@@ -88,7 +91,9 @@ tested without an LLM. `ChatClientTranslationModel` is the initial adapter:
 
 - it uses provider-neutral `IChatClient`, not an Ollama-specific SDK;
 - translation returns a structured draft response;
-- validation returns validity, confidence, and actionable issues;
+- validation returns validity, confidence, typed issue codes, and severities;
+- deterministic checks detect empty, oversized, untranslated, contaminated, and
+  data/placeholder-changing output before the result is accepted;
 - source text, target language, draft, and feedback are serialized as data;
 - prompts instruct the model not to execute instructions inside user text;
 - validation confidence is clamped to 0-1.
@@ -99,9 +104,11 @@ host composition and provider projects.
 ## Failure and retry policy
 
 Translation and validation exceptions become a typed failed branch, except
-caller cancellation, which propagates. Empty or overly long output is rejected
-deterministically. Provider errors are not blindly retried: only a completed
-semantic review with an unacceptable result can follow the visible feedback edge.
+caller cancellation, which propagates. Empty, oversized, untranslated,
+contaminated, and data/placeholder-changing output is rejected deterministically.
+Provider errors are not blindly retried: only a completed semantic review with a
+blocking result can follow the visible feedback edge. Warnings remain available to
+callers without blocking fan-in.
 
 Cross-cutting model-call timeout is applied by the shared `IChatClient` decorator.
 Semantic repair remains an explicit workflow transition rather than a hidden
@@ -171,7 +178,7 @@ The CLI binds `AI:Workflows:Translation`:
 | `MaxTargetLanguages` | `8` | Maximum targets in one request. |
 | `MaxInputCharacters` | `10000` | Maximum source length. |
 | `MaxTranslationRetries` | `1` | Additional attempts after a failed review. |
-| `MinimumValidationConfidence` | `0.7` | Confidence required with `isValid: true`. |
+| `MinimumValidationConfidence` | `0.7` | Threshold below which a non-blocking confidence warning is added. |
 | `GuardProfile` | `Default` | Reusable PII and budget policy selected for this workflow. |
 
 Changing supported languages changes the factory's native topology. The CLI can
@@ -181,9 +188,10 @@ requested ones.
 ## State, observability, and tests
 
 Branch state is workflow execution state, not conversation memory. It contains
-the source, requested languages, target, draft, attempts, confidence, feedback,
-retry decision, and error. The aggregator holds run-local completed branches and
-clears them after output. Stateful executors are not cross-run shareable.
+the source, requested languages, target, draft, attempts, confidence, typed
+validation issues, blocking feedback, retry decision, and error. The aggregator
+holds run-local completed branches and clears them after output. Stateful executors
+are not cross-run shareable.
 
 The builder sets workflow name, description, and OpenTelemetry integration. CLI
 `--watch` renders native events, DevUI shows the graph and local traces, and OTLP

@@ -397,7 +397,7 @@ internal sealed class TranslationAggregatorExecutor(
                         guardExecutionId,
                         translation.TranslatedText,
                         cancellationToken),
-                    Issues = await GuardStringsAsync(
+                    Issues = await GuardIssuesAsync(
                         guardExecutionId,
                         translation.Issues,
                         guards,
@@ -436,19 +436,22 @@ internal sealed class TranslationAggregatorExecutor(
         }
     }
 
-    private static async ValueTask<IReadOnlyList<string>> GuardStringsAsync(
+    private static async ValueTask<IReadOnlyList<TranslationIssue>> GuardIssuesAsync(
         string executionId,
-        IReadOnlyList<string> values,
+        IReadOnlyList<TranslationIssue> values,
         WorkflowGuardCoordinator guards,
         CancellationToken cancellationToken)
     {
-        string[] guarded = new string[values.Count];
+        TranslationIssue[] guarded = new TranslationIssue[values.Count];
         for (int index = 0; index < values.Count; index++)
         {
-            guarded[index] = await guards.GuardOutputAsync(
-                executionId,
-                values[index],
-                cancellationToken) ?? string.Empty;
+            guarded[index] = values[index] with
+            {
+                Description = await guards.GuardOutputAsync(
+                    executionId,
+                    values[index].Description,
+                    cancellationToken) ?? string.Empty,
+            };
         }
 
         return guarded;

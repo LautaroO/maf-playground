@@ -22,7 +22,7 @@ public sealed class CostAggregationTests
             """{"translatedText":"Ola"}""",
             CreatePerCallUsage());
         innerClient.EnqueueResponse(
-            """{"isValid":false,"confidence":0.4,"issues":["Incorrect spelling."]}""");
+            """{"isValid":false,"confidence":0.4,"issues":[{"severity":"Blocking","code":"SemanticMeaningChanged","description":"Incorrect translation."}]}""");
         innerClient.EnqueueResponse("""{"translatedText":"Hola"}""");
         innerClient.EnqueueResponse(
             """{"isValid":true,"confidence":1,"issues":[]}""");

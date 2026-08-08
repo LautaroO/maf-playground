@@ -4,6 +4,15 @@ namespace MafPlayground.AI.Workflows.Translation;
 
 internal static partial class TranslationWorkflowHelpers
 {
+    private static readonly TranslationIssueCode[] SubjectiveIssueCodes =
+    [
+        TranslationIssueCode.ToneDifference,
+        TranslationIssueCode.StylePreference,
+        TranslationIssueCode.Naturalness,
+        TranslationIssueCode.Punctuation,
+        TranslationIssueCode.RegionalPreference,
+    ];
+
     public static TranslationWorkflowRequest ValidateRequest(
         TranslationWorkflowRequest request,
         TranslationWorkflowOptions options)
@@ -104,6 +113,94 @@ internal static partial class TranslationWorkflowHelpers
     public static string NormalizeExecutorId(string language) =>
         language.ToLowerInvariant().Replace('-', '_');
 
+    public static IReadOnlyList<TranslationIssue> ValidateDeterministic(
+        string sourceText,
+        string translatedText,
+        int maxOutputCharacters)
+    {
+        List<TranslationIssue> issues = [];
+        string source = sourceText.Trim();
+        string translation = translatedText.Trim();
+
+        if (translation.Length == 0)
+        {
+            issues.Add(Blocking(
+                TranslationIssueCode.EmptyTranslation,
+                "The translation is empty."));
+            return issues;
+        }
+
+        if (translation.Length > maxOutputCharacters)
+        {
+            issues.Add(Blocking(
+                TranslationIssueCode.OutputTooLong,
+                "The translation exceeds the allowed output length."));
+        }
+
+        if (string.Equals(source, translation, StringComparison.OrdinalIgnoreCase) &&
+            source.Any(char.IsLetter))
+        {
+            issues.Add(Blocking(
+                TranslationIssueCode.UntranslatedContent,
+                "The output is identical to the source and may not have been translated."));
+        }
+
+        foreach (string token in ExtractProtectedTokens(source))
+        {
+            if (!translation.Contains(token, StringComparison.Ordinal))
+            {
+                issues.Add(Blocking(
+                    TranslationIssueCode.PlaceholderChanged,
+                    $"The protected token '{token}' was not preserved."));
+            }
+        }
+
+        foreach (string number in ExtractNumbers(source))
+        {
+            if (!translation.Contains(number, StringComparison.Ordinal))
+            {
+                issues.Add(Blocking(
+                    TranslationIssueCode.MissingData,
+                    $"The source value '{number}' was not preserved."));
+            }
+        }
+
+        if (LooksLikeModelOutputContamination(translation))
+        {
+            issues.Add(Blocking(
+                TranslationIssueCode.OutputFormat,
+                "The translation contains structured output or explanatory text instead of only the translation."));
+        }
+
+        return issues;
+    }
+
+    public static IReadOnlyList<TranslationIssue> NormalizeModelIssues(
+        IReadOnlyList<TranslationIssue>? issues)
+    {
+        if (issues is null || issues.Count == 0)
+        {
+            return [];
+        }
+
+        return issues
+            .Where(issue => !string.IsNullOrWhiteSpace(issue.Description))
+            .Select(issue => SubjectiveIssueCodes.Contains(issue.Code)
+                ? issue with { Severity = TranslationIssueSeverity.Warning }
+                : issue)
+            .ToArray();
+    }
+
+    public static TranslationIssue Blocking(
+        TranslationIssueCode code,
+        string description) =>
+        new(TranslationIssueSeverity.Blocking, code, description);
+
+    public static TranslationIssue Warning(
+        TranslationIssueCode code,
+        string description) =>
+        new(TranslationIssueSeverity.Warning, code, description);
+
     public static void RecordBranchOperation(
         string operationName,
         TranslationBranchState state,
@@ -114,6 +211,9 @@ internal static partial class TranslationWorkflowHelpers
             ? "skipped"
             : state.ErrorType is not null
                 ? state.ShouldRetry ? "retry" : "error"
+                : state.ValidationIssues?.Any(issue =>
+                    issue.Severity == TranslationIssueSeverity.Warning) == true
+                    ? "warning"
                 : "success";
         AITelemetry.RecordOperation(
             operationName,
@@ -127,4 +227,30 @@ internal static partial class TranslationWorkflowHelpers
 
     [GeneratedRegex("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", RegexOptions.CultureInvariant)]
     private static partial Regex LanguageIdentifierRegex();
+
+    [GeneratedRegex("(?:\\{\\{[^{}]+\\}\\}|\\{\\d+\\}|%[a-zA-Z])", RegexOptions.CultureInvariant)]
+    private static partial Regex ProtectedTokenRegex();
+
+    [GeneratedRegex("(?<![\\p{L}\\p{N}])\\d+(?:[.,]\\d+)*(?![\\p{L}\\p{N}])", RegexOptions.CultureInvariant)]
+    private static partial Regex NumberRegex();
+
+    private static IEnumerable<string> ExtractProtectedTokens(string text) =>
+        ProtectedTokenRegex()
+            .Matches(text)
+            .Select(match => match.Value)
+            .Distinct(StringComparer.Ordinal);
+
+    private static IEnumerable<string> ExtractNumbers(string text) =>
+        NumberRegex()
+            .Matches(text)
+            .Select(match => match.Value)
+            .Distinct(StringComparer.Ordinal);
+
+    private static bool LooksLikeModelOutputContamination(string translation) =>
+        translation.Contains("\"issues\"", StringComparison.OrdinalIgnoreCase) ||
+        translation.Contains("\"translatedText\"", StringComparison.OrdinalIgnoreCase) ||
+        translation.StartsWith("{", StringComparison.Ordinal) ||
+        translation.EndsWith("}", StringComparison.Ordinal) ||
+        translation.Contains("corrected issues:", StringComparison.OrdinalIgnoreCase) ||
+        translation.Contains("no spelling or grammar errors", StringComparison.OrdinalIgnoreCase);
 }

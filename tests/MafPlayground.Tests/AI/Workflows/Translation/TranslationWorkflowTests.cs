@@ -75,6 +75,42 @@ public sealed class TranslationWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_AllowsSubjectiveWarningsWithoutRetrying()
+    {
+        WarningTranslationModel model = new();
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.True(translation.IsValid);
+        Assert.Equal(TranslationQualityStatus.AcceptedWithWarnings, translation.Status);
+        Assert.Equal(1, model.TranslationCalls);
+        Assert.Equal(1, model.ValidationCalls);
+        Assert.Contains(translation.Issues, issue =>
+            issue.Severity == TranslationIssueSeverity.Warning &&
+            issue.Code == TranslationIssueCode.ToneDifference);
+    }
+
+    [Fact]
+    public async Task RunAsync_RetriesDeterministicBlockingIssue()
+    {
+        DeterministicIssueTranslationModel model = new();
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.True(translation.IsValid);
+        Assert.Equal(2, translation.Attempts);
+        Assert.Equal(2, model.TranslationCalls);
+        Assert.Contains(model.ValidationFeedback, feedback =>
+            feedback.Contains(nameof(TranslationIssueCode.UntranslatedContent), StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Workflow_UsesOnlyTranslationAndValidationNodesPerLanguage()
     {
         TranslationWorkflowFactory factory = CreateFactory(new FeedbackTranslationModel());
@@ -447,7 +483,10 @@ public sealed class TranslationWorkflowTests
             string targetLanguage,
             string translatedText,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new TranslationValidation(true, 1, []));
+            Task.FromResult(new TranslationValidation(
+                true,
+                1,
+                Array.Empty<TranslationIssue>()));
 
         private void UpdateMaximum(int active)
         {
@@ -491,9 +530,87 @@ public sealed class TranslationWorkflowTests
         {
             ValidationCalls++;
             return Task.FromResult(translatedText == "Hola"
-                ? new TranslationValidation(true, 0.99, [])
-                : new TranslationValidation(false, 0.2, ["The text is not Spanish."]));
+                ? new TranslationValidation(
+                    true,
+                    0.99,
+                    Array.Empty<TranslationIssue>())
+                : new TranslationValidation(
+                    false,
+                    0.2,
+                    [
+                        new TranslationIssue(
+                            TranslationIssueSeverity.Blocking,
+                            TranslationIssueCode.WrongTargetLanguage,
+                            "The text is not Spanish."),
+                    ]));
         }
+    }
+
+    private sealed class WarningTranslationModel : ITranslationModel
+    {
+        public int TranslationCalls { get; private set; }
+
+        public int ValidationCalls { get; private set; }
+
+        public Task<string> TranslateAsync(
+            string sourceText,
+            string targetLanguage,
+            IReadOnlyList<string>? validationFeedback,
+            CancellationToken cancellationToken)
+        {
+            TranslationCalls++;
+            return Task.FromResult("Hola");
+        }
+
+        public Task<TranslationValidation> ValidateAsync(
+            string sourceText,
+            string targetLanguage,
+            string translatedText,
+            CancellationToken cancellationToken)
+        {
+            ValidationCalls++;
+            return Task.FromResult(new TranslationValidation(
+                false,
+                0.4,
+                [
+                    new TranslationIssue(
+                        TranslationIssueSeverity.Blocking,
+                        TranslationIssueCode.ToneDifference,
+                        "The tone could be more informal."),
+                ]));
+        }
+    }
+
+    private sealed class DeterministicIssueTranslationModel : ITranslationModel
+    {
+        public int TranslationCalls { get; private set; }
+
+        public List<string> ValidationFeedback { get; } = [];
+
+        public Task<string> TranslateAsync(
+            string sourceText,
+            string targetLanguage,
+            IReadOnlyList<string>? validationFeedback,
+            CancellationToken cancellationToken)
+        {
+            TranslationCalls++;
+            if (validationFeedback is not null)
+            {
+                ValidationFeedback.AddRange(validationFeedback);
+            }
+
+            return Task.FromResult(validationFeedback is null ? sourceText : "Hola");
+        }
+
+        public Task<TranslationValidation> ValidateAsync(
+            string sourceText,
+            string targetLanguage,
+            string translatedText,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new TranslationValidation(
+                true,
+                1,
+                Array.Empty<TranslationIssue>()));
     }
 
     private sealed class FailingTranslationModel : ITranslationModel

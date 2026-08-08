@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 
 namespace MafPlayground.AI.Workflows.Translation;
 
@@ -32,23 +33,76 @@ internal sealed record TranslationBranchState(
     bool IsValid = false,
     double Confidence = 0,
     IReadOnlyList<string>? Feedback = null,
+    IReadOnlyList<TranslationIssue>? ValidationIssues = null,
     bool ShouldRetry = false,
     string? Error = null,
     string? ErrorType = null);
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TranslationQualityStatus
+{
+    Accepted,
+    AcceptedWithWarnings,
+    Rejected,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TranslationIssueSeverity
+{
+    Warning,
+    Blocking,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TranslationIssueCode
+{
+    Unknown,
+    UntranslatedContent,
+    SemanticMeaningChanged,
+    MissingContent,
+    MissingData,
+    PlaceholderChanged,
+    WrongTargetLanguage,
+    EmptyTranslation,
+    OutputTooLong,
+    OutputFormat,
+    ModelCallFailed,
+    ValidationCallFailed,
+    BudgetExceeded,
+    ValidatorUncertain,
+    LowConfidence,
+    ToneDifference,
+    StylePreference,
+    Naturalness,
+    Punctuation,
+    RegionalPreference,
+}
+
+public sealed record TranslationIssue(
+    TranslationIssueSeverity Severity,
+    TranslationIssueCode Code,
+    string Description);
+
 public sealed record TranslationValidation(
     bool IsValid,
     double Confidence,
-    IReadOnlyList<string> Issues);
+    IReadOnlyList<TranslationIssue> Issues);
 
 public sealed record ValidatedTranslation(
     string TargetLanguage,
     string? TranslatedText,
     bool IsValid,
     double Confidence,
-    IReadOnlyList<string> Issues,
+    IReadOnlyList<TranslationIssue> Issues,
     int Attempts,
-    string? Error = null);
+    string? Error = null)
+{
+    public TranslationQualityStatus Status => !IsValid
+        ? TranslationQualityStatus.Rejected
+        : Issues.Any(issue => issue.Severity == TranslationIssueSeverity.Warning)
+            ? TranslationQualityStatus.AcceptedWithWarnings
+            : TranslationQualityStatus.Accepted;
+}
 
 public sealed record TranslationWorkflowResult(
     string SourceText,
