@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MafPlayground.AI.Guards;
+using MafPlayground.AI.Observability;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Options;
 

@@ -1,6 +1,3 @@
-global using Xunit;
-global using MafPlayground.AI.Contracts;
 global using MafPlayground.AI.Configuration;
 global using MafPlayground.AI.Context;
-global using MafPlayground.AI.Observability;
 global using MafPlayground.AI.Providers;

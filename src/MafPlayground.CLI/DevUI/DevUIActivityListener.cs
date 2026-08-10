@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using MafPlayground.AI;
+using MafPlayground.AI.Observability;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 

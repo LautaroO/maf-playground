@@ -1,4 +1,5 @@
 using MafPlayground.AI;
+using MafPlayground.AI.Contracts;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using OllamaSharp;

@@ -1,4 +1,6 @@
 using MafPlayground.AI;
+using MafPlayground.AI.Contracts;
+using MafPlayground.AI.Observability;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -59,7 +61,7 @@ public static class ObservabilityServiceExtensions
                 .AddMeter(
                     AITelemetry.AgentSourceName,
                     AITelemetry.OperationMeterName,
-                    MafPlayground.AI.Guards.GuardTelemetry.MeterName,
+                    GuardTelemetry.MeterName,
                     ObservabilityTelemetry.CostMeterName)
                 .AddOtlpExporter());
 

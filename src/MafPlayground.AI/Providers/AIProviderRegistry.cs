@@ -1,6 +1,7 @@
+using MafPlayground.AI.Contracts;
 using Microsoft.Extensions.AI;
 
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Providers;
 
 public sealed class AIProviderRegistry
 {

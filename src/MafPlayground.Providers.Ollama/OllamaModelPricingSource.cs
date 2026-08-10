@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using MafPlayground.AI;
+using MafPlayground.AI.Contracts;
 using Microsoft.Extensions.Options;
 
 namespace MafPlayground.Providers.Ollama;

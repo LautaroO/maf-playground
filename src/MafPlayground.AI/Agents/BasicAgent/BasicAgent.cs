@@ -1,4 +1,6 @@
+using MafPlayground.AI.Contracts;
 using MafPlayground.AI.Guards;
+using MafPlayground.AI.Observability;
 using MafPlayground.AI.Tools;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;

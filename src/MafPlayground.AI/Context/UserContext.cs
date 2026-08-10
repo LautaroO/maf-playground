@@ -1,4 +1,4 @@
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Context;
 
 public static class UserContextKeys
 {
@@ -23,9 +23,4 @@ public sealed class UserContext
 
     public bool TryGetValue(string key, out string? value) =>
         _values.TryGetValue(key, out value);
-}
-
-public interface IUserContextAccessor
-{
-    UserContext GetCurrent();
 }

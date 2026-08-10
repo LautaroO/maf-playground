@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Observability;
 
 public static class AITelemetry
 {

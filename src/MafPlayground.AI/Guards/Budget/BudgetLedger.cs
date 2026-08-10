@@ -1,3 +1,5 @@
+using MafPlayground.AI.Contracts;
+using MafPlayground.AI.Observability;
 using Microsoft.Extensions.AI;
 
 namespace MafPlayground.AI.Guards.Budget;
@@ -218,4 +220,3 @@ public sealed class BudgetExceededException(
 {
     public string Resource { get; } = resource;
 }
-

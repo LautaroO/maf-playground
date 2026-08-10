@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using MafPlayground.AI.Contracts;
 using Microsoft.Extensions.AI;
 
 namespace MafPlayground.AI.Guards.Content;

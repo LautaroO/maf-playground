@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using MafPlayground.AI;
+using MafPlayground.AI.Configuration;
 using MafPlayground.Providers.Ollama;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;

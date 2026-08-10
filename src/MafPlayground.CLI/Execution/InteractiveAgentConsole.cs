@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using MafPlayground.AI;
+using MafPlayground.AI.Observability;
 using MafPlayground.Observability;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;

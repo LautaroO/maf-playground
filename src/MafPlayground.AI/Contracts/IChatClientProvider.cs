@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Contracts;
 
 public interface IChatClientProvider
 {

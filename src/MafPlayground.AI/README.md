@@ -14,8 +14,11 @@ endpoints, PostgreSQL, DevUI, OTLP exporters, or a specific hosting model.
 | `Agents/BasicRagAgent` | `AIAgent`, context, middleware | Grounded answers from semantic retrieval with citation enforcement. |
 | `Workflows/Translation` | Native MAF workflow | Parallel translation, semantic validation, feedback retry, and fan-in. |
 | `Tools` | Deterministic functions | Reusable application capabilities exposed to agents. |
-| `UserContext*` | Context contract/provider | Adds bounded, trusted host data per invocation. |
-| `AIProviderRegistry` | Adapter registry | Resolves provider-qualified chat models without provider SDK leakage. |
+| `Contracts` | Provider-neutral ports and data contracts | Shared interfaces for providers, decorators, pricing, and trusted user context. |
+| `Observability` | Telemetry and instrumentation | AI operation metrics, agent telemetry options, and guard decision metrics. |
+| `Context` | Context contract/provider | Adds bounded, trusted host data per invocation. |
+| `Configuration` | Typed configuration value objects | Parses provider-qualified model selectors. |
+| `Providers/AIProviderRegistry` | Adapter registry | Resolves provider-qualified chat models without provider SDK leakage. |
 | `IChatClientDecorator` | Cross-cutting port | Composes timeout, cost, or future policies around `IChatClient`. |
 | `Resilience` | Infrastructure-neutral middleware | Applies a configurable timeout to model calls. |
 | `Guards` | Deterministic middleware and policies | Applies per-entity PII handling, input limits, tool limits, and shared model/token/cost budgets. |
@@ -62,7 +65,7 @@ The host must also register:
 - retrieval services and `IKnowledgeStore` when the RAG agent is used;
 - configuration for guard profiles, `AIResilienceOptions`, telemetry, and workflow options.
 
-`AIModelSelection` uses `provider:model`. The parser splits only on the first
+`Configuration/AIModelSelection` uses `provider:model`. The parser splits only on the first
 colon, so provider model names can contain additional colons.
 
 ## State and failure model

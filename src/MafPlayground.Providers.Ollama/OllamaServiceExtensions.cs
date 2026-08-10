@@ -1,4 +1,5 @@
 using MafPlayground.AI;
+using MafPlayground.AI.Contracts;
 using MafPlayground.Retrieval;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

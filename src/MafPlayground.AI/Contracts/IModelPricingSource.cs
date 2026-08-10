@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Contracts;
 
 public interface IModelPricingSource
 {

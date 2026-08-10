@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using MafPlayground.AI.Guards;
 using MafPlayground.AI.Guards.Content;
 
-namespace MafPlayground.AI.Guards;
+namespace MafPlayground.AI.Observability;
 
 public static class GuardTelemetry
 {

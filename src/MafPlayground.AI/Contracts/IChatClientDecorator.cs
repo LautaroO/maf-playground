@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Contracts;
 
 /// <summary>
 /// Decorates a provider-created chat client with host-level cross-cutting behavior.

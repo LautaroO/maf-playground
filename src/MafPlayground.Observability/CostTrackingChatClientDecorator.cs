@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
 using MafPlayground.AI;
+using MafPlayground.AI.Configuration;
+using MafPlayground.AI.Contracts;
 using Microsoft.Extensions.AI;
 
 namespace MafPlayground.Observability;

@@ -1,4 +1,4 @@
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Observability;
 
 public sealed class AgentTelemetryOptions
 {

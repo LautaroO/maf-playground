@@ -1,7 +1,8 @@
 using System.Text.Json;
+using MafPlayground.AI.Contracts;
 using Microsoft.Agents.AI;
 
-namespace MafPlayground.AI;
+namespace MafPlayground.AI.Context;
 
 public sealed class UserContextProvider(IUserContextAccessor userContextAccessor)
     : AIContextProvider

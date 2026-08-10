@@ -2,6 +2,7 @@ using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Guards;
+using MafPlayground.AI.Observability;
 using MafPlayground.AI.Guards.Content;
 using MafPlayground.AI.Workflows.Translation;
 using Microsoft.Agents.AI;

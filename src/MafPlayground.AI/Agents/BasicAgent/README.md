@@ -23,8 +23,8 @@ flowchart LR
 | Component | Kind | Responsibility |
 | --- | --- | --- |
 | [`BasicAgent.cs`](./BasicAgent.cs) | Agent composition | Defines the identity, instructions, tools, context providers, and telemetry middleware. |
-| [`UserContextProvider.cs`](../../UserContextProvider.cs) | MAF context provider | Adds trusted, host-supplied user context to each invocation. |
-| [`UserContext.cs`](../../UserContext.cs) | Application contract | Represents context as a generic key/value bag exposed through `IUserContextAccessor`. |
+| [`UserContextProvider.cs`](../../Context/UserContextProvider.cs) | MAF context provider | Adds trusted, host-supplied user context to each invocation. |
+| [`UserContext.cs`](../../Context/UserContext.cs) | Application contract | Represents context as a generic key/value bag exposed through `IUserContextAccessor`. |
 | [`CurrentDateTimeTool.cs`](../../Tools/CurrentDateTimeTool.cs) | Deterministic tool | Resolves the exact date and time for a required time-zone identifier. |
 | `IChatClient` | Provider-neutral model boundary | Supplies the model used by MAF; dependency injection resolves the provider outside this folder. |
 
