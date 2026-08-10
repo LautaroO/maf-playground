@@ -5,6 +5,7 @@ using MafPlayground.AI.Workflows.Translation;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace MafPlayground.Tests.AI;
@@ -47,6 +48,7 @@ public sealed class AIServiceRegistrationTests
     public async Task InvalidFeatureOptions_FailWhenHostStarts()
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+        builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IChatClientProvider>(
             new FakeProvider(new FakeChatClient("ok")));
         builder.Services
