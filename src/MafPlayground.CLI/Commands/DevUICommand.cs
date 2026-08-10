@@ -6,6 +6,8 @@ using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.CLI.DevUI;
+using MafPlayground.CLI.Extensions;
+using MafPlayground.CLI.Helpers;
 using MafPlayground.CLI.Inspection;
 using MafPlayground.Observability;
 using MafPlayground.Retrieval;
@@ -22,8 +24,12 @@ using Microsoft.Extensions.Options;
 
 namespace MafPlayground.CLI.Commands;
 
-public static class DevUICommand
+public sealed class DevUICommand : ICliCommand
 {
+    public int Order => 400;
+
+    Command ICliCommand.Create() => Create();
+
     public static Command Create(
         Func<DevUICommandOptions, CancellationToken, Task<int>>? runAsync = null)
     {

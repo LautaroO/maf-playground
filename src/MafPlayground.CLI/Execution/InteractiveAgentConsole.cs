@@ -6,7 +6,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace MafPlayground.CLI;
+namespace MafPlayground.CLI.Execution;
 
 public sealed class InteractiveAgentConsole
 {

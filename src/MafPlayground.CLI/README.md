@@ -42,13 +42,13 @@ dotnet run --project src/MafPlayground.CLI -- inspect workflow --help
 | --- | --- |
 | `Program.cs` and `Parser.cs` | Entry point and root command composition. |
 | `Commands/` | One file per command and command-specific host composition. |
-| `InteractiveAgentConsole.cs` | Interactive/single-prompt agent harness and streaming. |
-| `WorkflowExecutionConsole.cs` | Renders native workflow execution events for `--watch`. |
+| `Execution/InteractiveAgentConsole.cs` | Interactive/single-prompt agent harness and streaming. |
+| `Execution/WorkflowExecutionConsole.cs` | Renders native workflow execution events for `--watch`. |
 | `Inspection/` | Entity catalog, input schemas/examples, and Mermaid export. |
 | `DevUI/` | Current-preview trace bridge into DevUI response streams. |
-| `AIProviderCompositionExtensions.cs` | Registers enabled provider adapters. |
-| `RetrievalCompositionExtensions.cs` | Registers retrieval core and current store adapter. |
-| `LocalUserContextAccessor.cs` | Supplies machine-local context for development only. |
+| `Extensions/AIProviderCompositionExtensions.cs` | Registers enabled provider adapters. |
+| `Extensions/RetrievalCompositionExtensions.cs` | Registers retrieval core and current store adapter. |
+| `Helpers/LocalUserContextAccessor.cs` | Supplies machine-local context for development only. |
 | `appsettings.json` | Non-secret local defaults and sample pricing. |
 
 ## Composition

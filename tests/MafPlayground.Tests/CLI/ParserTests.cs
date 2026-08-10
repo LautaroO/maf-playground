@@ -1,3 +1,4 @@
+using System.CommandLine;
 using MafPlayground.CLI;
 using MafPlayground.CLI.Commands;
 using MafPlayground.Retrieval;
@@ -6,6 +7,16 @@ namespace MafPlayground.Tests;
 
 public sealed class ParserTests
 {
+    [Fact]
+    public void CreateRootCommand_DiscoversCommandsInConfiguredOrder()
+    {
+        RootCommand rootCommand = Parser.CreateRootCommand();
+
+        Assert.Equal(
+            ["agent", "workflow", "rag", "devui", "inspect"],
+            rootCommand.Subcommands.Select(command => command.Name));
+    }
+
     [Fact]
     public void MetadataOptionParser_RejectsInvalidKeyValueSyntax()
     {
@@ -29,13 +40,12 @@ public sealed class ParserTests
     public async Task BasicCommand_MapsOptions()
     {
         BasicAgentCommandOptions? captured = null;
-        var rootCommand = Parser.CreateRootCommand(
+        RootCommand rootCommand = CreateRootCommand(AgentCommand.Create(
             (options, _) =>
             {
                 captured = options;
                 return Task.FromResult(0);
-            },
-            (_, _) => Task.FromResult(0));
+            }));
 
         int exitCode = await rootCommand.Parse(
             ["agent", "basic", "--model", "ollama:qwen3:4b", "--prompt", "hello", "--watch"])
@@ -51,13 +61,12 @@ public sealed class ParserTests
     public async Task DevUICommand_MapsOptions()
     {
         DevUICommandOptions? captured = null;
-        var rootCommand = Parser.CreateRootCommand(
-            (_, _) => Task.FromResult(0),
+        RootCommand rootCommand = CreateRootCommand(DevUICommand.Create(
             (options, _) =>
             {
                 captured = options;
                 return Task.FromResult(0);
-            });
+            }));
 
         int exitCode = await rootCommand.Parse(
             ["devui", "--model", "ollama:qwen3:4b", "--url", "http://localhost:6060"])
@@ -73,12 +82,12 @@ public sealed class ParserTests
     public async Task BasicRagCommand_MapsOptionsWithoutGlobalEmbeddingOverride()
     {
         BasicRagAgentCommandOptions? captured = null;
-        var rootCommand = Parser.CreateRootCommand(
+        RootCommand rootCommand = CreateRootCommand(AgentCommand.Create(
             runBasicRagAgentAsync: (options, _) =>
             {
                 captured = options;
                 return Task.FromResult(0);
-            });
+            }));
 
         int exitCode = await rootCommand.Parse(
             ["agent", "basic-rag", "--model", "ollama:qwen3:4b", "--prompt", "help", "--watch", "--filter", "audience=customer", "--filter", "product=support"])
@@ -96,12 +105,12 @@ public sealed class ParserTests
     public async Task RagIngestCommand_MapsKnowledgeBase()
     {
         RagIngestCommandOptions? captured = null;
-        var rootCommand = Parser.CreateRootCommand(
-            runRagIngestAsync: (options, _) =>
+        RootCommand rootCommand = CreateRootCommand(RagCommand.Create(
+            ingestAsync: (options, _) =>
             {
                 captured = options;
                 return Task.FromResult(0);
-            });
+            }));
 
         int exitCode = await rootCommand.Parse(
             [
@@ -126,14 +135,12 @@ public sealed class ParserTests
     public async Task TranslateWorkflowCommand_MapsOptions()
     {
         TranslateWorkflowCommandOptions? captured = null;
-        var rootCommand = Parser.CreateRootCommand(
-            (_, _) => Task.FromResult(0),
-            (_, _) => Task.FromResult(0),
+        RootCommand rootCommand = CreateRootCommand(WorkflowCommand.Create(
             (options, _) =>
             {
                 captured = options;
                 return Task.FromResult(0);
-            });
+            }));
 
         int exitCode = await rootCommand.Parse(
             [
@@ -159,12 +166,12 @@ public sealed class ParserTests
     public async Task InspectWorkflowCommand_MapsOptions()
     {
         InspectCommandOptions? captured = null;
-        var rootCommand = Parser.CreateRootCommand(
-            runInspectAsync: (options, _) =>
+        RootCommand rootCommand = CreateRootCommand(InspectCommand.Create(
+            (options, _) =>
             {
                 captured = options;
                 return Task.FromResult(0);
-            });
+            }));
 
         int exitCode = await rootCommand.Parse(
             [
@@ -182,5 +189,15 @@ public sealed class ParserTests
                 ViewInput: true,
                 Diagram: true),
             captured);
+    }
+
+    private static RootCommand CreateRootCommand(Command command) =>
+        Parser.CreateRootCommand([new TestCliCommand(command)]);
+
+    private sealed class TestCliCommand(Command command) : ICliCommand
+    {
+        public int Order => 0;
+
+        public Command Create() => command;
     }
 }

@@ -68,6 +68,11 @@ flowchart TB
 | [`MafPlayground.Tests`](tests/MafPlayground.Tests/README.md) | Fast deterministic unit and component tests. |
 | [`MafPlayground.IntegrationTests`](tests/MafPlayground.IntegrationTests/README.md) | Explicitly opt-in tests that require external infrastructure. |
 
+The CLI keeps its host-only support code grouped by responsibility: terminal
+execution renderers live under `src/MafPlayground.CLI/Execution`, composition
+extensions under `src/MafPlayground.CLI/Extensions`, and local host helpers under
+`src/MafPlayground.CLI/Helpers`.
+
 Detailed feature documentation:
 
 - [Basic agent](src/MafPlayground.AI/Agents/BasicAgent/README.md)

@@ -2,8 +2,12 @@ using System.CommandLine;
 
 namespace MafPlayground.CLI.Commands;
 
-public static class AgentCommand
+public sealed class AgentCommand : ICliCommand
 {
+    public int Order => 100;
+
+    Command ICliCommand.Create() => Create();
+
     public static Command Create(
         Func<BasicAgentCommandOptions, CancellationToken, Task<int>>? runBasicAgentAsync = null,
         Func<BasicRagAgentCommandOptions, CancellationToken, Task<int>>? runBasicRagAgentAsync = null)

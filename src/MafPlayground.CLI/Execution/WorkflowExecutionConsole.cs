@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Agents.AI.Workflows;
 
-namespace MafPlayground.CLI;
+namespace MafPlayground.CLI.Execution;
 
 internal sealed class WorkflowExecutionConsole(TextWriter output)
 {

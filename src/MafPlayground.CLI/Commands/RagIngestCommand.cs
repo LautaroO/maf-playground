@@ -1,4 +1,5 @@
 using System.CommandLine;
+using MafPlayground.CLI.Extensions;
 using MafPlayground.Retrieval;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

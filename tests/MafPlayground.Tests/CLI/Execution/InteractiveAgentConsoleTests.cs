@@ -6,6 +6,7 @@ using MafPlayground.AI;
 using MafPlayground.AI.Tools;
 using MafPlayground.Observability;
 using MafPlayground.CLI;
+using MafPlayground.CLI.Execution;
 using Microsoft.Extensions.AI;
 
 namespace MafPlayground.Tests;

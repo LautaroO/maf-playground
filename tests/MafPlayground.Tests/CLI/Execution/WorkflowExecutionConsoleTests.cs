@@ -1,4 +1,5 @@
 using MafPlayground.CLI;
+using MafPlayground.CLI.Execution;
 using Microsoft.Agents.AI.Workflows;
 
 namespace MafPlayground.Tests;

@@ -1,5 +1,8 @@
 using System.CommandLine;
 using MafPlayground.AI;
+using MafPlayground.CLI.Execution;
+using MafPlayground.CLI.Extensions;
+using MafPlayground.CLI.Helpers;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Resilience;

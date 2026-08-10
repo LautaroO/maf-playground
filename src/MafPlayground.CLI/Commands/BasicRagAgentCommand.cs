@@ -1,6 +1,9 @@
 using System.CommandLine;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.CLI.Execution;
+using MafPlayground.CLI.Extensions;
+using MafPlayground.CLI.Helpers;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Resilience;
 using MafPlayground.Observability;

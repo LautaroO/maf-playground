@@ -2,8 +2,12 @@ using System.CommandLine;
 
 namespace MafPlayground.CLI.Commands;
 
-public static class RagCommand
+public sealed class RagCommand : ICliCommand
 {
+    public int Order => 300;
+
+    Command ICliCommand.Create() => Create();
+
     public static Command Create(
         Func<RagMigrateCommandOptions, CancellationToken, Task<int>>? migrateAsync = null,
         Func<RagIngestCommandOptions, CancellationToken, Task<int>>? ingestAsync = null)

@@ -2,7 +2,7 @@ using MafPlayground.Providers.Ollama;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace MafPlayground.CLI;
+namespace MafPlayground.CLI.Extensions;
 
 public static class AIProviderCompositionExtensions
 {

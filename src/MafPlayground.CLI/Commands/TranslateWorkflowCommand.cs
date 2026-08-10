@@ -1,6 +1,8 @@
 using System.CommandLine;
 using System.Text.Json;
 using MafPlayground.AI;
+using MafPlayground.CLI.Execution;
+using MafPlayground.CLI.Extensions;
 using MafPlayground.AI.Resilience;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Workflows.Translation;

@@ -2,7 +2,7 @@ using MafPlayground.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace MafPlayground.CLI;
+namespace MafPlayground.CLI.Helpers;
 
 public sealed class LocalUserContextAccessor : IUserContextAccessor
 {

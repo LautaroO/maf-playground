@@ -1,5 +1,6 @@
 using MafPlayground.AI;
 using MafPlayground.CLI;
+using MafPlayground.CLI.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;

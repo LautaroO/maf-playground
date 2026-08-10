@@ -6,8 +6,12 @@ using Microsoft.Extensions.Logging;
 
 namespace MafPlayground.CLI.Commands;
 
-public static class InspectCommand
+public sealed class InspectCommand : ICliCommand
 {
+    public int Order => 500;
+
+    Command ICliCommand.Create() => Create();
+
     public static Command Create(
         Func<InspectCommandOptions, CancellationToken, Task<int>>? runAsync = null)
     {

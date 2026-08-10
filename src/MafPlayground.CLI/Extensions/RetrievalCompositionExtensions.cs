@@ -3,7 +3,7 @@ using MafPlayground.Retrieval.Postgres;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace MafPlayground.CLI;
+namespace MafPlayground.CLI.Extensions;
 
 public static class RetrievalCompositionExtensions
 {
