@@ -59,7 +59,10 @@ produce the standard `gen_ai.client.operation.duration` metric with a stable
 `error.type` attribute.
 
 Handled application operations use the provider-neutral
-`MafPlayground.AI.Operations` meter:
+`MafPlayground.AI.Operations` activity source and meter. Translation branches
+emit one child span per translate and validate attempt; these spans retain the
+operation, language, attempt, outcome, and stable error type without recording
+the source or translated text.
 
 | Metric | Meaning |
 | --- | --- |

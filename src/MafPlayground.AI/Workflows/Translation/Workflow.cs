@@ -31,8 +31,7 @@ public sealed class TranslationWorkflowFactory(
             _options.SupportedTargetLanguages);
 
         TranslationInputExecutor input = new(_options, guards);
-        List<ExecutorBinding> translators = [];
-        List<ExecutorBinding> validators = [];
+        List<ExecutorBinding> branches = [];
         TranslationAggregatorExecutor aggregator = new(
             emitAgentResponse: useChatProtocol,
             guards);
@@ -40,18 +39,11 @@ public sealed class TranslationWorkflowFactory(
         foreach (string language in supportedLanguages)
         {
             string executorSuffix = TranslationWorkflowHelpers.NormalizeExecutorId(language);
-            string translatorId = $"translate-{executorSuffix}";
-            TranslationExecutor translator = new(
-                translatorId,
+            TranslationBranchExecutor branch = new(
+                $"translate-and-validate-{executorSuffix}",
                 language,
                 translationService);
-            TranslationValidationExecutor validator = new(
-                $"validate-{executorSuffix}",
-                translatorId,
-                translationService);
-
-            translators.Add(translator);
-            validators.Add(validator);
+            branches.Add(branch);
         }
 
         WorkflowBuilder builder;
@@ -70,26 +62,20 @@ public sealed class TranslationWorkflowFactory(
             .WithName(workflowName)
             .WithDescription(
                 "Translates text into multiple target languages in parallel, " +
-                "validates each translation, and retries invalid results with validator feedback.")
+                "validates and retries each language independently with validator feedback.")
             .WithOpenTelemetry(telemetry =>
                 telemetry.EnableSensitiveData = _telemetryOptions.EnableSensitiveData)
             .AddFanOutEdge<GuardedTranslationRequest>(
                 input,
-                translators,
+                branches,
                 (request, _) => TranslationWorkflowHelpers.SelectTargetIndexes(
                     request?.Request ?? throw new ArgumentNullException(nameof(request)),
                     supportedLanguages));
 
-        for (int index = 0; index < translators.Count; index++)
+        foreach (ExecutorBinding branch in branches)
         {
-            builder.AddEdge(translators[index], validators[index]);
             builder.AddEdge(
-                validators[index],
-                translators[index],
-                "retry with feedback",
-                idempotent: false);
-            builder.AddEdge(
-                validators[index],
+                branch,
                 aggregator,
                 "complete",
                 idempotent: false);

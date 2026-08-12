@@ -6,9 +6,10 @@ namespace MafPlayground.AI.Observability;
 public static class AITelemetry
 {
     public const string AgentSourceName = "MafPlayground.Agents";
+    public const string OperationSourceName = "MafPlayground.AI.Operations";
     public const string WorkflowSourceName = "Microsoft.Agents.AI.Workflows";
 
-    public const string OperationMeterName = "MafPlayground.AI.Operations";
+    public const string OperationMeterName = OperationSourceName;
     public const string OperationCountMetricName = "maf_playground.ai.operation.count";
     public const string OperationFailureMetricName = "maf_playground.ai.operation.failure.count";
     public const string OperationDurationMetricName = "maf_playground.ai.operation.duration";
@@ -18,7 +19,10 @@ public static class AITelemetry
     public const string EntityNameTag = "maf_playground.entity.name";
     public const string OutcomeTag = "maf_playground.outcome";
     public const string ErrorTypeTag = "error.type";
+    public const string BranchTag = "maf_playground.workflow.branch";
+    public const string AttemptTag = "maf_playground.workflow.attempt";
 
+    private static readonly ActivitySource OperationSource = new(OperationSourceName);
     private static readonly Meter OperationMeter = new(OperationMeterName);
     private static readonly Counter<long> OperationCount = OperationMeter.CreateCounter<long>(
         OperationCountMetricName,
@@ -32,6 +36,24 @@ public static class AITelemetry
             OperationDurationMetricName,
             unit: "s",
             description: "Duration of AI application operations in seconds.");
+
+    public static Activity? StartOperationActivity(
+        string operationName,
+        string entityType,
+        string entityName,
+        string? branchName = null,
+        int? attempt = null)
+    {
+        Activity? activity = OperationSource.StartActivity(
+            operationName,
+            ActivityKind.Internal);
+        activity?.SetTag(OperationNameTag, operationName);
+        activity?.SetTag(EntityTypeTag, entityType);
+        activity?.SetTag(EntityNameTag, entityName);
+        activity?.SetTag(BranchTag, branchName);
+        activity?.SetTag(AttemptTag, attempt);
+        return activity;
+    }
 
     public static void RecordOperation(
         string operationName,
@@ -65,7 +87,7 @@ public static class AITelemetry
         }
         if (!string.IsNullOrWhiteSpace(branchName))
         {
-            tags.Add("maf_playground.workflow.branch", branchName);
+            tags.Add(BranchTag, branchName);
         }
 
         OperationCount.Add(1, tags);
@@ -82,7 +104,7 @@ public static class AITelemetry
         activity?.SetTag(OutcomeTag, outcome);
         activity?.SetTag("gen_ai.provider.name", providerName);
         activity?.SetTag("gen_ai.request.model", modelName);
-        activity?.SetTag("maf_playground.workflow.branch", branchName);
+        activity?.SetTag(BranchTag, branchName);
         if (!string.IsNullOrWhiteSpace(errorType))
         {
             activity?.SetTag(ErrorTypeTag, errorType);

@@ -58,6 +58,22 @@ public sealed class TranslationWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_FastBranchValidatesBeforeSlowBranchFinishesTranslation()
+    {
+        IndependentBranchModel model = new();
+        TranslationWorkflowRunner runner = CreateRunner(model);
+        using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(5));
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es", "fr"]),
+            cancellation.Token);
+
+        Assert.Equal(2, result.Translations.Count);
+        Assert.All(result.Translations, translation => Assert.True(translation.IsValid));
+        Assert.True(model.FastBranchValidatedBeforeSlowTranslationCompleted);
+    }
+
+    [Fact]
     public async Task RunAsync_RetriesInvalidTranslationWithValidationFeedbackOnce()
     {
         FeedbackTranslationModel model = new();
@@ -111,18 +127,20 @@ public sealed class TranslationWorkflowTests
     }
 
     [Fact]
-    public void Workflow_UsesOnlyTranslationAndValidationNodesPerLanguage()
+    public void Workflow_UsesOneIndependentBranchNodePerLanguage()
     {
         TranslationWorkflowFactory factory = CreateFactory(new FeedbackTranslationModel());
         Workflow workflow = factory.Create();
 
         string graph = WorkflowVisualizer.ToMermaidString(workflow);
 
-        Assert.DoesNotContain("initialize-es", graph, StringComparison.Ordinal);
-        Assert.DoesNotContain("complete-es", graph, StringComparison.Ordinal);
-        Assert.Contains("translate-es", graph, StringComparison.Ordinal);
-        Assert.Contains("validate-es", graph, StringComparison.Ordinal);
-        Assert.Contains("retry with feedback", graph, StringComparison.Ordinal);
+        Assert.Contains("translate-and-validate-es", graph, StringComparison.Ordinal);
+        Assert.Contains("translate-and-validate-fr", graph, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "validate_es[\"validate-es\"]",
+            graph,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("retry with feedback", graph, StringComparison.Ordinal);
         Assert.Contains("translation-aggregate", graph, StringComparison.Ordinal);
     }
 
@@ -183,7 +201,7 @@ public sealed class TranslationWorkflowTests
         ConcurrentQueue<Activity> stoppedActivities = new();
         using ActivityListener activityListener = new()
         {
-            ShouldListenTo = source => source.Name == AITelemetry.WorkflowSourceName,
+            ShouldListenTo = source => source.Name == AITelemetry.OperationSourceName,
             Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
                 ActivitySamplingResult.AllDataAndRecorded,
             ActivityStopped = stoppedActivities.Enqueue,
@@ -246,6 +264,60 @@ public sealed class TranslationWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_EmitsOperationSpansForEveryAttemptWithoutSensitiveContent()
+    {
+        ConcurrentQueue<Activity> stoppedActivities = new();
+        using ActivityListener listener = new()
+        {
+            ShouldListenTo = source => source.Name is
+                AITelemetry.OperationSourceName or AITelemetry.WorkflowSourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = stoppedActivities.Enqueue,
+        };
+        ActivitySource.AddActivityListener(listener);
+        TranslationWorkflowRunner runner = CreateRunner(new FeedbackTranslationModel());
+
+        await runner.RunAsync(new TranslationWorkflowRequest("Hello", ["es"]));
+
+        Activity[] operations = stoppedActivities
+            .Where(activity =>
+                activity.Source.Name == AITelemetry.OperationSourceName &&
+                Equals(
+                activity.GetTagItem(AITelemetry.BranchTag),
+                "es"))
+            .ToArray();
+        Assert.Equal(4, operations.Length);
+        Assert.Equal(
+            [1, 2],
+            operations
+                .Where(activity => activity.OperationName == "translation.translate")
+                .Select(activity => Convert.ToInt32(
+                    activity.GetTagItem(AITelemetry.AttemptTag)))
+                .Order());
+        Assert.Equal(
+            [1, 2],
+            operations
+                .Where(activity => activity.OperationName == "translation.validate")
+                .Select(activity => Convert.ToInt32(
+                    activity.GetTagItem(AITelemetry.AttemptTag)))
+                .Order());
+        Assert.Contains(operations, activity =>
+            activity.OperationName == "translation.validate" &&
+            Equals(activity.GetTagItem(AITelemetry.OutcomeTag), "retry"));
+        Activity branchActivity = Assert.Single(stoppedActivities, activity =>
+            activity.Source.Name == AITelemetry.WorkflowSourceName &&
+            activity.DisplayName.Contains(
+                "executor.process translate-and-validate-es",
+                StringComparison.Ordinal));
+        Assert.All(operations, activity =>
+            Assert.Equal(branchActivity.SpanId, activity.ParentSpanId));
+        Assert.DoesNotContain(
+            operations.SelectMany(activity => activity.TagObjects),
+            tag => Equals(tag.Value, "Hello") || Equals(tag.Value, "Hola"));
+    }
+
+    [Fact]
     public async Task RunStreamingAsync_EmitsExecutorEventsAndTypedOutput()
     {
         TranslationWorkflowRunner runner = CreateRunner(new FeedbackTranslationModel());
@@ -258,9 +330,15 @@ public sealed class TranslationWorkflowTests
         }
 
         Assert.Contains(events, workflowEvent =>
-            workflowEvent is ExecutorInvokedEvent { ExecutorId: "translate-es" });
+            workflowEvent is ExecutorInvokedEvent
+            {
+                ExecutorId: "translate-and-validate-es",
+            });
         Assert.Contains(events, workflowEvent =>
-            workflowEvent is ExecutorCompletedEvent { ExecutorId: "validate-es" });
+            workflowEvent is ExecutorCompletedEvent
+            {
+                ExecutorId: "translate-and-validate-es",
+            });
         TranslationWorkflowResult? result = events
             .OfType<WorkflowOutputEvent>()
             .Select(output => output.As<TranslationWorkflowResult>())
@@ -278,7 +356,7 @@ public sealed class TranslationWorkflowTests
 
         Assert.Equal(
             "Translates text into multiple target languages in parallel, " +
-            "validates each translation, and retries invalid results with validator feedback.",
+            "validates and retries each language independently with validator feedback.",
             workflow.Description);
 
         await using Run run = await InProcessExecution.RunAsync(
@@ -503,6 +581,54 @@ public sealed class TranslationWorkflowTests
                 ref _maximumConcurrentTranslations,
                 active,
                 current) != current);
+        }
+    }
+
+    private sealed class IndependentBranchModel : ITranslationModel
+    {
+        private readonly TaskCompletionSource _slowTranslationStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _fastValidationCompleted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _slowTranslationCompleted;
+
+        public bool FastBranchValidatedBeforeSlowTranslationCompleted { get; private set; }
+
+        public async Task<string> TranslateAsync(
+            string sourceText,
+            string targetLanguage,
+            IReadOnlyList<string>? validationFeedback,
+            CancellationToken cancellationToken)
+        {
+            if (targetLanguage == "fr")
+            {
+                _slowTranslationStarted.TrySetResult();
+                await _fastValidationCompleted.Task.WaitAsync(cancellationToken);
+                Interlocked.Exchange(ref _slowTranslationCompleted, 1);
+                return "Bonjour";
+            }
+
+            await _slowTranslationStarted.Task.WaitAsync(cancellationToken);
+            return "Hola";
+        }
+
+        public Task<TranslationValidation> ValidateAsync(
+            string sourceText,
+            string targetLanguage,
+            string translatedText,
+            CancellationToken cancellationToken)
+        {
+            if (targetLanguage == "es")
+            {
+                FastBranchValidatedBeforeSlowTranslationCompleted =
+                    Volatile.Read(ref _slowTranslationCompleted) == 0;
+                _fastValidationCompleted.TrySetResult();
+            }
+
+            return Task.FromResult(new TranslationValidation(
+                true,
+                1,
+                Array.Empty<TranslationIssue>()));
         }
     }
 

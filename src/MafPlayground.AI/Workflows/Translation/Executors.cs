@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using MafPlayground.AI.Guards;
+using MafPlayground.AI.Observability;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
@@ -35,105 +36,72 @@ internal sealed class TranslationInputExecutor(
     }
 }
 
-internal sealed class TranslationExecutor(
+internal sealed class TranslationBranchExecutor(
     string id,
     string targetLanguage,
     TranslationService translationService)
-    : Executor(id, declareCrossRunShareable: false)
+    : Executor<GuardedTranslationRequest, ValidatedTranslationMessage>(
+        id,
+        declareCrossRunShareable: false)
 {
-    private async ValueTask HandleInitialRequestAsync(
+    public override async ValueTask<ValidatedTranslationMessage> HandleAsync(
         GuardedTranslationRequest guardedRequest,
         IWorkflowContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         TranslationWorkflowRequest request = guardedRequest.Request;
-        Stopwatch elapsed = Stopwatch.StartNew();
-        TranslationBranchState state = await translationService.TranslateAsync(
-            new TranslationBranchState(
-                request.Text,
-                request.TargetLanguages,
-                targetLanguage,
-                guardedRequest.GuardExecutionId),
-            cancellationToken);
-        TranslationWorkflowHelpers.RecordBranchOperation(
-            "translation.translate",
-            state,
-            elapsed.Elapsed);
-        await context.SendMessageAsync(state, cancellationToken);
-    }
+        TranslationBranchState state = new(
+            request.Text,
+            request.TargetLanguages,
+            targetLanguage,
+            guardedRequest.GuardExecutionId);
 
-    private async ValueTask HandleRetryAsync(
-        TranslationBranchState state,
-        IWorkflowContext context,
-        CancellationToken cancellationToken)
-    {
-        Stopwatch elapsed = Stopwatch.StartNew();
-        TranslationBranchState translatedState = await translationService.TranslateAsync(
-            state,
-            cancellationToken);
-        TranslationWorkflowHelpers.RecordBranchOperation(
-            "translation.translate",
-            translatedState,
-            elapsed.Elapsed);
-        await context.SendMessageAsync(translatedState, cancellationToken);
-    }
-
-    protected override ProtocolBuilder ConfigureProtocol(ProtocolBuilder protocolBuilder) =>
-        protocolBuilder
-            .ConfigureRoutes(routes =>
-            {
-                routes.AddHandler<GuardedTranslationRequest>(HandleInitialRequestAsync);
-                routes.AddHandler<TranslationBranchState>(HandleRetryAsync);
-            })
-            .SendsMessage<TranslationBranchState>();
-}
-
-internal sealed class TranslationValidationExecutor(
-    string id,
-    string translatorId,
-    TranslationService translationService)
-    : Executor(id, declareCrossRunShareable: false)
-{
-    private async ValueTask HandleAsync(
-        TranslationBranchState state,
-        IWorkflowContext context,
-        CancellationToken cancellationToken)
-    {
-        bool skippedForUpstreamError = state.ErrorType is not null;
-        Stopwatch elapsed = Stopwatch.StartNew();
-        TranslationBranchState validatedState = await translationService.ValidateAsync(
-            state,
-            cancellationToken);
-        TranslationWorkflowHelpers.RecordBranchOperation(
-            "translation.validate",
-            validatedState,
-            elapsed.Elapsed,
-            skippedForUpstreamError);
-        if (validatedState.ShouldRetry)
+        do
         {
-            await context.SendMessageAsync(
-                validatedState,
-                translatorId,
-                cancellationToken);
-            return;
+            using (AITelemetry.StartOperationActivity(
+                       "translation.translate",
+                       "workflow",
+                       "translation",
+                       targetLanguage,
+                       state.Attempts + 1))
+            {
+                Stopwatch elapsed = Stopwatch.StartNew();
+                state = await translationService.TranslateAsync(
+                    state,
+                    cancellationToken);
+                TranslationWorkflowHelpers.RecordBranchOperation(
+                    "translation.translate",
+                    state,
+                    elapsed.Elapsed);
+            }
+
+            bool skippedForUpstreamError = state.ErrorType is not null;
+            using (AITelemetry.StartOperationActivity(
+                       "translation.validate",
+                       "workflow",
+                       "translation",
+                       targetLanguage,
+                       state.Attempts))
+            {
+                Stopwatch elapsed = Stopwatch.StartNew();
+                state = await translationService.ValidateAsync(
+                    state,
+                    cancellationToken);
+                TranslationWorkflowHelpers.RecordBranchOperation(
+                    "translation.validate",
+                    state,
+                    elapsed.Elapsed,
+                    skippedForUpstreamError);
+            }
         }
+        while (state.ShouldRetry);
 
-        await context.SendMessageAsync(
-            new ValidatedTranslationMessage(
-                validatedState.SourceText,
-                validatedState.RequestedTargetLanguages,
-                TranslationService.Complete(validatedState),
-                validatedState.GuardExecutionId),
-            TranslationAggregatorExecutor.ExecutorId,
-            cancellationToken);
+        return new ValidatedTranslationMessage(
+            state.SourceText,
+            state.RequestedTargetLanguages,
+            TranslationService.Complete(state),
+            state.GuardExecutionId);
     }
-
-    protected override ProtocolBuilder ConfigureProtocol(ProtocolBuilder protocolBuilder) =>
-        protocolBuilder
-            .ConfigureRoutes(routes =>
-                routes.AddHandler<TranslationBranchState>(HandleAsync))
-            .SendsMessage<TranslationBranchState>()
-            .SendsMessage<ValidatedTranslationMessage>();
 }
 
 internal sealed class TranslationChatInputExecutor()

@@ -13,7 +13,9 @@ internal sealed class DevUIActivityListener(
     private readonly ActivityListener _listener = new()
     {
         ShouldListenTo = source => source.Name is
-            AITelemetry.AgentSourceName or AITelemetry.WorkflowSourceName,
+            AITelemetry.AgentSourceName or
+            AITelemetry.OperationSourceName or
+            AITelemetry.WorkflowSourceName,
         Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
             ActivitySamplingResult.AllDataAndRecorded,
         ActivityStopped = activity =>

@@ -8,37 +8,32 @@ tasks inside those steps.
 
 ## Native graph
 
-The factory creates one translator and validator for each configured language.
-The input activates only the branches requested by the caller.
+The factory creates one independent translate-and-validate executor for each
+configured language. The input activates only the branches requested by the
+caller.
 
 ```mermaid
 flowchart LR
-    Input[translation-input] -->|requested languages| ES[translate-es]
-    Input --> FR[translate-fr]
-    Input --> PT[translate-pt_br]
-    ES --> VES[validate-es]
-    FR --> VFR[validate-fr]
-    PT --> VPT[validate-pt_br]
-    VES -->|retry with feedback| ES
-    VFR -->|retry with feedback| FR
-    VPT -->|retry with feedback| PT
-    VES -->|complete| Join[translation-aggregate]
-    VFR -->|complete| Join
-    VPT -->|complete| Join
+    Input[translation-input] -->|requested languages| ES[translate-and-validate-es]
+    Input --> FR[translate-and-validate-fr]
+    Input --> PT[translate-and-validate-pt_br]
+    ES -->|complete| Join[translation-aggregate]
+    FR -->|complete| Join
+    PT -->|complete| Join
     Join --> Result[TranslationWorkflowResult]
 ```
 
-`translation-input` and `translation-aggregate` are structural executors. The
-semantic work happens only in translate and validate executors. There are no
-placeholder initialize, repair, or complete agents: invalid output returns to the
-same translator with validator feedback.
+`translation-input` and `translation-aggregate` are structural executors. Each
+language executor performs its bounded translate, validate, and feedback-retry
+cycle internally. This avoids MAF's synchronization barrier between supersteps:
+a fast language can validate while another language is still translating.
 
 ## Components
 
 | File | Responsibility |
 | --- | --- |
 | [`Contracts.cs`](./Contracts.cs) | Immutable typed input, branch, validation, and result messages. |
-| [`Workflow.cs`](./Workflow.cs) | Builds metadata, fan-out, retry/complete edges, output binding, telemetry, and runners. |
+| [`Workflow.cs`](./Workflow.cs) | Builds metadata, fan-out, completion edges, output binding, telemetry, and runners. |
 | [`Executors.cs`](./Executors.cs) | Structural and semantic executors plus the temporary DevUI chat adapter. |
 | [`Service.cs`](./Service.cs) | Applies attempt, acceptance, partial-failure, and retry policy around model calls. |
 | [`Model.cs`](./Model.cs) | Defines provider-neutral `ITranslationModel` and its `IChatClient` implementation. |
@@ -107,12 +102,13 @@ Translation and validation exceptions become a typed failed branch, except
 caller cancellation, which propagates. Empty, oversized, untranslated,
 contaminated, and data/placeholder-changing output is rejected deterministically.
 Provider errors are not blindly retried: only a completed semantic review with a
-blocking result can follow the visible feedback edge. Warnings remain available to
-callers without blocking fan-in.
+blocking result can repeat the bounded branch loop. Warnings remain available to
+callers without blocking aggregation.
 
 Cross-cutting model-call timeout is applied by the shared `IChatClient` decorator.
-Semantic repair remains an explicit workflow transition rather than a hidden
-service loop.
+Semantic repair is an explicit typed state transition inside the branch executor.
+MAF checkpoints occur around the branch executor, not between its internal
+translate, validate, and retry operations.
 
 The workflow guard coordinator creates one execution ledger before fan-out. Its
 internal ID travels with branch state, so translations, validations, retries,
@@ -195,12 +191,16 @@ are not cross-run shareable.
 
 The builder sets workflow name, description, and OpenTelemetry integration. CLI
 `--watch` renders native events, DevUI shows the graph and local traces, and OTLP
-can export spans to Aspire Dashboard. Sensitive payload capture is off by default.
+can export spans to Aspire Dashboard. Each branch emits child operation spans for
+every translate and validate attempt, tagged with language, attempt, outcome, and
+stable error type. Provider model-call spans remain nested under those operations.
+Sensitive payload capture is off by default.
 
 Tests use fake `ITranslationModel` implementations to verify parallel fan-out,
-ordered fan-in, feedback retry, partial failures, cancellation, unsupported
-languages, Mermaid topology, streaming events, and DevUI envelopes/attachments.
-They do not depend on exact natural-language output from a live model.
+independent branch progress, ordered aggregation, feedback retry, operation spans,
+partial failures, cancellation, unsupported languages, Mermaid topology,
+streaming events, and DevUI envelopes/attachments. They do not depend on exact
+natural-language output from a live model.
 
 Extensions can add supported languages, replace the model adapter, introduce a
 deterministic glossary/policy service, or add human approval. Validation and
