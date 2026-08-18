@@ -92,6 +92,10 @@ tested without an LLM. `ChatClientTranslationModel` is the initial adapter:
 - it uses provider-neutral `IChatClient`, not an Ollama-specific SDK;
 - translation returns a structured draft response;
 - validation returns validity, confidence, typed issue codes, and severities;
+- every retry sends stable IDs for the previous blocking issues, and the
+  validator must mark each one `Resolved` or `StillPresent`;
+- every translation retry receives the previous draft and must make only the
+  smallest edits needed to address its blocking feedback;
 - deterministic checks detect empty, oversized, untranslated, contaminated, and
   data/placeholder-changing output before the result is accepted;
 - source text, target language, draft, and feedback are serialized as data;
@@ -100,6 +104,32 @@ tested without an LLM. `ChatClientTranslationModel` is the initial adapter:
 
 Provider resolution, endpoints, pricing, timeouts, and telemetry export remain in
 host composition and provider projects.
+
+## Consistent validation across retries
+
+Blocking findings remain typed workflow state across translation attempts. The
+first validation assigns a stable ID to every open blocking issue. A later
+validation receives those IDs, the previous draft, and the repaired draft. It
+performs a scoped repair verification and returns exactly one resolution for
+each previous issue.
+
+The deterministic service merges the result as follows:
+
+- `StillPresent` carries the previous issue forward even if the model omits it
+  from the repaired output;
+- `Resolved` closes the previous issue;
+- semantic findings outside the previous issue scope fail repair verification;
+- missing, duplicate, or unknown resolution IDs fail the validation call rather
+  than silently dropping prior findings;
+- deterministic checks still run globally on every draft and can detect new
+  objective regressions such as lost numbers, placeholders, or invalid format.
+- repairs whose only open issues are additive missing values or placeholders
+  must preserve the previous draft as a bounded insertion; rewrites and source
+  concatenation are rejected even when the model reports the issue as resolved.
+
+Validation spans record only issue counts: previous, resolved, still present,
+new, and currently open blocking findings. Issue descriptions and translated
+text remain excluded from these attributes.
 
 ## Failure and retry policy
 

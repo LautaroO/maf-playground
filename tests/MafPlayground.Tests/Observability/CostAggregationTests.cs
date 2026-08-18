@@ -25,7 +25,7 @@ public sealed class CostAggregationTests
             """{"isValid":false,"confidence":0.4,"issues":[{"severity":"Blocking","code":"SemanticMeaningChanged","description":"Incorrect translation."}]}""");
         innerClient.EnqueueResponse("""{"translatedText":"Hola"}""");
         innerClient.EnqueueResponse(
-            """{"isValid":true,"confidence":1,"issues":[]}""");
+            """{"isValid":true,"confidence":1,"issues":[],"previousIssueResolutions":[{"issueId":"attempt-1-issue-0-SemanticMeaningChanged","status":"Resolved"}]}""");
 
         const string model = "retry-model";
         using ServiceProvider provider = CreateProvider(innerClient, model);

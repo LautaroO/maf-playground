@@ -23,6 +23,10 @@ internal sealed record GuardedTranslationRequest(
     TranslationWorkflowRequest Request,
     string GuardExecutionId);
 
+internal sealed record TrackedTranslationIssue(
+    string Id,
+    TranslationIssue Issue);
+
 internal sealed record TranslationBranchState(
     string SourceText,
     IReadOnlyList<string> RequestedTargetLanguages,
@@ -36,7 +40,9 @@ internal sealed record TranslationBranchState(
     IReadOnlyList<TranslationIssue>? ValidationIssues = null,
     bool ShouldRetry = false,
     string? Error = null,
-    string? ErrorType = null);
+    string? ErrorType = null,
+    IReadOnlyList<TrackedTranslationIssue>? OpenValidationIssues = null,
+    string? LastValidatedText = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TranslationQualityStatus
@@ -86,7 +92,37 @@ public sealed record TranslationIssue(
 public sealed record TranslationValidation(
     bool IsValid,
     double Confidence,
-    IReadOnlyList<TranslationIssue> Issues);
+    IReadOnlyList<TranslationIssue> Issues,
+    IReadOnlyList<TranslationIssueResolution>? PreviousIssueResolutions = null);
+
+public sealed record TranslationDraftRequest(
+    string SourceText,
+    string TargetLanguage,
+    string? PreviousTranslatedText,
+    IReadOnlyList<string>? ValidationFeedback);
+
+public sealed record TranslationValidationRequest(
+    string SourceText,
+    string TargetLanguage,
+    string TranslatedText,
+    string? PreviousTranslatedText,
+    IReadOnlyList<TranslationIssueReference> PreviousBlockingIssues);
+
+public sealed record TranslationIssueReference(
+    string Id,
+    TranslationIssueCode Code,
+    string Description);
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TranslationIssueResolutionStatus
+{
+    Resolved,
+    StillPresent,
+}
+
+public sealed record TranslationIssueResolution(
+    string IssueId,
+    TranslationIssueResolutionStatus Status);
 
 public sealed record ValidatedTranslation(
     string TargetLanguage,

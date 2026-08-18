@@ -96,16 +96,12 @@ internal static class LocalEntityCatalog
     private sealed class DiagramOnlyTranslationModel : ITranslationModel
     {
         public Task<string> TranslateAsync(
-            string sourceText,
-            string targetLanguage,
-            IReadOnlyList<string>? validationFeedback,
+            TranslationDraftRequest request,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException("Diagram inspection does not execute workflows.");
 
         public Task<TranslationValidation> ValidateAsync(
-            string sourceText,
-            string targetLanguage,
-            string translatedText,
+            TranslationValidationRequest request,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException("Diagram inspection does not execute workflows.");
     }

@@ -152,7 +152,7 @@ internal static partial class TranslationWorkflowHelpers
             {
                 issues.Add(Blocking(
                     TranslationIssueCode.PlaceholderChanged,
-                    $"The protected token '{token}' was not preserved."));
+                    $"Preserve the protected token '{token}' exactly."));
             }
         }
 
@@ -162,7 +162,7 @@ internal static partial class TranslationWorkflowHelpers
             {
                 issues.Add(Blocking(
                     TranslationIssueCode.MissingData,
-                    $"The source value '{number}' was not preserved."));
+                    $"Preserve the source value '{number}' exactly."));
             }
         }
 
@@ -250,8 +250,11 @@ internal static partial class TranslationWorkflowHelpers
     private static bool LooksLikeModelOutputContamination(string translation) =>
         translation.Contains("\"issues\"", StringComparison.OrdinalIgnoreCase) ||
         translation.Contains("\"translatedText\"", StringComparison.OrdinalIgnoreCase) ||
+        translation.Contains("\"validationFeedback\"", StringComparison.OrdinalIgnoreCase) ||
         translation.StartsWith("{", StringComparison.Ordinal) ||
         translation.EndsWith("}", StringComparison.Ordinal) ||
+        translation.EndsWith("',", StringComparison.Ordinal) ||
+        translation.EndsWith("\",", StringComparison.Ordinal) ||
         translation.Contains("corrected issues:", StringComparison.OrdinalIgnoreCase) ||
         translation.Contains("no spelling or grammar errors", StringComparison.OrdinalIgnoreCase);
 }

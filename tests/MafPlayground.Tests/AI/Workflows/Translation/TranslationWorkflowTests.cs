@@ -72,6 +72,7 @@ public sealed class TranslationWorkflowTests
         Assert.Equal(2, translation.Attempts);
         Assert.Equal(2, model.TranslationCalls);
         Assert.Equal(2, model.ValidationCalls);
+        Assert.Equal("Hello", model.SecondTranslationRequest!.PreviousTranslatedText);
     }
 
     [Fact]
@@ -108,6 +109,195 @@ public sealed class TranslationWorkflowTests
         Assert.Equal(2, model.TranslationCalls);
         Assert.Contains(model.ValidationFeedback, feedback =>
             feedback.Contains(nameof(TranslationIssueCode.UntranslatedContent), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RunAsync_PreservesPreviousIssueReportedAsStillPresent()
+    {
+        ConsistentValidationModel model = new(
+            request => new TranslationValidation(
+                false,
+                0.8,
+                [],
+                request.PreviousBlockingIssues
+                    .Select(issue => new TranslationIssueResolution(
+                        issue.Id,
+                        TranslationIssueResolutionStatus.StillPresent))
+                    .ToArray()));
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.False(translation.IsValid);
+        Assert.Contains(translation.Issues, issue =>
+            issue.Code == TranslationIssueCode.MissingContent &&
+            issue.Severity == TranslationIssueSeverity.Blocking);
+        Assert.Single(model.SecondValidationRequest!.PreviousBlockingIssues);
+    }
+
+    [Fact]
+    public async Task RunAsync_RejectsValidatorThatOmitsPreviousIssueResolution()
+    {
+        ConsistentValidationModel model = new(_ => new TranslationValidation(
+            true,
+            1,
+            [],
+            []));
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.False(translation.IsValid);
+        Assert.Equal("The translation validation call failed.", translation.Error);
+        Assert.Contains(translation.Issues, issue =>
+            issue.Code == TranslationIssueCode.ValidationCallFailed);
+    }
+
+    [Fact]
+    public async Task RunAsync_RejectsNewSemanticFindingsDuringRepairVerification()
+    {
+        ConsistentValidationModel model = new(
+            request => new TranslationValidation(
+                false,
+                0.7,
+                [new TranslationIssue(
+                    TranslationIssueSeverity.Blocking,
+                    TranslationIssueCode.WrongTargetLanguage,
+                    "The repaired text uses the wrong language.")],
+                request.PreviousBlockingIssues
+                    .Select(issue => new TranslationIssueResolution(
+                        issue.Id,
+                        TranslationIssueResolutionStatus.Resolved))
+                    .ToArray()));
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.False(translation.IsValid);
+        Assert.Contains(translation.Issues, issue =>
+            issue.Code == TranslationIssueCode.ValidationCallFailed);
+    }
+
+    [Fact]
+    public async Task RunAsync_DetectsNewDeterministicRegressionDuringRepairVerification()
+    {
+        ConsistentValidationModel model = new(
+            request => new TranslationValidation(
+                true,
+                1,
+                [],
+                request.PreviousBlockingIssues
+                    .Select(issue => new TranslationIssueResolution(
+                        issue.Id,
+                        TranslationIssueResolutionStatus.Resolved))
+                    .ToArray()),
+            firstTranslation: "Pedido 247",
+            secondTranslation: "Pedido");
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Order 247", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.False(translation.IsValid);
+        Assert.DoesNotContain(translation.Issues, issue =>
+            issue.Code == TranslationIssueCode.MissingContent);
+        Assert.Contains(translation.Issues, issue =>
+            issue.Code == TranslationIssueCode.MissingData);
+        Assert.Equal("Pedido 247", model.SecondValidationRequest!.PreviousTranslatedText);
+    }
+
+    [Fact]
+    public async Task RunAsync_AllowsMinimalAdditiveRepair()
+    {
+        ConsistentValidationModel model = new(
+            ResolveAllPreviousIssues,
+            firstTranslation: "Pedido listo a las 18:30.",
+            secondTranslation: "Pedido 247 listo a las 18:30.",
+            firstIssueCode: TranslationIssueCode.MissingData,
+            firstIssueDescription: "Preserve the source value '247' exactly.");
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Order 247 ready at 18:30.", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.True(translation.IsValid);
+        Assert.Equal(2, translation.Attempts);
+    }
+
+    [Fact]
+    public async Task RunAsync_RejectsRewriteOutsideAdditiveRepairScope()
+    {
+        ConsistentValidationModel model = new(
+            ResolveAllPreviousIssues,
+            firstTranslation: "Pedido listo a las 18:30.",
+            secondTranslation: "Order 247 ready at 18:30.",
+            firstIssueCode: TranslationIssueCode.MissingData,
+            firstIssueDescription: "Preserve the source value '247' exactly.");
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        TranslationWorkflowResult result = await runner.RunAsync(
+            new TranslationWorkflowRequest("Order 247 ready at 18:30.", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.False(translation.IsValid);
+        Assert.Contains(translation.Issues, issue =>
+            issue.Code == TranslationIssueCode.OutputFormat &&
+            issue.Severity == TranslationIssueSeverity.Blocking);
+    }
+
+    [Fact]
+    public async Task RunAsync_RecordsPreviousIssueResolutionCountsWithoutContent()
+    {
+        ConcurrentQueue<Activity> stoppedActivities = new();
+        using ActivityListener listener = new()
+        {
+            ShouldListenTo = source => source.Name == AITelemetry.WorkflowSourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = stoppedActivities.Enqueue,
+        };
+        ActivitySource.AddActivityListener(listener);
+        using Activity parent = new Activity("validation-consistency-telemetry-test").Start();
+        ActivityTraceId traceId = parent.TraceId;
+        ConsistentValidationModel model = new(
+            request => new TranslationValidation(
+                false,
+                0.8,
+                [],
+                request.PreviousBlockingIssues
+                    .Select(issue => new TranslationIssueResolution(
+                        issue.Id,
+                        TranslationIssueResolutionStatus.StillPresent))
+                    .ToArray()));
+        TranslationWorkflowRunner runner = CreateRunner(model);
+
+        await runner.RunAsync(new TranslationWorkflowRequest("Hello", ["es"]));
+
+        Activity secondValidation = Assert.Single(stoppedActivities, activity =>
+            activity.TraceId == traceId &&
+            Equals(
+                activity.GetTagItem(
+                    "maf_playground.translation.previous_blocking_issue_count"),
+                1));
+        Assert.Equal(
+            1,
+            secondValidation.GetTagItem(
+                "maf_playground.translation.still_present_issue_count"));
+        Assert.Equal(
+            0,
+            secondValidation.GetTagItem(
+                "maf_playground.translation.resolved_issue_count"));
+        Assert.DoesNotContain(
+            secondValidation.TagObjects,
+            tag => Equals(tag.Value, "Hello") || Equals(tag.Value, "Hola"));
     }
 
     [Fact]
@@ -461,9 +651,7 @@ public sealed class TranslationWorkflowTests
         public int MaximumConcurrentTranslations => _maximumConcurrentTranslations;
 
         public async Task<string> TranslateAsync(
-            string sourceText,
-            string targetLanguage,
-            IReadOnlyList<string>? validationFeedback,
+            TranslationDraftRequest request,
             CancellationToken cancellationToken)
         {
             int active = Interlocked.Increment(ref _activeTranslations);
@@ -475,13 +663,11 @@ public sealed class TranslationWorkflowTests
 
             await _allStarted.Task.WaitAsync(cancellationToken);
             Interlocked.Decrement(ref _activeTranslations);
-            return $"{targetLanguage}:Hello";
+            return $"{request.TargetLanguage}:Hello";
         }
 
         public Task<TranslationValidation> ValidateAsync(
-            string sourceText,
-            string targetLanguage,
-            string translatedText,
+            TranslationValidationRequest request,
             CancellationToken cancellationToken) =>
             Task.FromResult(new TranslationValidation(
                 true,
@@ -512,28 +698,36 @@ public sealed class TranslationWorkflowTests
 
         public int ValidationCalls { get; private set; }
 
+        public TranslationDraftRequest? SecondTranslationRequest { get; private set; }
+
         public Task<string> TranslateAsync(
-            string sourceText,
-            string targetLanguage,
-            IReadOnlyList<string>? validationFeedback,
+            TranslationDraftRequest request,
             CancellationToken cancellationToken)
         {
             TranslationCalls++;
-            return Task.FromResult(validationFeedback is null ? "Hello" : "Hola");
+            if (TranslationCalls == 2)
+            {
+                SecondTranslationRequest = request;
+            }
+
+            return Task.FromResult(request.ValidationFeedback is null ? "Hello" : "Hola");
         }
 
         public Task<TranslationValidation> ValidateAsync(
-            string sourceText,
-            string targetLanguage,
-            string translatedText,
+            TranslationValidationRequest request,
             CancellationToken cancellationToken)
         {
             ValidationCalls++;
-            return Task.FromResult(translatedText == "Hola"
+            return Task.FromResult(request.TranslatedText == "Hola"
                 ? new TranslationValidation(
                     true,
                     0.99,
-                    Array.Empty<TranslationIssue>())
+                    Array.Empty<TranslationIssue>(),
+                    request.PreviousBlockingIssues
+                        .Select(issue => new TranslationIssueResolution(
+                            issue.Id,
+                            TranslationIssueResolutionStatus.Resolved))
+                        .ToArray())
                 : new TranslationValidation(
                     false,
                     0.2,
@@ -553,9 +747,7 @@ public sealed class TranslationWorkflowTests
         public int ValidationCalls { get; private set; }
 
         public Task<string> TranslateAsync(
-            string sourceText,
-            string targetLanguage,
-            IReadOnlyList<string>? validationFeedback,
+            TranslationDraftRequest request,
             CancellationToken cancellationToken)
         {
             TranslationCalls++;
@@ -563,9 +755,7 @@ public sealed class TranslationWorkflowTests
         }
 
         public Task<TranslationValidation> ValidateAsync(
-            string sourceText,
-            string targetLanguage,
-            string translatedText,
+            TranslationValidationRequest request,
             CancellationToken cancellationToken)
         {
             ValidationCalls++;
@@ -588,45 +778,97 @@ public sealed class TranslationWorkflowTests
         public List<string> ValidationFeedback { get; } = [];
 
         public Task<string> TranslateAsync(
-            string sourceText,
-            string targetLanguage,
-            IReadOnlyList<string>? validationFeedback,
+            TranslationDraftRequest request,
             CancellationToken cancellationToken)
         {
             TranslationCalls++;
-            if (validationFeedback is not null)
+            if (request.ValidationFeedback is not null)
             {
-                ValidationFeedback.AddRange(validationFeedback);
+                ValidationFeedback.AddRange(request.ValidationFeedback);
             }
 
-            return Task.FromResult(validationFeedback is null ? sourceText : "Hola");
+            return Task.FromResult(request.ValidationFeedback is null ? request.SourceText : "Hola");
         }
 
         public Task<TranslationValidation> ValidateAsync(
-            string sourceText,
-            string targetLanguage,
-            string translatedText,
+            TranslationValidationRequest request,
             CancellationToken cancellationToken) =>
             Task.FromResult(new TranslationValidation(
                 true,
                 1,
-                Array.Empty<TranslationIssue>()));
+                Array.Empty<TranslationIssue>(),
+                request.PreviousBlockingIssues
+                    .Select(issue => new TranslationIssueResolution(
+                        issue.Id,
+                        TranslationIssueResolutionStatus.Resolved))
+                    .ToArray()));
     }
 
     private sealed class FailingTranslationModel : ITranslationModel
     {
         public Task<string> TranslateAsync(
-            string sourceText,
-            string targetLanguage,
-            IReadOnlyList<string>? validationFeedback,
+            TranslationDraftRequest request,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("provider unavailable");
 
         public Task<TranslationValidation> ValidateAsync(
-            string sourceText,
-            string targetLanguage,
-            string translatedText,
+            TranslationValidationRequest request,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Validation should not run.");
     }
+
+    private sealed class ConsistentValidationModel(
+        Func<TranslationValidationRequest, TranslationValidation> secondValidation,
+        string firstTranslation = "Ola",
+        string secondTranslation = "Hola",
+        TranslationIssueCode firstIssueCode = TranslationIssueCode.MissingContent,
+        string firstIssueDescription = "A source detail is missing.")
+        : ITranslationModel
+    {
+        private int _translationCalls;
+        private int _validationCalls;
+
+        public TranslationValidationRequest? SecondValidationRequest { get; private set; }
+
+        public Task<string> TranslateAsync(
+            TranslationDraftRequest request,
+            CancellationToken cancellationToken)
+        {
+            int call = Interlocked.Increment(ref _translationCalls);
+            return Task.FromResult(call == 1 ? firstTranslation : secondTranslation);
+        }
+
+        public Task<TranslationValidation> ValidateAsync(
+            TranslationValidationRequest request,
+            CancellationToken cancellationToken)
+        {
+            int call = Interlocked.Increment(ref _validationCalls);
+            if (call == 1)
+            {
+                return Task.FromResult(new TranslationValidation(
+                    false,
+                    0.5,
+                    [new TranslationIssue(
+                        TranslationIssueSeverity.Blocking,
+                        firstIssueCode,
+                        firstIssueDescription)],
+                    []));
+            }
+
+            SecondValidationRequest = request;
+            return Task.FromResult(secondValidation(request));
+        }
+    }
+
+    private static TranslationValidation ResolveAllPreviousIssues(
+        TranslationValidationRequest request) =>
+        new(
+            true,
+            1,
+            [],
+            request.PreviousBlockingIssues
+                .Select(issue => new TranslationIssueResolution(
+                    issue.Id,
+                    TranslationIssueResolutionStatus.Resolved))
+                .ToArray());
 }

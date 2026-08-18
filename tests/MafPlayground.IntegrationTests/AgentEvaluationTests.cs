@@ -1,15 +1,18 @@
+using System.Diagnostics;
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.Providers.Ollama;
 using MafPlayground.Retrieval;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace MafPlayground.IntegrationTests;
 
 [Collection(OllamaCollection.Name)]
-public sealed class AgentEvaluationTests
+public sealed class AgentEvaluationTests(ITestOutputHelper output)
 {
     [ModelEvaluationFact]
     public async Task BasicRag_GroundsSupportedFactAndRefusesUnsupportedQuestion()
@@ -65,6 +68,110 @@ public sealed class AgentEvaluationTests
             Assert.True(translation.IsValid, translation.Error);
             Assert.Contains("14", translation.TranslatedText, StringComparison.Ordinal);
         });
+    }
+
+    [ModelEvaluationFact]
+    public async Task Translation_RepairsReportedIssuesAcrossLanguages()
+    {
+        ServiceCollection services = new();
+        services.AddOllamaProvider(OllamaProviderContractTests.CreateConfiguration());
+        services.AddAICore(OllamaProviderContractTests.GetOllamaSelection());
+        services.AddSingleton<ITranslationModel>(provider =>
+            new ForcedRepairTranslationModel(
+                new ChatClientTranslationModel(provider.GetRequiredService<IChatClient>()),
+                output));
+        services.AddTranslationWorkflow();
+        services.Configure<TranslationWorkflowOptions>(options =>
+        {
+            options.SupportedTargetLanguages = ["es", "fr", "pt-BR"];
+            options.MaxTranslationRetries = 1;
+        });
+        using ServiceProvider provider = services.BuildServiceProvider();
+        TranslationWorkflowRunner runner = provider
+            .GetRequiredService<TranslationWorkflowRunner>();
+        using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(5));
+        const string source =
+            "Your order 247 is ready for pickup at 18:30.";
+        IReadOnlyDictionary<string, string> expectedPlacement =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["es"] = "pedido 247",
+                ["fr"] = "commande 247",
+                ["pt-BR"] = "pedido 247",
+            };
+        foreach (string language in expectedPlacement.Keys)
+        {
+            Stopwatch elapsed = Stopwatch.StartNew();
+            TranslationWorkflowResult result = await runner.RunAsync(
+                new TranslationWorkflowRequest(source, [language]),
+                timeout.Token);
+            elapsed.Stop();
+            ValidatedTranslation translation = Assert.Single(result.Translations);
+            output.WriteLine(
+                "{0}: {1} ms; attempts={2}; repaired={3}",
+                translation.TargetLanguage,
+                elapsed.ElapsedMilliseconds,
+                translation.Attempts,
+                translation.TranslatedText);
+            Assert.True(translation.IsValid, translation.Error);
+            Assert.Equal(2, translation.Attempts);
+            Assert.Empty(translation.Issues);
+            Assert.Contains("247", translation.TranslatedText, StringComparison.Ordinal);
+            Assert.Contains("18:30", translation.TranslatedText, StringComparison.Ordinal);
+            Assert.Contains(
+                expectedPlacement[language],
+                translation.TranslatedText,
+                StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private sealed class ForcedRepairTranslationModel(
+        ITranslationModel model,
+        ITestOutputHelper output)
+        : ITranslationModel
+    {
+        private static readonly IReadOnlyDictionary<string, string> InitialDrafts =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["es"] = "Su pedido está listo para recoger a las 18:30.",
+                ["fr"] = "Votre commande est prête à être retirée à 18:30.",
+                ["pt-BR"] = "Seu pedido está pronto para retirada às 18:30.",
+            };
+
+        public async Task<string> TranslateAsync(
+            TranslationDraftRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (request.ValidationFeedback is null)
+            {
+                return InitialDrafts[request.TargetLanguage];
+            }
+
+            try
+            {
+                return await model.TranslateAsync(request, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                output.WriteLine("repair exception: {0}", exception);
+                throw;
+            }
+        }
+
+        public Task<TranslationValidation> ValidateAsync(
+            TranslationValidationRequest request,
+            CancellationToken cancellationToken) =>
+            request.PreviousBlockingIssues.Count == 0
+                ? Task.FromResult(new TranslationValidation(
+                    false,
+                    1,
+                    [
+                        new TranslationIssue(
+                            TranslationIssueSeverity.Blocking,
+                            TranslationIssueCode.MissingData,
+                            "Restore order number 247 immediately after the translated word for order."),
+                    ]))
+                : model.ValidateAsync(request, cancellationToken);
     }
 
     private sealed class EvaluationSearchFactory : IKnowledgeSearchFactory

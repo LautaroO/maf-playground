@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Guards.Budget;
 using Microsoft.Extensions.Options;
@@ -21,9 +22,11 @@ public sealed class TranslationService(
             using GuardExecutionScope guardScope = guards.EnterScope(
                 state.GuardExecutionId);
             string translatedText = await translationModel.TranslateAsync(
-                state.SourceText,
-                state.TargetLanguage,
-                state.Feedback,
+                new TranslationDraftRequest(
+                    state.SourceText,
+                    state.TargetLanguage,
+                    state.Attempts == 0 ? null : state.TranslatedText,
+                    state.Feedback),
                 cancellationToken);
             return state with
             {
@@ -98,18 +101,36 @@ public sealed class TranslationService(
             TranslationWorkflowHelpers.ValidateDeterministic(
                 state.SourceText,
                 state.TranslatedText,
-                _options.MaxInputCharacters * 5);
+                _options.MaxInputCharacters * 5)
+            .Concat(ValidateAdditiveRepairScope(state))
+            .Distinct()
+            .ToArray();
 
         TranslationValidation validation;
         try
         {
             using GuardExecutionScope guardScope = guards.EnterScope(
                 state.GuardExecutionId);
+            IReadOnlyList<TrackedTranslationIssue> previousOpenIssues =
+                state.OpenValidationIssues ?? [];
             validation = await translationModel.ValidateAsync(
-                state.SourceText,
-                state.TargetLanguage,
-                state.TranslatedText,
+                new TranslationValidationRequest(
+                    state.SourceText,
+                    state.TargetLanguage,
+                    state.TranslatedText,
+                    state.LastValidatedText,
+                    previousOpenIssues
+                        .Select(issue => new TranslationIssueReference(
+                            issue.Id,
+                            issue.Issue.Code,
+                            issue.Issue.Description))
+                        .ToArray()),
                 cancellationToken);
+            ValidatePreviousIssueResolutions(
+                previousOpenIssues,
+                validation.PreviousIssueResolutions ?? [],
+                validation.Issues,
+                validation.IsValid);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -130,9 +151,23 @@ public sealed class TranslationService(
                 exception.GetType().FullName ?? exception.GetType().Name);
         }
 
+        IReadOnlyList<TrackedTranslationIssue> previousIssues =
+            state.OpenValidationIssues ?? [];
+        Dictionary<string, TranslationIssueResolutionStatus> resolutions =
+            (validation.PreviousIssueResolutions ?? [])
+                .ToDictionary(resolution => resolution.IssueId, resolution => resolution.Status);
+        List<TrackedTranslationIssue> stillOpenPreviousIssues = previousIssues
+            .Where(issue =>
+                resolutions[issue.Id] == TranslationIssueResolutionStatus.StillPresent ||
+                deterministicIssues.Contains(issue.Issue))
+            .ToList();
+
         List<TranslationIssue> validationIssues = [.. deterministicIssues];
-        validationIssues.AddRange(
-            TranslationWorkflowHelpers.NormalizeModelIssues(validation.Issues));
+        validationIssues.AddRange(stillOpenPreviousIssues.Select(issue => issue.Issue));
+        IReadOnlyList<TranslationIssue> newModelIssues =
+            TranslationWorkflowHelpers.NormalizeModelIssues(validation.Issues);
+        validationIssues.AddRange(newModelIssues);
+        validationIssues = validationIssues.Distinct().ToList();
 
         if (!validation.IsValid &&
             !validationIssues.Any(issue =>
@@ -164,6 +199,26 @@ public sealed class TranslationService(
             .ToArray();
         bool shouldRetry = hasBlockingIssues &&
             state.Attempts <= _options.MaxTranslationRetries;
+        IReadOnlyList<TrackedTranslationIssue> openIssues = TrackOpenIssues(
+            validationIssues,
+            stillOpenPreviousIssues,
+            state.Attempts);
+
+        Activity.Current?.SetTag(
+            "maf_playground.translation.previous_blocking_issue_count",
+            previousIssues.Count);
+        Activity.Current?.SetTag(
+            "maf_playground.translation.resolved_issue_count",
+            previousIssues.Count - stillOpenPreviousIssues.Count);
+        Activity.Current?.SetTag(
+            "maf_playground.translation.still_present_issue_count",
+            stillOpenPreviousIssues.Count);
+        Activity.Current?.SetTag(
+            "maf_playground.translation.new_issue_count",
+            newModelIssues.Count);
+        Activity.Current?.SetTag(
+            "maf_playground.translation.open_blocking_issue_count",
+            openIssues.Count);
 
         return state with
         {
@@ -173,6 +228,8 @@ public sealed class TranslationService(
             ValidationIssues = validationIssues,
             ShouldRetry = shouldRetry,
             ErrorType = accepted ? null : "validation_rejected",
+            OpenValidationIssues = openIssues,
+            LastValidatedText = state.TranslatedText,
         };
     }
 
@@ -216,4 +273,113 @@ public sealed class TranslationService(
                 TranslationIssueCode.ValidationCallFailed,
             _ => TranslationIssueCode.ModelCallFailed,
         };
+
+    private static void ValidatePreviousIssueResolutions(
+        IReadOnlyList<TrackedTranslationIssue> previousIssues,
+        IReadOnlyList<TranslationIssueResolution> resolutions,
+        IReadOnlyList<TranslationIssue> newIssues,
+        bool isValid)
+    {
+        string[] expectedIds = previousIssues
+            .Select(issue => issue.Id)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        string[] actualIds = resolutions
+            .Select(resolution => resolution.IssueId)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (!expectedIds.SequenceEqual(actualIds, StringComparer.Ordinal))
+        {
+            throw new TranslationValidationConsistencyException(
+                "The translation validator did not account for every previous blocking issue.");
+        }
+
+        if (previousIssues.Count == 0)
+        {
+            return;
+        }
+
+        if (newIssues.Count > 0)
+        {
+            throw new TranslationValidationConsistencyException(
+                "Repair verification returned findings outside the previous issue scope.");
+        }
+
+        bool hasStillPresentIssue = resolutions.Any(resolution =>
+            resolution.Status == TranslationIssueResolutionStatus.StillPresent);
+        if (isValid == hasStillPresentIssue)
+        {
+            throw new TranslationValidationConsistencyException(
+                "Repair verification validity contradicts its issue resolutions.");
+        }
+    }
+
+    private static IReadOnlyList<TrackedTranslationIssue> TrackOpenIssues(
+        IReadOnlyList<TranslationIssue> currentIssues,
+        IReadOnlyList<TrackedTranslationIssue> stillOpenPreviousIssues,
+        int attempt)
+    {
+        List<TrackedTranslationIssue> tracked = [.. stillOpenPreviousIssues];
+        int nextIssueIndex = 0;
+        foreach (TranslationIssue issue in currentIssues.Where(issue =>
+                     issue.Severity == TranslationIssueSeverity.Blocking))
+        {
+            if (tracked.Any(existing => existing.Issue == issue))
+            {
+                continue;
+            }
+
+            tracked.Add(new TrackedTranslationIssue(
+                $"attempt-{attempt}-issue-{nextIssueIndex++}-{issue.Code}",
+                issue));
+        }
+
+        return tracked;
+    }
+
+    private static IReadOnlyList<TranslationIssue> ValidateAdditiveRepairScope(
+        TranslationBranchState state)
+    {
+        IReadOnlyList<TrackedTranslationIssue> previousIssues =
+            state.OpenValidationIssues ?? [];
+        if (previousIssues.Count == 0 ||
+            string.IsNullOrEmpty(state.LastValidatedText) ||
+            string.IsNullOrEmpty(state.TranslatedText) ||
+            previousIssues.Any(issue => issue.Issue.Code is not
+                (TranslationIssueCode.MissingData or TranslationIssueCode.PlaceholderChanged)))
+        {
+            return [];
+        }
+
+        int maximumAddedCharacters = previousIssues.Count * 32;
+        bool preservedPreviousDraft = IsSubsequence(
+            state.LastValidatedText,
+            state.TranslatedText);
+        bool boundedGrowth =
+            state.TranslatedText.Length - state.LastValidatedText.Length <=
+            maximumAddedCharacters;
+        return preservedPreviousDraft && boundedGrowth
+            ? []
+            : [TranslationWorkflowHelpers.Blocking(
+                TranslationIssueCode.OutputFormat,
+                "The repair changed content outside its additive issue scope.")];
+    }
+
+    private static bool IsSubsequence(string expected, string actual)
+    {
+        int expectedIndex = 0;
+        foreach (char character in actual)
+        {
+            if (expectedIndex < expected.Length &&
+                character == expected[expectedIndex])
+            {
+                expectedIndex++;
+            }
+        }
+
+        return expectedIndex == expected.Length;
+    }
 }
+
+internal sealed class TranslationValidationConsistencyException(string message)
+    : InvalidOperationException(message);
