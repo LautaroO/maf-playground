@@ -1,8 +1,8 @@
 using MafPlayground.Retrieval;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
-using Microsoft.ML.Tokenizers;
 using OllamaSharp;
+using OllamaSharp.Models;
 
 namespace MafPlayground.Providers.Ollama;
 
@@ -13,11 +13,19 @@ internal sealed class OllamaEmbeddingGeneratorProvider(IOptions<OllamaProviderOp
     public IEmbeddingGenerator<string, Embedding<float>> Create(string model) =>
         new OllamaApiClient(options.Value.Endpoint, model);
 
-    public EmbeddingTokenizer CreateTokenizer(string model)
+    public async ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
+        string model,
+        CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(model);
-        return new(
-            TiktokenTokenizer.CreateForEncoding("cl100k_base"),
-            "ollama:approximate-cl100k_base:1.0.1");
+        OllamaEmbeddingTokenizerFactory.EnsureSupported(model);
+        using OllamaApiClient client = new(options.Value.Endpoint, model);
+        ShowModelResponse response = await client.ShowModelAsync(
+            new ShowModelRequest
+            {
+                Model = model,
+                Verbose = true,
+            },
+            cancellationToken);
+        return OllamaEmbeddingTokenizerFactory.Create(model, response.Info);
     }
 }

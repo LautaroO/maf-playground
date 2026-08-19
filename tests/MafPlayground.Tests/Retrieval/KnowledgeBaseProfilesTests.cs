@@ -369,13 +369,16 @@ public sealed class KnowledgeBaseProfilesTests
             return new FakeEmbeddingGenerator();
         }
 
-        public EmbeddingTokenizer CreateTokenizer(string model)
+        public ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
+            string model,
+            CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             CreatedTokenizerModels.Add(model);
-            return new(
+            return ValueTask.FromResult(new EmbeddingTokenizer(
                 Microsoft.ML.Tokenizers.TiktokenTokenizer.CreateForEncoding(
                     "cl100k_base"),
-                "fake:cl100k_base");
+                "fake:cl100k_base"));
         }
     }
 

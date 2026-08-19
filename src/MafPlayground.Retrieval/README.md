@@ -76,6 +76,13 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 `Collection` and `EmbeddingModel` are required for every named knowledge base.
 The selected embedding provider owns the tokenizer and its versioned identity;
 tokenizer selection is not knowledge-base configuration.
+
+The Ollama adapter supports token-aware ingestion only for the repository's
+`nomic-embed-text` model aliases. It reads the installed model's BERT vocabulary
+from Ollama's verbose model metadata and includes its SHA-256 hash in the
+chunking identity. Other Ollama embedding models fail before extraction with an
+explicit unsupported-tokenizer error.
+
 Search settings are supplied by the consuming agent:
 
 | Search option | Default |

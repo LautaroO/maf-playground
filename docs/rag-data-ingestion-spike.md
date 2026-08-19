@@ -30,7 +30,7 @@ flowchart LR
     Source[PDF, DOCX, PPTX or Markdown] --> Reader[IngestionDocumentReader implementation]
     Reader --> Document[Structured IngestionDocument]
     Document --> Coordinator[Existing ingestion coordinator]
-    Coordinator --> Chunker[DocumentTokenChunker per source section]
+    Coordinator --> Chunker[Repository token splitter per source section]
     Chunker --> ExistingChunks[DocumentChunk]
     ExistingChunks --> Embeddings[IEmbeddingGenerator]
     Embeddings --> Store[Existing IKnowledgeStore]
@@ -52,15 +52,16 @@ The spike pins packages compatible with the repository's
 - `Microsoft.Extensions.DataIngestion.Abstractions`
   `10.7.0-preview.1.26309.5` (transitive)
 - `Microsoft.Extensions.DataIngestion.Markdig` `10.7.0-preview.1.26309.5`
-- `Microsoft.ML.Tokenizers` `1.0.1` (retrieval contract)
-- `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1`
+- `Microsoft.ML.Tokenizers` `2.0.0` (retrieval contract and BERT implementation)
+- `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1` (tests only)
 - `DocumentFormat.OpenXml` `3.5.1`
 
 The retrieval core depends only on the tokenizer abstraction. Each embedding
 provider creates the tokenizer for its model and supplies a stable identity that
-participates in the chunking identity. The Ollama adapter currently declares
-`cl100k_base` as an explicit approximation and owns its vocabulary package; the
-main DataIngestion package does not bring that vocabulary automatically.
+participates in the chunking identity. For supported `nomic-embed-text` aliases,
+the Ollama adapter requests verbose `/api/show` metadata, builds a BERT tokenizer
+from the installed GGUF vocabulary, and includes the vocabulary hash in that
+identity. Unknown Ollama models fail explicitly instead of using an approximation.
 
 ### Reading
 
@@ -108,7 +109,7 @@ previous character-based implementation and its configuration were removed.
 The Microsoft adapter:
 
 1. receives the reader's `IngestionDocument` without flattening it;
-2. runs `DocumentTokenChunker` independently per original section;
+2. performs normalized token splitting independently per original section;
 3. maps chunks back to the existing `DocumentChunk` contract;
 4. preserves page number and header context from the source;
 5. carries provider tokenizer identity, size, overlap, strategy, and package version in the
@@ -153,10 +154,12 @@ not adopted.
    `Microsoft.Extensions.DataIngestion.Abstractions`, are preview packages. The
    abstractions are the intended implementation boundary, but the current
    package version does not yet provide a GA compatibility guarantee.
-2. Tokenizer vocabulary is an additional deployment dependency.
-3. `SectionChunker` preserves header context but does not apply token overlap in
-   its current implementation. The spike therefore uses `DocumentTokenChunker`
-   once per source section.
+2. Tokenizer metadata must be available from the installed Ollama model through
+   verbose `/api/show`; ingestion fails clearly when it is absent.
+3. The preview `DocumentTokenChunker` forces token index calculations without
+   normalization, which violates chunk limits for BERT/WordPiece tokenizers.
+   The repository adapter therefore owns the small splitting loop while retaining
+   the DataIngestion document model and provider-supplied tokenizer.
 4. Processing one source section at a time preserves pages but prevents chunks
    from crossing page boundaries. This is desirable for citations, but should be
    evaluated for documents whose paragraphs span pages.
@@ -164,9 +167,9 @@ not adopted.
    metadata. The PDF reader currently produces only page sections and paragraphs;
    Office readers produce headings, paragraphs, and tables but do not interpret
    images or charts.
-6. The Ollama adapter's `cl100k_base` tokenizer is a practical approximation for
-   its current embedding model, not a universal tokenizer. Other providers must
-   declare their own exact or explicitly approximate strategy.
+6. The Ollama adapter intentionally supports only known `nomic-embed-text`
+   aliases. Adding another embedding model requires an explicit tokenizer
+   implementation and contract tests.
 7. `IngestionPipeline<T>` was not adopted because its writer boundary would
    bypass or duplicate the repository's document-level hash, metadata,
    idempotency, and atomic EF Core replacement semantics.
@@ -243,15 +246,16 @@ Verification completed on the spike branch:
 - `dotnet build MafPlayground.slnx --no-restore -m:1 /nodeReuse:false`
   completed with zero warnings and zero errors;
 - `dotnet test MafPlayground.slnx --no-build --no-restore -m:1
-  /nodeReuse:false` passed 145 unit tests; six opt-in integration tests were
+  /nodeReuse:false` passed 152 unit tests; seven opt-in integration tests were
   skipped by their existing configuration.
+- The live `NomicTokenizer_ChunksAndEmbedsWithInstalledModelMetadata` contract
+  test passed against Ollama with the installed `nomic-embed-text` model.
 
 Before production adoption, add:
 
 - golden extraction tests per document format;
 - PDF reading-order, columns, repeated header/footer, table, and empty-page cases;
-- tokenizer-data missing and invalid-encoding failures;
-- cancellation during chunk streaming;
+- cancellation during chunking;
 - concurrent ingestion of the same source;
 - batch partial failure, retry, and resume;
 - PostgreSQL round-trip tests with the new chunk identities;

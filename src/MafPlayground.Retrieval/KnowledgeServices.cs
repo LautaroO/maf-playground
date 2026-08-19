@@ -142,7 +142,9 @@ public sealed class KnowledgeIngestionService(
         string hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         string sourceId = CreateSourceId(fullPath, sourceRoot);
 
-        EmbeddingTokenizer tokenizer = runtime.ResolveTokenizer(knowledgeBase);
+        EmbeddingTokenizer tokenizer = await runtime.ResolveTokenizerAsync(
+            knowledgeBase,
+            cancellationToken);
         string chunkingIdentity = chunker.GetIdentity(
             knowledgeBase.Ingestion,
             tokenizer);
@@ -293,7 +295,7 @@ public sealed class KnowledgeBaseRuntime(
 {
     private readonly ConcurrentDictionary<string, Lazy<IEmbeddingGenerator<string, Embedding<float>>>>
         _embeddingGenerators = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, Lazy<EmbeddingTokenizer>>
+    private readonly ConcurrentDictionary<string, EmbeddingTokenizer>
         _tokenizers = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
@@ -310,15 +312,22 @@ public sealed class KnowledgeBaseRuntime(
         return new KnowledgeBaseRuntimeSelection(knowledgeBase, generator.Value);
     }
 
-    internal EmbeddingTokenizer ResolveTokenizer(ResolvedKnowledgeBase knowledgeBase)
+    internal async ValueTask<EmbeddingTokenizer> ResolveTokenizerAsync(
+        ResolvedKnowledgeBase knowledgeBase,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(knowledgeBase);
-        return _tokenizers.GetOrAdd(
-            knowledgeBase.EmbeddingModel.ToString(),
-            _ => new Lazy<EmbeddingTokenizer>(
-                () => embeddingProviders.CreateTokenizer(knowledgeBase.EmbeddingModel),
-                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+        string key = knowledgeBase.EmbeddingModel.ToString();
+        if (_tokenizers.TryGetValue(key, out EmbeddingTokenizer? tokenizer))
+        {
+            return tokenizer;
+        }
+
+        EmbeddingTokenizer created = await embeddingProviders.CreateTokenizerAsync(
+            knowledgeBase.EmbeddingModel,
+            cancellationToken);
+        return _tokenizers.GetOrAdd(key, created);
     }
 
     public void Dispose()

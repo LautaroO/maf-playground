@@ -1,3 +1,4 @@
+using System.Text;
 using MafPlayground.Retrieval;
 using MafPlayground.Retrieval.Documents;
 using Microsoft.Extensions.DataIngestion;
@@ -81,6 +82,44 @@ public sealed class MicrosoftDataIngestionDocumentChunkerTests
 
         Assert.Contains("Reset account", chunk.Text);
         Assert.Contains("Settings", chunk.Text);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_RespectsLimitForNormalizedBertTokenizer()
+    {
+        const string vocabulary =
+            "[PAD]\n[UNK]\n[CLS]\n[SEP]\n[MASK]\n" +
+            "retrieval\nevidence\nmust\nremain\ngrounded\n";
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(vocabulary));
+        Tokenizer bert = BertTokenizer.Create(stream, new BertOptions
+        {
+            ApplyBasicTokenization = true,
+            LowerCaseBeforeTokenization = true,
+        });
+        EmbeddingTokenizer tokenizer = new(bert, "test:nomic-bert");
+        IngestionDocument ingestionDocument = new("BERT");
+        IngestionDocumentSection section = new();
+        section.Elements.Add(new IngestionDocumentParagraph(string.Join(
+            ' ',
+            Enumerable.Repeat("retrieval evidence must remain grounded", 20))));
+        ingestionDocument.Sections.Add(section);
+        KnowledgeIngestionSettings settings = new(1)
+        {
+            MaxTokensPerChunk = 24,
+            OverlapTokens = 4,
+        };
+
+        IReadOnlyList<DocumentChunk> chunks = await
+            new MicrosoftDataIngestionDocumentChunker().ChunkAsync(
+                new ExtractedDocument("BERT", ingestionDocument, []),
+                settings,
+                tokenizer);
+
+        Assert.True(chunks.Count > 1);
+        Assert.All(chunks, chunk => Assert.InRange(
+            bert.CountTokens(chunk.Text, considerNormalization: true),
+            1,
+            settings.MaxTokensPerChunk));
     }
 
     private static EmbeddingTokenizer CreateTokenizer() =>

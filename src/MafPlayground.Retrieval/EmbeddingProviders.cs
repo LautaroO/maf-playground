@@ -9,7 +9,9 @@ public interface IEmbeddingGeneratorProvider
 
     IEmbeddingGenerator<string, Embedding<float>> Create(string model);
 
-    EmbeddingTokenizer CreateTokenizer(string model);
+    ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
+        string model,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record EmbeddingTokenizer
@@ -43,8 +45,12 @@ public sealed class EmbeddingProviderRegistry
         return GetRequired(selection).Create(selection.Model);
     }
 
-    public EmbeddingTokenizer CreateTokenizer(EmbeddingModelSelection selection) =>
-        GetRequired(selection).CreateTokenizer(selection.Model);
+    public ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
+        EmbeddingModelSelection selection,
+        CancellationToken cancellationToken = default) =>
+        GetRequired(selection).CreateTokenizerAsync(
+            selection.Model,
+            cancellationToken);
 
     private IEmbeddingGeneratorProvider GetRequired(EmbeddingModelSelection selection) =>
         _providers.TryGetValue(selection.Provider, out IEmbeddingGeneratorProvider? provider)
@@ -56,4 +62,17 @@ public sealed class EmbeddingProviderNotFoundException : InvalidOperationExcepti
 {
     public EmbeddingProviderNotFoundException(string provider, IEnumerable<string> available)
         : base($"Embedding provider '{provider}' is not registered. Available providers: {string.Join(", ", available)}.") { }
+}
+
+public sealed class EmbeddingTokenizerNotSupportedException : NotSupportedException
+{
+    public EmbeddingTokenizerNotSupportedException(
+        string provider,
+        string model,
+        IEnumerable<string> supportedModels)
+        : base(
+            $"Embedding provider '{provider}' does not have a tokenizer for model " +
+            $"'{model}'. Supported models: {string.Join(", ", supportedModels)}.")
+    {
+    }
 }
