@@ -13,7 +13,8 @@ The repository includes:
   ordered fan-in;
 - a local CLI harness and DevUI host;
 - OpenTelemetry logs, traces, metrics, and model-cost estimates;
-- Ollama and PostgreSQL/pgvector as replaceable local adapters.
+- Google Gen AI and Ollama model adapters plus replaceable PostgreSQL/pgvector
+  persistence.
 
 ## Architecture
 
@@ -25,6 +26,7 @@ flowchart TB
     CLI[MafPlayground.CLI<br/>local host and composition root]
     AI[MafPlayground.AI<br/>agents, tools, context, workflows]
     Retrieval[MafPlayground.Retrieval<br/>extraction and retrieval core]
+    Google[MafPlayground.Providers.Google<br/>Gemini chat and embeddings]
     Ollama[MafPlayground.Providers.Ollama<br/>chat, embeddings, pricing]
     Postgres[MafPlayground.Retrieval.Postgres<br/>EF Core and pgvector]
     Obs[MafPlayground.Observability<br/>OpenTelemetry and cost tracking]
@@ -33,10 +35,12 @@ flowchart TB
     Dev --> CLI
     CLI --> AI
     CLI --> Retrieval
+    CLI --> Google
     CLI --> Ollama
     CLI --> Postgres
     CLI --> Obs
     AI --> Retrieval
+    Google --> AI
     Ollama --> AI
     Ollama --> Retrieval
     Postgres --> Retrieval
@@ -62,6 +66,7 @@ flowchart TB
 | [`MafPlayground.AI`](src/MafPlayground.AI/README.md) | Provider-neutral MAF agents, workflows, tools, context, provider contracts, and resilience decorators. |
 | [`MafPlayground.CLI`](src/MafPlayground.CLI/README.md) | Local command-line harness, DevUI host, entity inspection, and dependency composition. |
 | [`MafPlayground.Observability`](src/MafPlayground.Observability/README.md) | OpenTelemetry registration and provider-neutral token-cost estimation. |
+| [`MafPlayground.Providers.Google`](src/MafPlayground.Providers.Google/README.md) | Google Gen AI SDK adapter for Gemini chat, embeddings, and token counting. |
 | [`MafPlayground.Providers.Ollama`](src/MafPlayground.Providers.Ollama/README.md) | Ollama chat, embedding, endpoint, and pricing adapters. |
 | [`MafPlayground.Retrieval`](src/MafPlayground.Retrieval/README.md) | File-format-neutral ingestion, chunking, embedding, search, and storage contracts. |
 | [`MafPlayground.Retrieval.Postgres`](src/MafPlayground.Retrieval.Postgres/README.md) | EF Core/PostgreSQL/pgvector implementation of the retrieval store. |
@@ -84,6 +89,7 @@ Detailed feature documentation:
 
 - .NET SDK version pinned by [`global.json`](global.json)
 - [Ollama](https://ollama.com/) for the included local provider adapter
+- A Gemini API key only when using the Google Gen AI provider
 - Docker with Compose for PostgreSQL/pgvector and the Aspire Dashboard
 
 Package versions are centralized in [`Directory.Packages.props`](Directory.Packages.props),
@@ -238,6 +244,8 @@ command options. Command options take precedence where available.
 | Setting | Purpose |
 | --- | --- |
 | `AI_MODEL` | Chat model selector in `provider:model` format. |
+| `GEMINI_API_KEY` | Standard Google SDK credential for `google:gemini-*` chat models. |
+| `AI__PROVIDERS__GOOGLE__APIKEY` | Optional .NET configuration alternative to `GEMINI_API_KEY`. |
 | `AI__PROVIDERS__OLLAMA__ENDPOINT` | Ollama endpoint. |
 | `AI:Resilience:ModelCallTimeout` | Timeout applied by the shared chat-client decorator. |
 | `AI:KnowledgeBases:<name>` | Collection, embedding model/dimension, and ingestion policy for one reusable knowledge base. |
@@ -314,7 +322,8 @@ The hook runs the same verification and blocks a normal local push on failure.
 Like every Git hook, it is a developer safeguard rather than remote enforcement
 and can be bypassed with `--no-verify`.
 
-PostgreSQL, Ollama contract tests, and real-model evaluations remain opt-in:
+PostgreSQL, Google Gen AI and Ollama contract tests, and real-model evaluations
+remain opt-in:
 
 ```bash
 RAG_TEST_CONNECTION_STRING='Host=localhost;Database=maf_playground;Username=postgres;Password=postgres' \
@@ -323,7 +332,7 @@ RAG_TEST_CONNECTION_STRING='Host=localhost;Database=maf_playground;Username=post
 
 Without `RAG_TEST_CONNECTION_STRING`, the database test is reported as skipped.
 See [`MafPlayground.IntegrationTests`](tests/MafPlayground.IntegrationTests/README.md)
-for the Ollama and evaluation switches.
+for the Google Gen AI, Ollama, and evaluation switches.
 
 ## Extending the playground
 

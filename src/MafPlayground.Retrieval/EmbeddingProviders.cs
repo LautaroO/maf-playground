@@ -7,18 +7,28 @@ public interface IEmbeddingGeneratorProvider
 {
     string Name { get; }
 
-    IEmbeddingGenerator<string, Embedding<float>> Create(string model);
+    IEmbeddingGenerator<string, Embedding<float>> Create(
+        string model,
+        int dimensions,
+        EmbeddingPurpose purpose);
 
     ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
         string model,
         CancellationToken cancellationToken = default);
 }
 
-public sealed record EmbeddingTokenizer
+public enum EmbeddingPurpose
 {
-    public EmbeddingTokenizer(Tokenizer instance, string identity)
+    Document,
+    Query,
+}
+
+public sealed record EmbeddingTokenBoundary(int Index, int TokenCount);
+
+public abstract class EmbeddingTokenizer
+{
+    protected EmbeddingTokenizer(string identity)
     {
-        Instance = instance ?? throw new ArgumentNullException(nameof(instance));
         Identity = string.IsNullOrWhiteSpace(identity)
             ? throw new ArgumentException(
                 "Tokenizer identity cannot be empty.",
@@ -26,9 +36,80 @@ public sealed record EmbeddingTokenizer
             : identity.Trim();
     }
 
+    public string Identity { get; }
+
+    public abstract ValueTask<int> CountTokensAsync(
+        string text,
+        CancellationToken cancellationToken = default);
+
+    public abstract ValueTask<EmbeddingTokenBoundary> GetPrefixBoundaryAsync(
+        string text,
+        int maxTokens,
+        CancellationToken cancellationToken = default);
+
+    public abstract ValueTask<EmbeddingTokenBoundary> GetSuffixBoundaryAsync(
+        string text,
+        int maxTokens,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class LocalEmbeddingTokenizer : EmbeddingTokenizer
+{
+    public LocalEmbeddingTokenizer(Tokenizer instance, string identity)
+        : base(identity)
+    {
+        Instance = instance ?? throw new ArgumentNullException(nameof(instance));
+    }
+
     public Tokenizer Instance { get; }
 
-    public string Identity { get; }
+    public override ValueTask<int> CountTokensAsync(
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(Instance.CountTokens(
+            text,
+            considerNormalization: true));
+    }
+
+    public override ValueTask<EmbeddingTokenBoundary> GetPrefixBoundaryAsync(
+        string text,
+        int maxTokens,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        int index = Instance.GetIndexByTokenCount(
+            text,
+            maxTokens,
+            out string? _,
+            out int _,
+            considerNormalization: true);
+        return ValueTask.FromResult(new EmbeddingTokenBoundary(
+            index,
+            Instance.CountTokens(
+                text.AsSpan(0, index),
+                considerNormalization: true)));
+    }
+
+    public override ValueTask<EmbeddingTokenBoundary> GetSuffixBoundaryAsync(
+        string text,
+        int maxTokens,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        int index = Instance.GetIndexByTokenCountFromEnd(
+            text,
+            maxTokens,
+            out string? _,
+            out int _,
+            considerNormalization: true);
+        return ValueTask.FromResult(new EmbeddingTokenBoundary(
+            index,
+            Instance.CountTokens(
+                text.AsSpan(index),
+                considerNormalization: true)));
+    }
 }
 
 public sealed class EmbeddingProviderRegistry
@@ -40,9 +121,15 @@ public sealed class EmbeddingProviderRegistry
         _providers = providers.ToDictionary(provider => provider.Name, StringComparer.OrdinalIgnoreCase);
     }
 
-    public IEmbeddingGenerator<string, Embedding<float>> Create(EmbeddingModelSelection selection)
+    public IEmbeddingGenerator<string, Embedding<float>> Create(
+        EmbeddingModelSelection selection,
+        int dimensions,
+        EmbeddingPurpose purpose)
     {
-        return GetRequired(selection).Create(selection.Model);
+        return GetRequired(selection).Create(
+            selection.Model,
+            dimensions,
+            purpose);
     }
 
     public ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(

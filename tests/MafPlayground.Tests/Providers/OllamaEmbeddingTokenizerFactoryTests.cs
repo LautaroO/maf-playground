@@ -42,7 +42,9 @@ public sealed class OllamaEmbeddingTokenizerFactoryTests
             model,
             modelInfo);
 
-        Assert.Equal(3, tokenizer.Instance.CountTokens("Hello worlds"));
+        LocalEmbeddingTokenizer local = Assert.IsType<LocalEmbeddingTokenizer>(
+            tokenizer);
+        Assert.Equal(3, local.Instance.CountTokens("Hello worlds"));
         Assert.StartsWith(
             "ollama:nomic-embed-text:bert:vocab-sha256:",
             tokenizer.Identity,

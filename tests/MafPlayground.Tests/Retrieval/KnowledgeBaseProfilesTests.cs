@@ -96,6 +96,11 @@ public sealed class KnowledgeBaseProfilesTests
         await legal.SearchAsync("retention policy");
 
         Assert.Equal(["help-model", "legal-model"], embeddingProvider.CreatedModels);
+        Assert.All(embeddingProvider.CreatedGenerators, created =>
+        {
+            Assert.Equal(3, created.Dimensions);
+            Assert.Equal(EmbeddingPurpose.Query, created.Purpose);
+        });
         Assert.Empty(embeddingProvider.CreatedTokenizerModels);
         Assert.Collection(
             store.Requests,
@@ -178,6 +183,14 @@ public sealed class KnowledgeBaseProfilesTests
                 "document-tokens-per-section:fake:cl100k_base:max:400:overlap:40",
                 store.ReplacedDocument.ChunkingIdentity);
             Assert.Contains("legal-model", embeddingProvider.CreatedTokenizerModels);
+            Assert.Contains(
+                embeddingProvider.CreatedGenerators,
+                created => created is
+                {
+                    Model: "legal-model",
+                    Dimensions: 3,
+                    Purpose: EmbeddingPurpose.Document,
+                });
             Assert.Equal(KnowledgeMetadata.Empty, store.ReplacedDocument.Metadata);
             Assert.NotEmpty(store.ReplacedChunks);
         }
@@ -361,11 +374,17 @@ public sealed class KnowledgeBaseProfilesTests
 
         public List<string> CreatedModels { get; } = [];
 
+        public List<CreatedEmbeddingGenerator> CreatedGenerators { get; } = [];
+
         public List<string> CreatedTokenizerModels { get; } = [];
 
-        public IEmbeddingGenerator<string, Embedding<float>> Create(string model)
+        public IEmbeddingGenerator<string, Embedding<float>> Create(
+            string model,
+            int dimensions,
+            EmbeddingPurpose purpose)
         {
             CreatedModels.Add(model);
+            CreatedGenerators.Add(new(model, dimensions, purpose));
             return new FakeEmbeddingGenerator();
         }
 
@@ -375,12 +394,18 @@ public sealed class KnowledgeBaseProfilesTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             CreatedTokenizerModels.Add(model);
-            return ValueTask.FromResult(new EmbeddingTokenizer(
-                Microsoft.ML.Tokenizers.TiktokenTokenizer.CreateForEncoding(
-                    "cl100k_base"),
-                "fake:cl100k_base"));
+            return ValueTask.FromResult<EmbeddingTokenizer>(
+                new LocalEmbeddingTokenizer(
+                    Microsoft.ML.Tokenizers.TiktokenTokenizer.CreateForEncoding(
+                        "cl100k_base"),
+                    "fake:cl100k_base"));
         }
     }
+
+    private sealed record CreatedEmbeddingGenerator(
+        string Model,
+        int Dimensions,
+        EmbeddingPurpose Purpose);
 
     private sealed class FakeEmbeddingGenerator
         : IEmbeddingGenerator<string, Embedding<float>>

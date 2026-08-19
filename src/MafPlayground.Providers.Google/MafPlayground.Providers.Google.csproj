@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Google.GenAI" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../MafPlayground.AI/MafPlayground.AI.csproj" />
+    <ProjectReference Include="../MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
+  </ItemGroup>
+
+</Project>

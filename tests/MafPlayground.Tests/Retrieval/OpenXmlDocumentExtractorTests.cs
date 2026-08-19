@@ -155,7 +155,7 @@ public sealed class OpenXmlDocumentExtractorTests
         };
 
     private static EmbeddingTokenizer CreateTokenizer() =>
-        new(
+        new LocalEmbeddingTokenizer(
             TiktokenTokenizer.CreateForEncoding("cl100k_base"),
             "test:cl100k_base");
 

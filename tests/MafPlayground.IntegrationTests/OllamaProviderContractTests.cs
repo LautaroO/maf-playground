@@ -94,7 +94,10 @@ public sealed class OllamaProviderContractTests
                 tokenizer,
                 timeout.Token);
         using IEmbeddingGenerator<string, Embedding<float>> generator =
-            provider.Create("nomic-embed-text");
+            provider.Create(
+                "nomic-embed-text",
+                768,
+                EmbeddingPurpose.Document);
         GeneratedEmbeddings<Embedding<float>> embeddings =
             await generator.GenerateAsync(
                 chunks.Select(chunk => chunk.Text),
@@ -105,12 +108,13 @@ public sealed class OllamaProviderContractTests
             tokenizer.Identity,
             StringComparison.Ordinal);
         Assert.True(chunks.Count > 1);
-        Assert.All(chunks, chunk => Assert.InRange(
-            tokenizer.Instance.CountTokens(
-                chunk.Text,
-                considerNormalization: true),
-            1,
-            settings.MaxTokensPerChunk));
+        foreach (DocumentChunk chunk in chunks)
+        {
+            Assert.InRange(
+                await tokenizer.CountTokensAsync(chunk.Text, timeout.Token),
+                1,
+                settings.MaxTokensPerChunk);
+        }
         Assert.Equal(chunks.Count, embeddings.Count);
         Assert.All(embeddings, embedding => Assert.False(embedding.Vector.IsEmpty));
     }

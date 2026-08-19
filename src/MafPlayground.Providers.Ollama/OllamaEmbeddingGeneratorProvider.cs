@@ -10,7 +10,10 @@ internal sealed class OllamaEmbeddingGeneratorProvider(IOptions<OllamaProviderOp
 {
     public string Name => "ollama";
 
-    public IEmbeddingGenerator<string, Embedding<float>> Create(string model) =>
+    public IEmbeddingGenerator<string, Embedding<float>> Create(
+        string model,
+        int dimensions,
+        EmbeddingPurpose purpose) =>
         new OllamaApiClient(options.Value.Endpoint, model);
 
     public async ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(

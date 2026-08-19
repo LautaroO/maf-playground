@@ -78,7 +78,7 @@ internal static class OllamaEmbeddingTokenizerFactory
         });
         string vocabularyHash = Convert.ToHexStringLower(
             SHA256.HashData(vocabulary));
-        return new EmbeddingTokenizer(
+        return new LocalEmbeddingTokenizer(
             tokenizer,
             $"ollama:nomic-embed-text:bert:vocab-sha256:{vocabularyHash}");
     }

@@ -74,14 +74,22 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 | `Ingestion:MaxExtractedCharacters` | `2000000` |
 
 `Collection` and `EmbeddingModel` are required for every named knowledge base.
-The selected embedding provider owns the tokenizer and its versioned identity;
-tokenizer selection is not knowledge-base configuration.
+The selected embedding provider owns token counting, its versioned identity,
+requested vector dimensions, and the document/query embedding purpose. Tokenizer
+selection is not knowledge-base configuration. Local providers may use an
+in-process tokenizer; remote providers may implement the same async boundary
+through their model API.
 
 The Ollama adapter supports token-aware ingestion only for the repository's
 `nomic-embed-text` model aliases. It reads the installed model's BERT vocabulary
 from Ollama's verbose model metadata and includes its SHA-256 hash in the
 chunking identity. Other Ollama embedding models fail before extraction with an
 explicit unsupported-tokenizer error.
+
+The Google adapter supports `gemini-embedding-2` and
+`gemini-embedding-001`. It uses Google's remote `countTokens` API for exact
+chunk-limit validation, requests the knowledge base's configured dimensions,
+and distinguishes `RETRIEVAL_DOCUMENT` ingestion from `RETRIEVAL_QUERY` search.
 
 Search settings are supplied by the consuming agent:
 

@@ -19,7 +19,9 @@ public sealed class KnowledgeSearchFactory(
         KnowledgeMetadata metadataFilters = KnowledgeMetadata.Create(
             searchOptions.MetadataFilters);
 
-        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(knowledgeBaseId);
+        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(
+            knowledgeBaseId,
+            EmbeddingPurpose.Query);
         return new KnowledgeSearchService(
             selection.EmbeddingGenerator,
             store,
@@ -127,7 +129,9 @@ public sealed class KnowledgeIngestionService(
             throw new FileNotFoundException("Document was not found.", fullPath);
         }
 
-        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(knowledgeBaseId);
+        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(
+            knowledgeBaseId,
+            EmbeddingPurpose.Document);
         ResolvedKnowledgeBase knowledgeBase = selection.KnowledgeBase;
         ValidateSourcePath(fullPath, sourceRoot);
         FileInfo file = new(fullPath);
@@ -299,15 +303,20 @@ public sealed class KnowledgeBaseRuntime(
         _tokenizers = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
-    internal KnowledgeBaseRuntimeSelection Resolve(KnowledgeBaseId knowledgeBaseId)
+    internal KnowledgeBaseRuntimeSelection Resolve(
+        KnowledgeBaseId knowledgeBaseId,
+        EmbeddingPurpose purpose)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ResolvedKnowledgeBase knowledgeBase = catalog.GetRequired(knowledgeBaseId);
         Lazy<IEmbeddingGenerator<string, Embedding<float>>> generator =
             _embeddingGenerators.GetOrAdd(
-                knowledgeBase.EmbeddingModel.ToString(),
+                $"{knowledgeBase.EmbeddingIdentity}/{purpose}",
                 _ => new Lazy<IEmbeddingGenerator<string, Embedding<float>>>(
-                    () => embeddingProviders.Create(knowledgeBase.EmbeddingModel),
+                    () => embeddingProviders.Create(
+                        knowledgeBase.EmbeddingModel,
+                        knowledgeBase.EmbeddingDimensions,
+                        purpose),
                     LazyThreadSafetyMode.ExecutionAndPublication));
         return new KnowledgeBaseRuntimeSelection(knowledgeBase, generator.Value);
     }

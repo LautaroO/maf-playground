@@ -1,3 +1,4 @@
+using MafPlayground.Providers.Google;
 using MafPlayground.Providers.Ollama;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,7 +14,9 @@ public static class AIProviderCompositionExtensions
         ArgumentNullException.ThrowIfNull(serviceCollection);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        serviceCollection.AddOllamaProvider(configuration);
+        serviceCollection
+            .AddGoogleGenAIProvider(configuration)
+            .AddOllamaProvider(configuration);
         return serviceCollection;
     }
 }

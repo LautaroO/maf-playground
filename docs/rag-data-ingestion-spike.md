@@ -56,9 +56,10 @@ The spike pins packages compatible with the repository's
 - `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1` (tests only)
 - `DocumentFormat.OpenXml` `3.5.1`
 
-The retrieval core depends only on the tokenizer abstraction. Each embedding
-provider creates the tokenizer for its model and supplies a stable identity that
-participates in the chunking identity. For supported `nomic-embed-text` aliases,
+The retrieval core depends only on the async tokenizer abstraction. Each
+embedding provider supplies local or remote token-boundary operations and a
+stable identity that participates in the chunking identity. For supported
+`nomic-embed-text` aliases,
 the Ollama adapter requests verbose `/api/show` metadata, builds a BERT tokenizer
 from the installed GGUF vocabulary, and includes the vocabulary hash in that
 identity. Unknown Ollama models fail explicitly instead of using an approximation.
@@ -246,7 +247,7 @@ Verification completed on the spike branch:
 - `dotnet build MafPlayground.slnx --no-restore -m:1 /nodeReuse:false`
   completed with zero warnings and zero errors;
 - `dotnet test MafPlayground.slnx --no-build --no-restore -m:1
-  /nodeReuse:false` passed 152 unit tests; seven opt-in integration tests were
+  /nodeReuse:false` passed 158 unit tests; nine opt-in integration tests were
   skipped by their existing configuration.
 - The live `NomicTokenizer_ChunksAndEmbedsWithInstalledModelMetadata` contract
   test passed against Ollama with the installed `nomic-embed-text` model.

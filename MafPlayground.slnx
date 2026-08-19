@@ -3,6 +3,7 @@
     <Project Path="src/MafPlayground.AI/MafPlayground.AI.csproj" />
     <Project Path="src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
     <Project Path="src/MafPlayground.Observability/MafPlayground.Observability.csproj" />
+    <Project Path="src/MafPlayground.Providers.Google/MafPlayground.Providers.Google.csproj" />
     <Project Path="src/MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
     <Project Path="src/MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
     <Project Path="src/MafPlayground.Retrieval.Postgres/MafPlayground.Retrieval.Postgres.csproj" />

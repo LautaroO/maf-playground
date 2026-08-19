@@ -96,7 +96,9 @@ public sealed class MicrosoftDataIngestionDocumentChunkerTests
             ApplyBasicTokenization = true,
             LowerCaseBeforeTokenization = true,
         });
-        EmbeddingTokenizer tokenizer = new(bert, "test:nomic-bert");
+        EmbeddingTokenizer tokenizer = new LocalEmbeddingTokenizer(
+            bert,
+            "test:nomic-bert");
         IngestionDocument ingestionDocument = new("BERT");
         IngestionDocumentSection section = new();
         section.Elements.Add(new IngestionDocumentParagraph(string.Join(
@@ -123,7 +125,7 @@ public sealed class MicrosoftDataIngestionDocumentChunkerTests
     }
 
     private static EmbeddingTokenizer CreateTokenizer() =>
-        new(
+        new LocalEmbeddingTokenizer(
             TiktokenTokenizer.CreateForEncoding("cl100k_base"),
             "test:cl100k_base");
 }

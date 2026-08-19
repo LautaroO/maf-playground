@@ -6,7 +6,7 @@ public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
 {
     private const string PackageVersion = "10.7.0-preview.1.26309.5";
 
-    public ValueTask<IReadOnlyList<DocumentChunk>> ChunkAsync(
+    public async ValueTask<IReadOnlyList<DocumentChunk>> ChunkAsync(
         ExtractedDocument document,
         KnowledgeIngestionSettings options,
         EmbeddingTokenizer tokenizer,
@@ -22,7 +22,7 @@ public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
             cancellationToken.ThrowIfCancellationRequested();
             string? sectionName = FindSectionName(sourceSection);
             string content = sourceSection.GetMarkdown();
-            foreach (string chunk in Split(
+            foreach (string chunk in await SplitAsync(
                          content,
                          options,
                          tokenizer,
@@ -36,7 +36,7 @@ public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
             }
         }
 
-        return ValueTask.FromResult<IReadOnlyList<DocumentChunk>>(chunks);
+        return chunks;
     }
 
     public string GetIdentity(
@@ -50,7 +50,7 @@ public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
                $"overlap:{options.OverlapTokens}";
     }
 
-    private static IReadOnlyList<string> Split(
+    private static async ValueTask<IReadOnlyList<string>> SplitAsync(
         string content,
         KnowledgeIngestionSettings options,
         EmbeddingTokenizer tokenizer,
@@ -66,48 +66,41 @@ public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
         while (start < content.Length)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ReadOnlySpan<char> remaining = content.AsSpan(start);
-            int endOffset = tokenizer.Instance.GetIndexByTokenCount(
+            string remaining = content[start..];
+            EmbeddingTokenBoundary end = await tokenizer.GetPrefixBoundaryAsync(
                 remaining,
                 options.MaxTokensPerChunk,
-                out string? _,
-                out int _,
-                considerNormalization: true);
-            if (endOffset <= 0)
+                cancellationToken);
+            if (end.Index <= 0)
             {
                 throw new InvalidOperationException(
                     $"Tokenizer '{tokenizer.Identity}' could not advance while " +
                     "splitting document content.");
             }
 
-            string chunk = remaining[..endOffset].ToString();
-            int tokenCount = tokenizer.Instance.CountTokens(
-                chunk,
-                considerNormalization: true);
-            if (tokenCount > options.MaxTokensPerChunk)
+            string chunk = remaining[..end.Index];
+            if (end.TokenCount > options.MaxTokensPerChunk)
             {
                 throw new InvalidOperationException(
                     $"Tokenizer '{tokenizer.Identity}' produced a chunk with " +
-                    $"{tokenCount} tokens, exceeding the configured maximum of " +
+                    $"{end.TokenCount} tokens, exceeding the configured maximum of " +
                     $"{options.MaxTokensPerChunk}.");
             }
             if (!string.IsNullOrWhiteSpace(chunk))
             {
                 chunks.Add(chunk);
             }
-            if (endOffset == remaining.Length)
+            if (end.Index == remaining.Length)
             {
                 break;
             }
 
-            int overlapStart = tokenizer.Instance.GetIndexByTokenCountFromEnd(
+            EmbeddingTokenBoundary overlap = await tokenizer.GetSuffixBoundaryAsync(
                 chunk,
                 options.OverlapTokens,
-                out string? _,
-                out int _,
-                considerNormalization: true);
-            int nextStart = start + endOffset - (chunk.Length - overlapStart);
-            start = nextStart > start ? nextStart : start + endOffset;
+                cancellationToken);
+            int nextStart = start + end.Index - (chunk.Length - overlap.Index);
+            start = nextStart > start ? nextStart : start + end.Index;
         }
 
         return chunks;
