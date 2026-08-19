@@ -10,6 +10,13 @@ internal sealed class OllamaEmbeddingGeneratorProvider(IOptions<OllamaProviderOp
 {
     public string Name => "ollama";
 
+    public string GetEmbeddingIdentity(string model, int dimensions)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(model);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dimensions);
+        return $"{Name}:{model.Trim()}/{dimensions}/raw-v1";
+    }
+
     public IEmbeddingGenerator<string, Embedding<float>> Create(
         string model,
         int dimensions,

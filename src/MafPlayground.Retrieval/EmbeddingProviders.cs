@@ -7,6 +7,8 @@ public interface IEmbeddingGeneratorProvider
 {
     string Name { get; }
 
+    string GetEmbeddingIdentity(string model, int dimensions);
+
     IEmbeddingGenerator<string, Embedding<float>> Create(
         string model,
         int dimensions,
@@ -131,6 +133,11 @@ public sealed class EmbeddingProviderRegistry
             dimensions,
             purpose);
     }
+
+    public string GetEmbeddingIdentity(
+        EmbeddingModelSelection selection,
+        int dimensions) =>
+        GetRequired(selection).GetEmbeddingIdentity(selection.Model, dimensions);
 
     public ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
         EmbeddingModelSelection selection,

@@ -28,7 +28,24 @@ internal sealed class GoogleGenAIEmbeddingGeneratorProvider
         _getClient = () => client;
     }
 
+    internal GoogleGenAIEmbeddingGeneratorProvider(Func<Client> getClient)
+    {
+        _getClient = getClient ?? throw new ArgumentNullException(nameof(getClient));
+    }
+
     public string Name => "google";
+
+    public string GetEmbeddingIdentity(string model, int dimensions)
+    {
+        EnsureSupported(model);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dimensions);
+        string strategy = model.Equals(
+            "gemini-embedding-2",
+            StringComparison.OrdinalIgnoreCase)
+            ? "retrieval-asymmetric-v1"
+            : "retrieval-task-type-v1";
+        return $"{Name}:{model.Trim()}/{dimensions}/{strategy}";
+    }
 
     public IEmbeddingGenerator<string, Embedding<float>> Create(
         string model,
@@ -44,8 +61,11 @@ internal sealed class GoogleGenAIEmbeddingGeneratorProvider
         }
 
         IEmbeddingGenerator<string, Embedding<float>> inner =
-            _getClient().Models.AsIEmbeddingGenerator(model, dimensions);
-        return new GoogleEmbeddingPurposeGenerator(inner, purpose);
+            new DeferredGoogleEmbeddingGenerator(
+                () => _getClient().Models.AsIEmbeddingGenerator(model, dimensions),
+                model,
+                dimensions);
+        return new GoogleEmbeddingPurposeGenerator(inner, model, purpose);
     }
 
     public ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
@@ -72,8 +92,51 @@ internal sealed class GoogleGenAIEmbeddingGeneratorProvider
         }
     }
 
+    internal sealed class DeferredGoogleEmbeddingGenerator(
+        Func<IEmbeddingGenerator<string, Embedding<float>>> create,
+        string model,
+        int dimensions)
+        : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        private readonly Lazy<IEmbeddingGenerator<string, Embedding<float>>> _inner =
+            new(create, LazyThreadSafetyMode.ExecutionAndPublication);
+
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values,
+            EmbeddingGenerationOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _inner.Value.GenerateAsync(values, options, cancellationToken);
+
+        public object? GetService(System.Type serviceType, object? serviceKey = null)
+        {
+            if (serviceKey is null && serviceType == typeof(EmbeddingGeneratorMetadata))
+            {
+                return new EmbeddingGeneratorMetadata(
+                    "google",
+                    null,
+                    model,
+                    dimensions);
+            }
+
+            return _inner.IsValueCreated
+                ? _inner.Value.GetService(serviceType, serviceKey)
+                : serviceType.IsInstanceOfType(this) && serviceKey is null
+                    ? this
+                    : null;
+        }
+
+        public void Dispose()
+        {
+            if (_inner.IsValueCreated)
+            {
+                _inner.Value.Dispose();
+            }
+        }
+    }
+
     internal sealed class GoogleEmbeddingPurposeGenerator(
         IEmbeddingGenerator<string, Embedding<float>> inner,
+        string model,
         EmbeddingPurpose purpose)
         : DelegatingEmbeddingGenerator<string, Embedding<float>>(inner)
     {
@@ -82,6 +145,15 @@ internal sealed class GoogleGenAIEmbeddingGeneratorProvider
             EmbeddingGenerationOptions? options = null,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(values);
+            if (model.Equals("gemini-embedding-2", StringComparison.OrdinalIgnoreCase))
+            {
+                return base.GenerateAsync(
+                    values.Select(FormatEmbedding2Input),
+                    options,
+                    cancellationToken);
+            }
+
             EmbeddingGenerationOptions effective = options?.Clone() ?? new();
             Func<IEmbeddingGenerator, object?>? existingFactory =
                 effective.RawRepresentationFactory;
@@ -98,6 +170,17 @@ internal sealed class GoogleGenAIEmbeddingGeneratorProvider
                 return config;
             };
             return base.GenerateAsync(values, effective, cancellationToken);
+        }
+
+        private string FormatEmbedding2Input(string value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            return purpose switch
+            {
+                EmbeddingPurpose.Document => $"title: none | text: {value}",
+                EmbeddingPurpose.Query => $"task: search result | query: {value}",
+                _ => throw new ArgumentOutOfRangeException(nameof(purpose)),
+            };
         }
     }
 }

@@ -1,6 +1,7 @@
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.AI.Agents.RepositoryHelpAgent;
 using MafPlayground.AI.Workflows.Translation;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,9 @@ public sealed class AIServiceRegistrationTests
 
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(BasicAgent));
         Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == typeof(BasicRagAgent));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(RepositoryHelpAgent));
         Assert.DoesNotContain(
             services,
             descriptor => descriptor.ServiceType == typeof(TranslationWorkflowRunner));

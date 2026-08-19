@@ -14,13 +14,16 @@ should compose the same libraries independently.
 maf-playground
 ├── agent
 │   ├── basic
-│   └── basic-rag
+│   ├── basic-rag
+│   └── repository-help
 ├── workflow
 │   └── translate
 ├── rag
 │   ├── database
 │   │   └── migrate
 │   └── ingest
+├── docs
+│   └── generate-cli-reference
 ├── inspect
 │   ├── list
 │   ├── agent <id>
@@ -45,6 +48,7 @@ dotnet run --project src/MafPlayground.CLI -- inspect workflow --help
 | `Execution/InteractiveAgentConsole.cs` | Interactive/single-prompt agent harness and streaming. |
 | `Execution/WorkflowExecutionConsole.cs` | Renders native workflow execution events for `--watch`. |
 | `Inspection/` | Entity catalog, input schemas/examples, and Mermaid export. |
+| `Documentation/` | Deterministic repository-help CLI reference generation. |
 | `DevUI/` | Current-preview trace bridge into DevUI response streams. |
 | `Extensions/AIProviderCompositionExtensions.cs` | Registers enabled provider adapters. |
 | `Extensions/RetrievalCompositionExtensions.cs` | Registers retrieval core and current store adapter. |
@@ -91,6 +95,14 @@ agent accepts repeatable `--filter key=value` options; they override its static
 `MetadataFilters` for that CLI run. Multiple entries use AND semantics. DevUI
 uses the static filters from `appsettings.json` because it hosts a shared agent
 registration rather than one command-scoped instance.
+
+`agent repository-help` uses the separately configured `RepositoryHelp`
+knowledge base. Regenerate its exact command reference with
+`docs generate-cli-reference`, then ingest that file and the curated manual under
+`docs/repository-help/` before querying the agent. The default profile uses
+multilingual `google:gemini-embedding-2` embeddings in the dedicated
+`repository-help-multilingual-v1` collection and therefore requires
+`GEMINI_API_KEY`; the selected chat model remains independent.
 
 ## Local testing surfaces
 

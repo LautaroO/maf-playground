@@ -13,7 +13,7 @@ public sealed class ParserTests
         RootCommand rootCommand = Parser.CreateRootCommand();
 
         Assert.Equal(
-            ["agent", "workflow", "rag", "devui", "inspect"],
+            ["agent", "workflow", "rag", "devui", "docs", "inspect"],
             rootCommand.Subcommands.Select(command => command.Name));
     }
 
@@ -102,6 +102,60 @@ public sealed class ParserTests
     }
 
     [Fact]
+    public async Task RepositoryHelpCommand_MapsOptions()
+    {
+        RepositoryHelpAgentCommandOptions? captured = null;
+        RootCommand rootCommand = CreateRootCommand(AgentCommand.Create(
+            runRepositoryHelpAgentAsync: (options, _) =>
+            {
+                captured = options;
+                return Task.FromResult(0);
+            }));
+
+        int exitCode = await rootCommand.Parse(
+            [
+                "agent", "repository-help",
+                "--model", "google:gemini-3.6-flash",
+                "--prompt", "How do I run DevUI?",
+                "--watch",
+            ])
+            .InvokeAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            new RepositoryHelpAgentCommandOptions(
+                "google:gemini-3.6-flash",
+                "How do I run DevUI?",
+                Watch: true),
+            captured);
+    }
+
+    [Fact]
+    public async Task GenerateCliReferenceCommand_MapsOutput()
+    {
+        GenerateCliReferenceCommandOptions? captured = null;
+        RootCommand rootCommand = CreateRootCommand(DocsCommand.Create(
+            (options, _) =>
+            {
+                captured = options;
+                return Task.FromResult(0);
+            }));
+
+        int exitCode = await rootCommand.Parse(
+            [
+                "docs", "generate-cli-reference",
+                "--output", "docs/repository-help/cli-reference.md",
+            ])
+            .InvokeAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            new GenerateCliReferenceCommandOptions(
+                "docs/repository-help/cli-reference.md"),
+            captured);
+    }
+
+    [Fact]
     public async Task RagIngestCommand_MapsKnowledgeBase()
     {
         RagIngestCommandOptions? captured = null;
@@ -129,6 +183,33 @@ public sealed class ParserTests
         Assert.Equal("documents", captured.SourceRoot);
         Assert.Equal("Help", captured.KnowledgeBase);
         Assert.Equal(["audience=customer", "product=support"], captured.Metadata);
+    }
+
+    [Theory]
+    [InlineData("rag", "ingest")]
+    [InlineData("docs", "generate-cli-reference")]
+    public async Task RequiredOptions_AreRejectedBeforeCommandHandler(
+        params string[] commandPath)
+    {
+        bool invoked = false;
+        RootCommand rootCommand = commandPath[0] == "rag"
+            ? CreateRootCommand(RagCommand.Create(
+                ingestAsync: (_, _) =>
+                {
+                    invoked = true;
+                    return Task.FromResult(0);
+                }))
+            : CreateRootCommand(DocsCommand.Create(
+                (_, _) =>
+                {
+                    invoked = true;
+                    return Task.FromResult(0);
+                }));
+
+        int exitCode = await rootCommand.Parse(commandPath).InvokeAsync();
+
+        Assert.NotEqual(0, exitCode);
+        Assert.False(invoked);
     }
 
     [Fact]

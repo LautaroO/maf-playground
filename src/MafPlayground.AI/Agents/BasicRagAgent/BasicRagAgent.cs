@@ -18,30 +18,18 @@ public sealed class BasicRagAgent
         IOptions<BasicRagAgentOptions> options,
         IOptions<AgentTelemetryOptions>? telemetryOptions = null)
     {
-        ChatClientAgent chatAgent = new(chatClient, new ChatClientAgentOptions
-        {
-            Name = "basic-rag-agent",
-            Description = "A grounded help assistant that answers from an ingested document knowledge base with citations.",
-            ChatOptions = new ChatOptions
-            {
-                Instructions = "Answer clearly and concisely. Use only retrieved knowledge-base evidence and preserve exact factual values.",
-            },
-            AIContextProviders = [contextProvider],
-        });
-
-        AIAgent structuredAgent = new StructuredRagAgent(
-            chatAgent,
+        Agent = GroundedKnowledgeAgentComposer.Create(
+            chatClient,
+            "basic-rag-agent",
+            "A grounded help assistant that answers from an ingested document knowledge base with citations.",
+            "Answer clearly and concisely. Use only retrieved knowledge-base evidence and preserve exact factual values.",
+            [contextProvider],
             invocationContextAccessor,
             citationValidator,
-            repairService);
-        AIAgent guardedAgent = guardPipeline.Apply(
-            structuredAgent,
-            options.Value.GuardProfile);
-
-        bool sensitiveData = telemetryOptions?.Value.EnableSensitiveData ?? false;
-        Agent = guardedAgent.AsBuilder()
-            .UseOpenTelemetry(AITelemetry.AgentSourceName, telemetry => telemetry.EnableSensitiveData = sensitiveData)
-            .Build();
+            repairService,
+            guardPipeline,
+            options.Value.GuardProfile,
+            telemetryOptions?.Value.EnableSensitiveData ?? false);
     }
 
     public AIAgent Agent { get; }

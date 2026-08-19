@@ -4,9 +4,11 @@ using MafPlayground.AI.Resilience;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.AI.Agents.RepositoryHelpAgent;
 using MafPlayground.AI.Workflows.Translation;
 using MafPlayground.CLI.DevUI;
 using MafPlayground.CLI.Extensions;
+using MafPlayground.CLI.Documentation;
 using MafPlayground.CLI.Helpers;
 using MafPlayground.CLI.Inspection;
 using MafPlayground.Observability;
@@ -96,13 +98,19 @@ public sealed class DevUICommand : ICliCommand
             .AddAICore(modelSelection)
             .AddBasicAgent()
             .AddBasicRagAgent()
+            .AddRepositoryHelpAgent()
             .AddTranslationWorkflow();
+        builder.Services.AddSingleton<IRepositoryCliCommandCatalog>(
+            new SystemCommandLineRepositoryCliCommandCatalog(Parser.CreateRootCommand()));
         builder.Services.Configure<BasicAgentOptions>(
             builder.Configuration.GetSection(BasicAgentOptions.ConfigurationSectionName));
         builder.Services.Configure<AIGuardOptions>(
             builder.Configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
         builder.Services.Configure<BasicRagAgentOptions>(
             builder.Configuration.GetSection(BasicRagAgentOptions.ConfigurationSectionName));
+        builder.Services.Configure<RepositoryHelpAgentOptions>(
+            builder.Configuration.GetSection(
+                RepositoryHelpAgentOptions.ConfigurationSectionName));
         builder.Services.Configure<AIResilienceOptions>(
             builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.Configure<TranslationWorkflowOptions>(
@@ -146,6 +154,7 @@ public sealed class DevUICommand : ICliCommand
 
             _ = app.Services.GetRequiredService<BasicAgent>();
             _ = app.Services.GetRequiredService<BasicRagAgent>();
+            _ = app.Services.GetRequiredService<RepositoryHelpAgent>();
 
             app.UseDevUITracing();
             app.MapOpenAIResponses();

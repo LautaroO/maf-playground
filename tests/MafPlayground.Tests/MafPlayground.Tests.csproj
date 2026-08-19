@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <None Include="../../documents/help.pdf" Link="TestData/help.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/repository-help/cli-reference.md" Link="TestData/repository-help-cli-reference.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

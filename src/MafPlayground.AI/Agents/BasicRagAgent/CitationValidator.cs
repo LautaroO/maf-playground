@@ -59,6 +59,24 @@ public sealed class CitationValidator
                     issues.Add($"Claim {index + 1} references an unknown citation ID.");
                 }
             }
+
+            if (!string.IsNullOrWhiteSpace(claim.Text))
+            {
+                IReadOnlyList<RagEvidence> citedEvidence = citationIds
+                    .Where(evidence.ContainsKey)
+                    .Distinct(StringComparer.Ordinal)
+                    .Select(citationId => evidence[citationId])
+                    .ToArray();
+                foreach (string literal in ExtractInlineCode(claim.Text))
+                {
+                    if (!citedEvidence.Any(item =>
+                            item.Text.Contains(literal, StringComparison.Ordinal)))
+                    {
+                        issues.Add(
+                            $"Claim {index + 1} inline code '{literal}' does not appear verbatim in its cited evidence.");
+                    }
+                }
+            }
         }
 
         return new RagAnswerValidationResult(issues.Count == 0, issues);
@@ -92,5 +110,20 @@ public sealed class CitationValidator
                         .Select(id => evidence[id].Citation));
                 return $"{claim.Text!.Trim()} {citations}";
             }));
+    }
+
+    private static IEnumerable<string> ExtractInlineCode(string text)
+    {
+        string[] segments = text.Split('`');
+        for (int index = 1; index < segments.Length; index += 2)
+        {
+            string candidate = segments[index].Trim();
+            if (candidate.Length > 0 &&
+                !candidate.Contains('\r', StringComparison.Ordinal) &&
+                !candidate.Contains('\n', StringComparison.Ordinal))
+            {
+                yield return candidate;
+            }
+        }
     }
 }

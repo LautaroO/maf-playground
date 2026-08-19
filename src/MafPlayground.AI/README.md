@@ -12,6 +12,7 @@ endpoints, PostgreSQL, DevUI, OTLP exporters, or a specific hosting model.
 | --- | --- | --- |
 | `Agents/BasicAgent` | `AIAgent` | General conversation with trusted context and a deterministic date/time tool. |
 | `Agents/BasicRagAgent` | `AIAgent`, context, middleware | Grounded answers from semantic retrieval with citation enforcement. |
+| `Agents/RepositoryHelpAgent` | `AIAgent`, context | Repository- and CLI-specific grounded help over a dedicated knowledge base. |
 | `Workflows/Translation` | Native MAF workflow | Parallel translation, semantic validation, feedback retry, and fan-in. |
 | `Tools` | Deterministic functions | Reusable application capabilities exposed to agents. |
 | `Contracts` | Provider-neutral ports and data contracts | Shared interfaces for providers, decorators, pricing, and trusted user context. |
@@ -49,8 +50,10 @@ services
 
 `AddAICore` registers the provider-neutral client pipeline, resilience, guards,
 and shared contracts. A host then selects any combination of `AddBasicAgent`,
-`AddBasicRagAgent`, and `AddTranslationWorkflow`. `AddAIServices` remains as a
-convenience aggregate for hosts that intentionally need every sample feature.
+`AddBasicRagAgent`, `AddRepositoryHelpAgent`, and `AddTranslationWorkflow`.
+`AddAIServices` remains a convenience aggregate for the core sample features.
+Repository help is registered explicitly because its host must
+also provide an `IRepositoryCliCommandCatalog` adapter.
 
 Decorators have unique explicit order values. The effective call path is cost
 telemetry, content guard, budget reservation, timeout, and finally the provider;
@@ -104,6 +107,7 @@ guarantee that sensitive values never escape.
 
 - [Basic agent](Agents/BasicAgent/README.md)
 - [Basic RAG agent](Agents/BasicRagAgent/README.md)
+- [Repository help manual](../../docs/repository-help/manual.md)
 - [Translation workflow](Workflows/Translation/README.md)
 
 ## Testing

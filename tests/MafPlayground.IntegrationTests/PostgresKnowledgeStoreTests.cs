@@ -37,6 +37,14 @@ public sealed class PostgresKnowledgeStoreTests
                 });
             KnowledgeDocument document = new(collection, "manual/help.pdf", "Help", "/manual/help.pdf", "hash", "test:model/768", "test-chunks", metadata);
             await store.ReplaceDocumentAsync(document, [new(0, "Reset the account from Settings.", 3, "Page 3", vector)], CancellationToken.None);
+            KnowledgeDocument replacement = document with
+            {
+                ContentHash = "updated-hash",
+            };
+            await store.ReplaceDocumentAsync(
+                replacement,
+                [new(0, "Reset the account from the profile page.", 4, "Page 4", vector)],
+                CancellationToken.None);
 
             StoredDocumentState? state = await store.GetDocumentStateAsync(
                 collection,
@@ -66,10 +74,12 @@ public sealed class PostgresKnowledgeStoreTests
                 CancellationToken.None);
 
             Assert.NotNull(state);
+            Assert.Equal("updated-hash", state.ContentHash);
             Assert.Equal(metadata, state.Metadata);
             KnowledgeSearchResult result = Assert.Single(results);
             Assert.Equal("manual/help.pdf", result.SourceId);
-            Assert.Equal(3, result.PageNumber);
+            Assert.Equal("Reset the account from the profile page.", result.Text);
+            Assert.Equal(4, result.PageNumber);
             Assert.Empty(excluded);
         }
     }

@@ -1,6 +1,7 @@
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.AI.Agents.RepositoryHelpAgent;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Observability;
 using MafPlayground.AI.Guards.Content;
@@ -47,6 +48,13 @@ internal static class LocalEntityCatalog
             typeof(string),
             "How long does a password-reset link remain valid?",
             CreateAgent: services => services.GetRequiredService<BasicRagAgent>().Agent),
+        new(
+            "repository-help-agent",
+            LocalEntityKind.Agent,
+            "A grounded assistant for understanding the MafPlayground repository and its CLI.",
+            typeof(string),
+            "How do I run the repository help agent from the CLI?",
+            CreateAgent: services => services.GetRequiredService<RepositoryHelpAgent>().Agent),
         new(
             "translation-workflow",
             LocalEntityKind.Workflow,

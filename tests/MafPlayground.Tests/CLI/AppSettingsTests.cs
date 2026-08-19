@@ -67,7 +67,35 @@ public sealed class AppSettingsTests
             "AI:Guards:Profiles:Default:Budget:MaxCostPerRun"));
         Assert.Equal("Default", configuration["AI:Agents:Basic:GuardProfile"]);
         Assert.Equal("Default", configuration["AI:Agents:BasicRag:GuardProfile"]);
+        Assert.Equal("Default", configuration["AI:Agents:RepositoryHelp:GuardProfile"]);
         Assert.Equal("Default", configuration["AI:Workflows:Translation:GuardProfile"]);
+    }
+
+    [Fact]
+    public void CliAppSettings_ConfiguresRepositoryHelpKnowledgeBaseAndSearchPolicy()
+    {
+        string appSettingsPath = Path.Combine(
+            Path.GetDirectoryName(typeof(MafPlayground.CLI.Parser).Assembly.Location)!,
+            "appsettings.json");
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddJsonFile(appSettingsPath, optional: false)
+            .Build();
+
+        Assert.Equal(
+            "RepositoryHelp",
+            configuration["AI:Agents:RepositoryHelp:KnowledgeBase"]);
+        Assert.Equal(6, configuration.GetValue<int>(
+            "AI:Agents:RepositoryHelp:Retrieval:TopK"));
+        Assert.Equal(0.5, configuration.GetValue<double>(
+            "AI:Agents:RepositoryHelp:Retrieval:MinimumSimilarity"));
+        Assert.Equal(
+            "repository-help-multilingual-v1",
+            configuration["AI:KnowledgeBases:RepositoryHelp:Collection"]);
+        Assert.Equal(
+            "google:gemini-embedding-2",
+            configuration["AI:KnowledgeBases:RepositoryHelp:EmbeddingModel"]);
+        Assert.Equal(768, configuration.GetValue<int>(
+            "AI:KnowledgeBases:RepositoryHelp:EmbeddingDimensions"));
     }
 
     [Fact]

@@ -158,7 +158,7 @@ public sealed class KnowledgeIngestionService(
             cancellationToken);
         if (state is not null &&
             state.ContentHash == hash &&
-            state.EmbeddingIdentity == knowledgeBase.EmbeddingIdentity &&
+            state.EmbeddingIdentity == selection.EmbeddingIdentity &&
             state.ChunkingIdentity == chunkingIdentity &&
             state.Metadata.Equals(metadata))
         {
@@ -231,7 +231,7 @@ public sealed class KnowledgeIngestionService(
             extracted.Title,
             fullPath,
             hash,
-            knowledgeBase.EmbeddingIdentity,
+            selection.EmbeddingIdentity,
             chunkingIdentity,
             metadata);
         await store.ReplaceDocumentAsync(document, chunks, cancellationToken);
@@ -293,32 +293,71 @@ public sealed record IngestionResult(
     bool Skipped,
     IReadOnlyList<string> Warnings);
 
-public sealed class KnowledgeBaseRuntime(
-    KnowledgeBaseCatalog catalog,
-    EmbeddingProviderRegistry embeddingProviders) : IDisposable
+public sealed class KnowledgeBaseRuntime : IDisposable
 {
+    private readonly KnowledgeBaseCatalog _catalog;
+    private readonly EmbeddingProviderRegistry _embeddingProviders;
+    private readonly IReadOnlyDictionary<string, string> _embeddingIdentities;
     private readonly ConcurrentDictionary<string, Lazy<IEmbeddingGenerator<string, Embedding<float>>>>
         _embeddingGenerators = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, EmbeddingTokenizer>
         _tokenizers = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
+    public KnowledgeBaseRuntime(
+        KnowledgeBaseCatalog catalog,
+        EmbeddingProviderRegistry embeddingProviders)
+    {
+        _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _embeddingProviders = embeddingProviders ??
+            throw new ArgumentNullException(nameof(embeddingProviders));
+
+        Dictionary<string, string> identities =
+            new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> collectionIdentities =
+            new(StringComparer.OrdinalIgnoreCase);
+        foreach (ResolvedKnowledgeBase knowledgeBase in catalog.All)
+        {
+            string identity = embeddingProviders.GetEmbeddingIdentity(
+                knowledgeBase.EmbeddingModel,
+                knowledgeBase.EmbeddingDimensions);
+            if (collectionIdentities.TryGetValue(
+                    knowledgeBase.Collection,
+                    out string? existingIdentity) &&
+                !string.Equals(existingIdentity, identity, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new KnowledgeBaseConfigurationException(
+                    $"Collection '{knowledgeBase.Collection}' is assigned incompatible embedding identities " +
+                    $"'{existingIdentity}' and '{identity}'.");
+            }
+
+            identities[knowledgeBase.Id.Value] = identity;
+            collectionIdentities[knowledgeBase.Collection] = identity;
+        }
+
+        _embeddingIdentities = identities;
+    }
+
     internal KnowledgeBaseRuntimeSelection Resolve(
         KnowledgeBaseId knowledgeBaseId,
         EmbeddingPurpose purpose)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ResolvedKnowledgeBase knowledgeBase = catalog.GetRequired(knowledgeBaseId);
+        ResolvedKnowledgeBase knowledgeBase = _catalog.GetRequired(knowledgeBaseId);
+        string embeddingIdentity = _embeddingIdentities[knowledgeBase.Id.Value];
         Lazy<IEmbeddingGenerator<string, Embedding<float>>> generator =
             _embeddingGenerators.GetOrAdd(
-                $"{knowledgeBase.EmbeddingIdentity}/{purpose}",
+                $"{embeddingIdentity}/{purpose}",
                 _ => new Lazy<IEmbeddingGenerator<string, Embedding<float>>>(
-                    () => embeddingProviders.Create(
+                    () => _embeddingProviders.Create(
                         knowledgeBase.EmbeddingModel,
                         knowledgeBase.EmbeddingDimensions,
                         purpose),
                     LazyThreadSafetyMode.ExecutionAndPublication));
-        return new KnowledgeBaseRuntimeSelection(knowledgeBase, generator.Value);
+        return new KnowledgeBaseRuntimeSelection(
+            knowledgeBase,
+            embeddingIdentity,
+            generator.Value);
     }
 
     internal async ValueTask<EmbeddingTokenizer> ResolveTokenizerAsync(
@@ -333,7 +372,7 @@ public sealed class KnowledgeBaseRuntime(
             return tokenizer;
         }
 
-        EmbeddingTokenizer created = await embeddingProviders.CreateTokenizerAsync(
+        EmbeddingTokenizer created = await _embeddingProviders.CreateTokenizerAsync(
             knowledgeBase.EmbeddingModel,
             cancellationToken);
         return _tokenizers.GetOrAdd(key, created);
@@ -363,4 +402,5 @@ public sealed class KnowledgeBaseRuntime(
 
 internal sealed record KnowledgeBaseRuntimeSelection(
     ResolvedKnowledgeBase KnowledgeBase,
+    string EmbeddingIdentity,
     IEmbeddingGenerator<string, Embedding<float>> EmbeddingGenerator);

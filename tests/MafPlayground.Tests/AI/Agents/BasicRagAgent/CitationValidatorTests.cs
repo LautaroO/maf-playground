@@ -64,4 +64,51 @@ public sealed class CitationValidatorTests
                 new RagAnswerDraft(true, []),
                 new Dictionary<string, RagEvidence>()));
     }
+
+    [Fact]
+    public void Validate_RejectsInlineCodeMissingFromCitedEvidence()
+    {
+        Dictionary<string, RagEvidence> evidence = new()
+        {
+            ["e1"] = new(
+                "e1",
+                "Run `dotnet run --project src/MafPlayground.CLI -- devui`.",
+                "[CLI reference, source: cli-reference.md]",
+                0.9),
+        };
+        RagAnswerDraft draft = new(
+            false,
+            [new RagClaim("Run `devui [arguments]`.", ["e1"])]);
+
+        RagAnswerValidationResult result = _validator.Validate(draft, evidence);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Contains(
+                "does not appear verbatim",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_AcceptsInlineCodeCopiedFromCitedEvidence()
+    {
+        Dictionary<string, RagEvidence> evidence = new()
+        {
+            ["e1"] = new(
+                "e1",
+                "Run `dotnet run --project src/MafPlayground.CLI -- devui`.",
+                "[CLI reference, source: cli-reference.md]",
+                0.9),
+        };
+        RagAnswerDraft draft = new(
+            false,
+            [new RagClaim(
+                "Run `dotnet run --project src/MafPlayground.CLI -- devui`.",
+                ["e1"])]);
+
+        RagAnswerValidationResult result = _validator.Validate(draft, evidence);
+
+        Assert.True(result.IsValid);
+    }
 }

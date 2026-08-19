@@ -53,8 +53,10 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 
 - Source IDs are file names or normalized paths relative to an optional source
   root; absolute machine paths are not used as citations.
-- Content hash, embedding identity, chunking identity, and normalized document
-  metadata make unchanged ingestion idempotent.
+- Content hash, provider-versioned embedding identity, chunking identity, and
+  normalized document metadata make unchanged ingestion idempotent. The
+  embedding identity includes model, dimensions, and the provider adapter's
+  retrieval preprocessing strategy.
 - Embeddings are generated in batches and vector dimensions are checked.
 - A document replacement is delegated to the store as one logical operation.
 - Unsupported formats and empty extraction are explicit outcomes.
@@ -89,7 +91,9 @@ explicit unsupported-tokenizer error.
 The Google adapter supports `gemini-embedding-2` and
 `gemini-embedding-001`. It uses Google's remote `countTokens` API for exact
 chunk-limit validation, requests the knowledge base's configured dimensions,
-and distinguishes `RETRIEVAL_DOCUMENT` ingestion from `RETRIEVAL_QUERY` search.
+and distinguishes document ingestion from query search. Embedding 2 uses
+Google's asymmetric retrieval text format; Embedding 001 uses the corresponding
+`RETRIEVAL_DOCUMENT` and `RETRIEVAL_QUERY` task types.
 
 Search settings are supplied by the consuming agent:
 

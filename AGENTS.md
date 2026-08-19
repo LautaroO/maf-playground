@@ -301,6 +301,29 @@ When asked to implement a feature:
 
 When official documentation and installed APIs differ, follow the installed package version and note the discrepancy.
 
+## Mandatory post-change self-validation
+
+After every implementation or cleanup, perform a final self-review before
+declaring the work complete or ready to push. This is mandatory even when the
+user does not explicitly request a review.
+
+1. Inspect the complete `git diff` and every untracked file, not only the files
+   touched most recently.
+2. Remove dead code, obsolete compatibility paths, unused registrations,
+   unnecessary public API surface, stale documentation, and generated artifacts
+   that do not belong in source control.
+3. Re-check provider neutrality, project boundaries, cancellation, validation,
+   security, persistence compatibility, and whether the selected MAF abstraction
+   is still appropriate.
+4. Confirm tests exercise the real behavior introduced by the change, including
+   deterministic tool execution and failure paths rather than registration only.
+5. Run `git diff --check`, scan tracked and untracked files for secrets, verify
+   generated documentation is current, and execute formatting, build, and the
+   relevant tests.
+6. Report anything intentionally left behind, unverified, externally coupled,
+   or requiring re-indexing or migration. Do not say the change is ready to push
+   while known cleanup or validation work remains.
+
 ## Code review rules
 
 During reviews, identify:

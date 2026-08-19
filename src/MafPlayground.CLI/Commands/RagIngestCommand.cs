@@ -13,9 +13,17 @@ public static class RagIngestCommand
     public static Command Create(Func<RagIngestCommandOptions, CancellationToken, Task<int>>? runAsync = null)
     {
         runAsync ??= RunAsync;
-        Option<string?> path = new("--path") { Description = "Document file to ingest." };
+        Option<string?> path = new("--path")
+        {
+            Description = "Document file to ingest.",
+            Required = true,
+        };
         Option<string?> sourceRoot = new("--source-root") { Description = "Optional root used to create stable relative source identifiers." };
-        Option<string?> knowledgeBase = new("--knowledge-base") { Description = "Configured knowledge base to ingest into." };
+        Option<string?> knowledgeBase = new("--knowledge-base")
+        {
+            Description = "Configured knowledge base to ingest into.",
+            Required = true,
+        };
         Option<string[]> metadata = new("--metadata")
         {
             Description = "Document metadata in key=value format. Repeat for multiple values.",

@@ -7,8 +7,10 @@ C#/.NET.
 The repository includes:
 
 - a conversational agent with trusted user context and a reusable time tool;
-- a grounded RAG agent with PDF ingestion, semantic retrieval, and mandatory
-  citations;
+- a grounded RAG agent with Markdown, PDF, DOCX, and PPTX ingestion, semantic
+  retrieval, and mandatory citations;
+- a repository help agent grounded in a curated manual and generated CLI
+  reference;
 - a translation workflow with parallel fan-out, validation, feedback retry, and
   ordered fan-in;
 - a local CLI harness and DevUI host;
@@ -53,6 +55,7 @@ flowchart TB
 | Trusted user data | `UserContextProvider` | `AIContextProvider` |
 | Current date/time | `CurrentDateTimeTool` | Deterministic tool/function |
 | RAG evidence | `RagContextProvider` | Retrieval-backed context plus one narrow search tool |
+| Repository and CLI help | `RepositoryHelpAgent` | Dedicated grounded agent over the `RepositoryHelp` knowledge base |
 | Citation enforcement | Structured claims, `CitationValidator`, and stateless repair | Deterministic claim-to-evidence mapping with bounded repair |
 | Translation orchestration | Native translation graph | Workflow executors, typed messages, fan-out/fan-in edges |
 | Timeouts and cost | Chat-client decorators | Provider-neutral cross-cutting infrastructure |
@@ -82,6 +85,7 @@ Detailed feature documentation:
 
 - [Basic agent](src/MafPlayground.AI/Agents/BasicAgent/README.md)
 - [Basic RAG agent](src/MafPlayground.AI/Agents/BasicRagAgent/README.md)
+- [Repository help manual](docs/repository-help/manual.md)
 - [Translation workflow](src/MafPlayground.AI/Workflows/Translation/README.md)
 - [Test organization](tests/README.md)
 
@@ -185,6 +189,34 @@ back once with feedback, and the fan-in result preserves requested order. A
 failed branch is returned as a partial failure rather than blocking other
 languages.
 
+## Repository help agent
+
+Generate the exact CLI reference and ingest it together with the curated manual:
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- \
+  docs generate-cli-reference \
+  --output docs/repository-help/cli-reference.md
+dotnet run --project src/MafPlayground.CLI -- \
+  rag ingest --knowledge-base RepositoryHelp \
+  --path docs/repository-help/manual.md \
+  --source-root docs/repository-help \
+  --metadata audience=developer --metadata source_kind=curated-manual
+dotnet run --project src/MafPlayground.CLI -- \
+  rag ingest --knowledge-base RepositoryHelp \
+  --path docs/repository-help/cli-reference.md \
+  --source-root docs/repository-help \
+  --metadata audience=developer --metadata source_kind=generated-cli
+dotnet run --project src/MafPlayground.CLI -- \
+  agent repository-help --prompt "How do I run DevUI?"
+```
+
+The agent can retrieve and refine searches over these documents. It cannot
+execute commands, inspect arbitrary source files, or mutate the repository.
+For exact syntax, the agent can call a narrow deterministic lookup tool backed
+by the live command tree. Natural-language interpretation remains with the
+model, while the tool returns only commands that actually exist.
+
 ## CLI command map
 
 System.CommandLine provides help at every level:
@@ -199,9 +231,11 @@ dotnet run --project src/MafPlayground.CLI -- workflow translate --help
 | --- | --- |
 | `agent basic` | Run the Basic agent interactively or with `--prompt`. |
 | `agent basic-rag` | Run the grounded RAG agent. |
+| `agent repository-help` | Ask grounded questions about the repository and CLI. |
 | `workflow translate` | Execute the typed translation workflow. |
 | `rag database migrate` | Apply EF Core retrieval migrations. |
 | `rag ingest` | Extract, chunk, embed, and index one document explicitly. |
+| `docs generate-cli-reference` | Regenerate the repository-help CLI reference from the live command tree. |
 | `inspect list` | List locally registered agents and workflows. |
 | `inspect agent <id> --view-input` | Print an agent's JSON Schema and example input. |
 | `inspect workflow <id> --view-input` | Print a workflow's JSON Schema and example input. |
@@ -220,7 +254,8 @@ dotnet run --project src/MafPlayground.CLI -- devui
 ```
 
 Open `http://localhost:5050/devui`. The registered entities are `basic-agent`,
-`basic-rag-agent`, and the native `translation-workflow` graph.
+`basic-rag-agent`, `repository-help-agent`, and the native
+`translation-workflow` graph.
 
 The installed .NET DevUI preview exposes workflow input as a chat string. For the
 translation workflow, enter:
@@ -250,6 +285,7 @@ command options. Command options take precedence where available.
 | `AI:Resilience:ModelCallTimeout` | Timeout applied by the shared chat-client decorator. |
 | `AI:KnowledgeBases:<name>` | Collection, embedding model/dimension, and ingestion policy for one reusable knowledge base. |
 | `AI:Agents:BasicRag` | Knowledge-base reference and search policy owned by the Basic RAG agent. |
+| `AI:Agents:RepositoryHelp` | Repository-manual knowledge base reference and search policy. |
 | `AI:Guards:Profiles` | Reusable PII, input, tool, token, model-call, and monetary-budget policies. |
 | `AI:Retrieval:Postgres:ConnectionString` | Current retrieval store connection. |
 | `AI:Workflows:Translation:*` | Supported languages, limits, retries, and confidence. |

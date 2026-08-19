@@ -62,7 +62,7 @@ public sealed class PostgresKnowledgeStore(IDbContextFactory<KnowledgeDbContext>
             entity.MetadataJson = KnowledgeMetadataJson.Serialize(document.Metadata);
         }
 
-        entity.Chunks = chunks.Select(chunk => new KnowledgeChunkEntity
+        List<KnowledgeChunkEntity> replacementChunks = chunks.Select(chunk => new KnowledgeChunkEntity
         {
             Id = Guid.NewGuid(),
             Document = entity,
@@ -73,6 +73,8 @@ public sealed class PostgresKnowledgeStore(IDbContextFactory<KnowledgeDbContext>
             SectionName = chunk.SectionName,
             Embedding = new Vector(chunk.Embedding),
         }).ToList();
+        entity.Chunks = replacementChunks;
+        db.Chunks.AddRange(replacementChunks);
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

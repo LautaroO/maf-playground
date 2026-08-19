@@ -7,7 +7,7 @@ namespace MafPlayground.Tests.Retrieval;
 public sealed class KnowledgeBaseProfilesTests
 {
     [Fact]
-    public void Catalog_RejectsSharedCollectionWithDifferentEmbeddingIdentity()
+    public void Runtime_RejectsSharedCollectionWithDifferentProviderIdentity()
     {
         KnowledgeBaseCatalogOptions options = new()
         {
@@ -18,8 +18,12 @@ public sealed class KnowledgeBaseProfilesTests
             },
         };
 
+        KnowledgeBaseCatalog catalog = new(options);
+
         KnowledgeBaseConfigurationException exception = Assert.Throws<
-            KnowledgeBaseConfigurationException>(() => new KnowledgeBaseCatalog(options));
+            KnowledgeBaseConfigurationException>(() => new KnowledgeBaseRuntime(
+                catalog,
+                new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()])));
 
         Assert.Contains("incompatible embedding identities", exception.Message);
     }
@@ -178,7 +182,7 @@ public sealed class KnowledgeBaseProfilesTests
             Assert.Equal("Legal", result.KnowledgeBase.Value);
             Assert.NotNull(store.ReplacedDocument);
             Assert.Equal("legal-collection", store.ReplacedDocument.Collection);
-            Assert.Equal("fake:legal-model/3", store.ReplacedDocument.EmbeddingIdentity);
+            Assert.Equal("fake:legal-model/3/raw-v1", store.ReplacedDocument.EmbeddingIdentity);
             Assert.Contains(
                 "document-tokens-per-section:fake:cl100k_base:max:400:overlap:40",
                 store.ReplacedDocument.ChunkingIdentity);
@@ -246,6 +250,57 @@ public sealed class KnowledgeBaseProfilesTests
             Assert.False(result.Skipped);
             Assert.Equal(2, store.ReplaceCount);
             Assert.Equal(updated, store.ReplacedDocument!.Metadata);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Ingestion_ReplacesDocumentWhenProviderStrategyIdentityChanges()
+    {
+        KnowledgeBaseCatalog catalog = new(new KnowledgeBaseCatalogOptions
+        {
+            KnowledgeBases = new Dictionary<string, KnowledgeBaseOptions>
+            {
+                ["Help"] = CreateKnowledgeBase("help", "fake:model"),
+            },
+        });
+        RecordingKnowledgeStore store = new();
+        using KnowledgeBaseRuntime runtime = new(
+            catalog,
+            new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
+        KnowledgeIngestionService ingestion = new(
+            new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
+            new MicrosoftDataIngestionDocumentChunker(),
+            runtime,
+            store);
+        string path = Path.Combine(
+            Path.GetTempPath(),
+            $"maf-identity-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(path, "test");
+
+        try
+        {
+            await ingestion.IngestAsync(new KnowledgeBaseId("Help"), path);
+            KnowledgeDocument first = Assert.IsType<KnowledgeDocument>(
+                store.ReplacedDocument);
+            store.DocumentState = new StoredDocumentState(
+                first.ContentHash,
+                "fake:model/3",
+                first.ChunkingIdentity,
+                first.Metadata);
+
+            IngestionResult result = await ingestion.IngestAsync(
+                new KnowledgeBaseId("Help"),
+                path);
+
+            Assert.False(result.Skipped);
+            Assert.Equal(2, store.ReplaceCount);
+            Assert.Equal(
+                "fake:model/3/raw-v1",
+                store.ReplacedDocument!.EmbeddingIdentity);
         }
         finally
         {
@@ -371,6 +426,9 @@ public sealed class KnowledgeBaseProfilesTests
     private sealed class RecordingEmbeddingProvider : IEmbeddingGeneratorProvider
     {
         public string Name => "fake";
+
+        public string GetEmbeddingIdentity(string model, int dimensions) =>
+            $"{Name}:{model}/{dimensions}/raw-v1";
 
         public List<string> CreatedModels { get; } = [];
 

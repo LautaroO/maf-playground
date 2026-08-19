@@ -129,7 +129,16 @@ public sealed class ObservabilityServiceExtensionsTests
                 listener.EnableMeasurementEvents(instrument);
             }
         };
-        meterListener.SetMeasurementEventCallback<double>((_, _, _, _) => measurementCount++);
+        using Activity invocationScope = new Activity(
+            nameof(CostTracking_DoesNotTreatMissingUsageAsZeroCost)).Start();
+        ActivityTraceId invocationTraceId = invocationScope.TraceId;
+        meterListener.SetMeasurementEventCallback<double>((_, _, _, _) =>
+        {
+            if (Activity.Current?.TraceId == invocationTraceId)
+            {
+                measurementCount++;
+            }
+        });
         meterListener.Start();
 
         using ServiceProvider provider = services.BuildServiceProvider();

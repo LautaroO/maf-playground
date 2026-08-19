@@ -77,11 +77,7 @@ public sealed record ResolvedKnowledgeBase(
     string Collection,
     EmbeddingModelSelection EmbeddingModel,
     int EmbeddingDimensions,
-    KnowledgeIngestionSettings Ingestion)
-{
-    public string EmbeddingIdentity => $"{EmbeddingModel}/{EmbeddingDimensions}";
-
-}
+    KnowledgeIngestionSettings Ingestion);
 
 public sealed class KnowledgeBaseCatalog
 {
@@ -99,9 +95,6 @@ public sealed class KnowledgeBaseCatalog
 
         Dictionary<string, ResolvedKnowledgeBase> resolved =
             new(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, string> collectionEmbeddingIdentities =
-            new(StringComparer.OrdinalIgnoreCase);
-
         foreach ((string name, KnowledgeBaseOptions definition) in options.KnowledgeBases)
         {
             ResolvedKnowledgeBase knowledgeBase = Resolve(name, definition);
@@ -111,21 +104,6 @@ public sealed class KnowledgeBaseCatalog
                     $"Knowledge base '{knowledgeBase.Id}' is configured more than once.");
             }
 
-            if (collectionEmbeddingIdentities.TryGetValue(
-                    knowledgeBase.Collection,
-                    out string? existingIdentity) &&
-                !string.Equals(
-                    existingIdentity,
-                    knowledgeBase.EmbeddingIdentity,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new KnowledgeBaseConfigurationException(
-                    $"Collection '{knowledgeBase.Collection}' is assigned incompatible embedding identities " +
-                    $"'{existingIdentity}' and '{knowledgeBase.EmbeddingIdentity}'.");
-            }
-
-            collectionEmbeddingIdentities[knowledgeBase.Collection] =
-                knowledgeBase.EmbeddingIdentity;
         }
 
         _knowledgeBases = resolved;
