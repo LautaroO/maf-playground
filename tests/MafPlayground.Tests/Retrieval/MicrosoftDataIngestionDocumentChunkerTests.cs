@@ -25,29 +25,30 @@ public sealed class MicrosoftDataIngestionDocumentChunkerTests
             []);
         KnowledgeIngestionSettings settings = new(1)
         {
-            TokenizerEncoding = "cl100k_base",
             MaxTokensPerChunk = 24,
             OverlapTokens = 4,
         };
+        EmbeddingTokenizer tokenizer = CreateTokenizer();
 
         IReadOnlyList<DocumentChunk> chunks = await chunker.ChunkAsync(
             document,
-            settings);
+            settings,
+            tokenizer);
 
-        Tokenizer tokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
+        Tokenizer actualTokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
         Assert.True(chunks.Count > 1);
         Assert.All(chunks, chunk =>
         {
             Assert.InRange(
-                tokenizer.CountTokens(chunk.Text, considerNormalization: false),
+                actualTokenizer.CountTokens(chunk.Text, considerNormalization: false),
                 1,
                 24);
             Assert.Equal(7, chunk.PageNumber);
             Assert.Equal("Page 7", chunk.SectionName);
         });
         Assert.Contains(
-            "document-tokens-per-section:cl100k_base:max:24:overlap:4",
-            chunker.GetIdentity(settings));
+            "document-tokens-per-section:test:cl100k_base:max:24:overlap:4",
+            chunker.GetIdentity(settings, tokenizer));
     }
 
     [Fact]
@@ -75,9 +76,15 @@ public sealed class MicrosoftDataIngestionDocumentChunkerTests
 
         DocumentChunk chunk = Assert.Single(await chunker.ChunkAsync(
             document,
-            settings));
+            settings,
+            CreateTokenizer()));
 
         Assert.Contains("Reset account", chunk.Text);
         Assert.Contains("Settings", chunk.Text);
     }
+
+    private static EmbeddingTokenizer CreateTokenizer() =>
+        new(
+            TiktokenTokenizer.CreateForEncoding("cl100k_base"),
+            "test:cl100k_base");
 }

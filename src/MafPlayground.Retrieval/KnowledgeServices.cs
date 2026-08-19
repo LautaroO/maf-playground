@@ -142,7 +142,10 @@ public sealed class KnowledgeIngestionService(
         string hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         string sourceId = CreateSourceId(fullPath, sourceRoot);
 
-        string chunkingIdentity = chunker.GetIdentity(knowledgeBase.Ingestion);
+        EmbeddingTokenizer tokenizer = runtime.ResolveTokenizer(knowledgeBase);
+        string chunkingIdentity = chunker.GetIdentity(
+            knowledgeBase.Ingestion,
+            tokenizer);
         StoredDocumentState? state = await store.GetDocumentStateAsync(
             knowledgeBase.Collection,
             sourceId,
@@ -176,6 +179,7 @@ public sealed class KnowledgeIngestionService(
         IReadOnlyList<DocumentChunk> drafts = await chunker.ChunkAsync(
             extracted,
             knowledgeBase.Ingestion,
+            tokenizer,
             cancellationToken);
         if (drafts.Count == 0)
         {
@@ -289,6 +293,8 @@ public sealed class KnowledgeBaseRuntime(
 {
     private readonly ConcurrentDictionary<string, Lazy<IEmbeddingGenerator<string, Embedding<float>>>>
         _embeddingGenerators = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Lazy<EmbeddingTokenizer>>
+        _tokenizers = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     internal KnowledgeBaseRuntimeSelection Resolve(KnowledgeBaseId knowledgeBaseId)
@@ -302,6 +308,17 @@ public sealed class KnowledgeBaseRuntime(
                     () => embeddingProviders.Create(knowledgeBase.EmbeddingModel),
                     LazyThreadSafetyMode.ExecutionAndPublication));
         return new KnowledgeBaseRuntimeSelection(knowledgeBase, generator.Value);
+    }
+
+    internal EmbeddingTokenizer ResolveTokenizer(ResolvedKnowledgeBase knowledgeBase)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(knowledgeBase);
+        return _tokenizers.GetOrAdd(
+            knowledgeBase.EmbeddingModel.ToString(),
+            _ => new Lazy<EmbeddingTokenizer>(
+                () => embeddingProviders.CreateTokenizer(knowledgeBase.EmbeddingModel),
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
     public void Dispose()
@@ -321,6 +338,7 @@ public sealed class KnowledgeBaseRuntime(
         }
 
         _embeddingGenerators.Clear();
+        _tokenizers.Clear();
         _disposed = true;
     }
 }

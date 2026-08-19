@@ -201,7 +201,6 @@ chat model.
         "EmbeddingModel": "ollama:nomic-embed-text",
         "EmbeddingDimensions": 768,
         "Ingestion": {
-          "TokenizerEncoding": "cl100k_base",
           "MaxTokensPerChunk": 400,
           "OverlapTokens": 40,
           "EmbeddingBatchSize": 16,

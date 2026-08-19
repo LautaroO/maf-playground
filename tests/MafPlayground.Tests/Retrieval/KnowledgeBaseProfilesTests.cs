@@ -96,6 +96,7 @@ public sealed class KnowledgeBaseProfilesTests
         await legal.SearchAsync("retention policy");
 
         Assert.Equal(["help-model", "legal-model"], embeddingProvider.CreatedModels);
+        Assert.Empty(embeddingProvider.CreatedTokenizerModels);
         Assert.Collection(
             store.Requests,
             request =>
@@ -123,9 +124,10 @@ public sealed class KnowledgeBaseProfilesTests
                 ["Help"] = CreateKnowledgeBase("help", "fake:model"),
             },
         });
+        RecordingEmbeddingProvider embeddingProvider = new();
         using KnowledgeBaseRuntime runtime = new(
             catalog,
-            new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
+            new EmbeddingProviderRegistry([embeddingProvider]));
         KnowledgeSearchFactory factory = new(runtime, new RecordingKnowledgeStore());
 
         KnowledgeBaseConfigurationException exception = Assert.Throws<
@@ -148,9 +150,10 @@ public sealed class KnowledgeBaseProfilesTests
             },
         });
         RecordingKnowledgeStore store = new();
+        RecordingEmbeddingProvider embeddingProvider = new();
         using KnowledgeBaseRuntime runtime = new(
             catalog,
-            new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
+            new EmbeddingProviderRegistry([embeddingProvider]));
         KnowledgeIngestionService ingestion = new(
             new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
             new MicrosoftDataIngestionDocumentChunker(),
@@ -172,8 +175,9 @@ public sealed class KnowledgeBaseProfilesTests
             Assert.Equal("legal-collection", store.ReplacedDocument.Collection);
             Assert.Equal("fake:legal-model/3", store.ReplacedDocument.EmbeddingIdentity);
             Assert.Contains(
-                "document-tokens-per-section:cl100k_base:max:400:overlap:40",
+                "document-tokens-per-section:fake:cl100k_base:max:400:overlap:40",
                 store.ReplacedDocument.ChunkingIdentity);
+            Assert.Contains("legal-model", embeddingProvider.CreatedTokenizerModels);
             Assert.Equal(KnowledgeMetadata.Empty, store.ReplacedDocument.Metadata);
             Assert.NotEmpty(store.ReplacedChunks);
         }
@@ -357,10 +361,21 @@ public sealed class KnowledgeBaseProfilesTests
 
         public List<string> CreatedModels { get; } = [];
 
+        public List<string> CreatedTokenizerModels { get; } = [];
+
         public IEmbeddingGenerator<string, Embedding<float>> Create(string model)
         {
             CreatedModels.Add(model);
             return new FakeEmbeddingGenerator();
+        }
+
+        public EmbeddingTokenizer CreateTokenizer(string model)
+        {
+            CreatedTokenizerModels.Add(model);
+            return new(
+                Microsoft.ML.Tokenizers.TiktokenTokenizer.CreateForEncoding(
+                    "cl100k_base"),
+                "fake:cl100k_base");
         }
     }
 

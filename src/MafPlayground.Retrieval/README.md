@@ -30,7 +30,7 @@ flowchart LR
 | `PptxDocumentExtractor` | Native Open XML reader that creates one section per slide and maps titles, text shapes, and tables. |
 | `MarkdownDocumentExtractor` | Adapts the DataIngestion Markdig reader without flattening its `IngestionDocument`. |
 | `MicrosoftDataIngestionDocumentChunker` | Creates token-bounded chunks per source section while preserving page/section metadata. |
-| `IEmbeddingGeneratorProvider` | Provider adapter port for embedding models. |
+| `IEmbeddingGeneratorProvider` | Provider adapter port that creates an embedding generator and declares the tokenizer for each model. |
 | `EmbeddingProviderRegistry` | Resolves `provider:model` embedding selections. |
 | `KnowledgeBaseCatalog` | Validates named knowledge bases, embedding identities, and ingestion policies. |
 | `IKnowledgeSearchFactory` | Creates a search service bound to one knowledge base and one agent search policy. |
@@ -66,7 +66,6 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 | Knowledge-base option | Default |
 | --- | ---: |
 | `EmbeddingDimensions` | `768` |
-| `Ingestion:TokenizerEncoding` | `cl100k_base` |
 | `Ingestion:MaxTokensPerChunk` | `400` |
 | `Ingestion:OverlapTokens` | `40` |
 | `Ingestion:EmbeddingBatchSize` | `16` |
@@ -75,6 +74,8 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 | `Ingestion:MaxExtractedCharacters` | `2000000` |
 
 `Collection` and `EmbeddingModel` are required for every named knowledge base.
+The selected embedding provider owns the tokenizer and its versioned identity;
+tokenizer selection is not knowledge-base configuration.
 Search settings are supplied by the consuming agent:
 
 | Search option | Default |

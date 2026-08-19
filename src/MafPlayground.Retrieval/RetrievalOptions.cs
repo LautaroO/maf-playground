@@ -21,8 +21,6 @@ public sealed class KnowledgeBaseOptions
 
 public sealed class KnowledgeIngestionOptions
 {
-    public string TokenizerEncoding { get; set; } = "cl100k_base";
-
     public int MaxTokensPerChunk { get; set; } = 400;
 
     public int OverlapTokens { get; set; } = 40;
@@ -50,8 +48,6 @@ public sealed class KnowledgeSearchOptions
 
 public sealed record KnowledgeIngestionSettings(int EmbeddingBatchSize)
 {
-    public string TokenizerEncoding { get; init; } = "cl100k_base";
-
     public int MaxTokensPerChunk { get; init; } = 400;
 
     public int OverlapTokens { get; init; } = 40;
@@ -195,12 +191,6 @@ public sealed class KnowledgeBaseCatalog
         }
 
         KnowledgeIngestionOptions ingestion = definition.Ingestion ?? new();
-        if (string.IsNullOrWhiteSpace(ingestion.TokenizerEncoding))
-        {
-            throw new KnowledgeBaseConfigurationException(
-                $"Knowledge base '{name}' requires a tokenizer encoding.");
-        }
-
         if (ingestion.MaxTokensPerChunk <= 0)
         {
             throw new KnowledgeBaseConfigurationException(
@@ -235,7 +225,6 @@ public sealed class KnowledgeBaseCatalog
             definition.EmbeddingDimensions,
             new KnowledgeIngestionSettings(ingestion.EmbeddingBatchSize)
             {
-                TokenizerEncoding = ingestion.TokenizerEncoding.Trim(),
                 MaxTokensPerChunk = ingestion.MaxTokensPerChunk,
                 OverlapTokens = ingestion.OverlapTokens,
                 MaxFileBytes = ingestion.MaxFileBytes,

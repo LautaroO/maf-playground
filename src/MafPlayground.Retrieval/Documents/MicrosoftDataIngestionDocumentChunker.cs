@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.Extensions.DataIngestion.Chunkers;
-using Microsoft.ML.Tokenizers;
 
 namespace MafPlayground.Retrieval.Documents;
 
@@ -11,14 +10,14 @@ public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
     public async ValueTask<IReadOnlyList<DocumentChunk>> ChunkAsync(
         ExtractedDocument document,
         KnowledgeIngestionSettings options,
+        EmbeddingTokenizer tokenizer,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(tokenizer);
 
-        Tokenizer tokenizer = TiktokenTokenizer.CreateForEncoding(
-            options.TokenizerEncoding);
-        DocumentTokenChunker chunker = new(new IngestionChunkerOptions(tokenizer)
+        DocumentTokenChunker chunker = new(new IngestionChunkerOptions(tokenizer.Instance)
         {
             MaxTokensPerChunk = options.MaxTokensPerChunk,
             OverlapTokens = options.OverlapTokens,
@@ -53,11 +52,14 @@ public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
         return chunks;
     }
 
-    public string GetIdentity(KnowledgeIngestionSettings options)
+    public string GetIdentity(
+        KnowledgeIngestionSettings options,
+        EmbeddingTokenizer tokenizer)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(tokenizer);
         return $"data-ingestion:{PackageVersion}:document-tokens-per-section:" +
-               $"{options.TokenizerEncoding}:max:{options.MaxTokensPerChunk}:" +
+               $"{tokenizer.Identity}:max:{options.MaxTokensPerChunk}:" +
                $"overlap:{options.OverlapTokens}";
     }
 

@@ -5,9 +5,12 @@ public interface IDocumentChunker
     ValueTask<IReadOnlyList<DocumentChunk>> ChunkAsync(
         ExtractedDocument document,
         KnowledgeIngestionSettings options,
+        EmbeddingTokenizer tokenizer,
         CancellationToken cancellationToken = default);
 
-    string GetIdentity(KnowledgeIngestionSettings options);
+    string GetIdentity(
+        KnowledgeIngestionSettings options,
+        EmbeddingTokenizer tokenizer);
 }
 
 public sealed record DocumentChunk(

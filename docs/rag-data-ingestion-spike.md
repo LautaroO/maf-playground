@@ -52,12 +52,15 @@ The spike pins packages compatible with the repository's
 - `Microsoft.Extensions.DataIngestion.Abstractions`
   `10.7.0-preview.1.26309.5` (transitive)
 - `Microsoft.Extensions.DataIngestion.Markdig` `10.7.0-preview.1.26309.5`
+- `Microsoft.ML.Tokenizers` `1.0.1` (retrieval contract)
 - `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1`
 - `DocumentFormat.OpenXml` `3.5.1`
 
-The tokenizer data package is required at runtime by
-`TiktokenTokenizer.CreateForEncoding("cl100k_base")`; the main DataIngestion
-package does not bring that vocabulary automatically.
+The retrieval core depends only on the tokenizer abstraction. Each embedding
+provider creates the tokenizer for its model and supplies a stable identity that
+participates in the chunking identity. The Ollama adapter currently declares
+`cl100k_base` as an explicit approximation and owns its vocabulary package; the
+main DataIngestion package does not bring that vocabulary automatically.
 
 ### Reading
 
@@ -108,7 +111,7 @@ The Microsoft adapter:
 2. runs `DocumentTokenChunker` independently per original section;
 3. maps chunks back to the existing `DocumentChunk` contract;
 4. preserves page number and header context from the source;
-5. carries tokenizer, size, overlap, strategy, and package version in the
+5. carries provider tokenizer identity, size, overlap, strategy, and package version in the
    chunking identity so existing documents are reindexed when the strategy
    changes.
 
@@ -161,8 +164,9 @@ not adopted.
    metadata. The PDF reader currently produces only page sections and paragraphs;
    Office readers produce headings, paragraphs, and tables but do not interpret
    images or charts.
-6. `cl100k_base` is a practical spike tokenizer, not a universally correct
-   tokenizer for every embedding or chat model.
+6. The Ollama adapter's `cl100k_base` tokenizer is a practical approximation for
+   its current embedding model, not a universal tokenizer. Other providers must
+   declare their own exact or explicitly approximate strategy.
 7. `IngestionPipeline<T>` was not adopted because its writer boundary would
    bypass or duplicate the repository's document-level hash, metadata,
    idempotency, and atomic EF Core replacement semantics.
