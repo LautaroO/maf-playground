@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
@@ -18,6 +19,7 @@
     <ProjectReference Include="../../src/MafPlayground.AI/MafPlayground.AI.csproj" />
     <ProjectReference Include="../../src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
     <ProjectReference Include="../../src/MafPlayground.Observability/MafPlayground.Observability.csproj" />
+    <ProjectReference Include="../../src/MafPlayground.Providers.Google/MafPlayground.Providers.Google.csproj" />
     <ProjectReference Include="../../src/MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
   </ItemGroup>
 

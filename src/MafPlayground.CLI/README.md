@@ -4,9 +4,9 @@ Development-only command-line harness and web host for running the repository's
 agents and workflows locally.
 
 The CLI is a composition root, not the reusable application core. It wires
-together AI orchestration, Ollama, retrieval, PostgreSQL, observability, DevUI,
-and local user context. A production web or worker host should compose the same
-libraries independently.
+together AI orchestration, Google Gen AI, Ollama, retrieval, PostgreSQL,
+observability, DevUI, and local user context. A production web or worker host
+should compose the same libraries independently.
 
 ## Command tree
 
@@ -62,9 +62,11 @@ services.AddConfiguredRetrieval(configuration);
 services.AddMafPlaygroundObservability(configuration);
 ```
 
-The chat model selector uses `provider:model`. Each configured knowledge base owns
-its embedding selector in the same format. Provider endpoint configuration remains
-owned by the provider adapter, while PostgreSQL configuration remains owned by
+The chat model selector uses `provider:model`; for example,
+`google:gemini-3.6-flash` or `ollama:llama3.1:8b`. Each configured knowledge base
+owns its embedding selector in the same format. Gemini chat can use either
+Ollama/Nomic embeddings or `google:gemini-embedding-2`; provider configuration
+remains owned by its adapter, while PostgreSQL configuration remains owned by
 its retrieval adapter.
 
 ## Configuration
@@ -77,7 +79,7 @@ cp .env.example .env
 set -a; source .env; set +a
 ```
 
-Frequently used values are `AI_MODEL`, `DEVUI_URL`,
+Frequently used values are `AI_MODEL`, `GEMINI_API_KEY`, `DEVUI_URL`,
 `AI__PROVIDERS__OLLAMA__ENDPOINT`, knowledge bases under `AI__KNOWLEDGEBASES`,
 agent search policy under `AI__AGENTS`, store settings under `AI__RETRIEVAL`, and
 observability settings under `OBSERVABILITY`. CLI options override model, prompt,

@@ -1,9 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Google.GenAI" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
-    <PackageReference Include="Microsoft.ML.Tokenizers" />
-    <PackageReference Include="OllamaSharp" />
   </ItemGroup>
 
   <ItemGroup>

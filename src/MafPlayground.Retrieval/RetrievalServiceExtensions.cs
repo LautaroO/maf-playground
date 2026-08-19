@@ -14,7 +14,9 @@ public static class RetrievalServiceExtensions
         services.AddSingleton(catalog);
         services.AddSingleton<EmbeddingProviderRegistry>();
         services.AddSingleton<KnowledgeBaseRuntime>();
+        services.AddSingleton<IDocumentExtractor, DocxDocumentExtractor>();
         services.AddSingleton<IDocumentExtractor, PdfDocumentExtractor>();
+        services.AddSingleton<IDocumentExtractor, PptxDocumentExtractor>();
         services.AddSingleton<IDocumentExtractor, MarkdownDocumentExtractor>();
         services.AddSingleton<DocumentExtractorRegistry>();
         services.AddSingleton<IDocumentChunker, MicrosoftDataIngestionDocumentChunker>();

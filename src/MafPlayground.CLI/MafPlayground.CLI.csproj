@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="../MafPlayground.AI/MafPlayground.AI.csproj" />
     <ProjectReference Include="../MafPlayground.Observability/MafPlayground.Observability.csproj" />
+    <ProjectReference Include="../MafPlayground.Providers.Google/MafPlayground.Providers.Google.csproj" />
     <ProjectReference Include="../MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
     <ProjectReference Include="../MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
     <ProjectReference Include="../MafPlayground.Retrieval.Postgres/MafPlayground.Retrieval.Postgres.csproj" />

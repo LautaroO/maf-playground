@@ -20,11 +20,13 @@ The collection name is unique per run. The test adds data to the configured
 database and does not currently delete its collection afterward; use a local test
 database, not a shared or production database.
 
-`OllamaProviderContractTests` checks real structured output, usage metadata, and
-streaming. `AgentEvaluationTests` contains a small real-model RAG grounding set
-and translation invariants. These two categories have separate switches so
-provider compatibility can be checked without automatically running quality
-evaluations.
+`GoogleGenAIProviderContractTests` checks Gemini structured output, usage
+metadata, remote token counting, document/query embedding purposes, and
+768-dimensional vectors. `OllamaProviderContractTests` checks structured output, usage
+metadata, streaming, and Nomic tokenization/embeddings. `AgentEvaluationTests`
+contains a small real-model RAG grounding set and translation invariants. These
+categories have separate switches so provider compatibility can be checked
+without automatically running quality evaluations.
 
 ## Run with local Compose infrastructure
 
@@ -45,6 +47,15 @@ RUN_OLLAMA_TESTS=true AI_MODEL='ollama:llama3.1:8b' \
   --filter FullyQualifiedName~OllamaProviderContractTests
 ```
 
+Run the Google Gen AI provider contract test:
+
+```bash
+RUN_GOOGLE_GENAI_TESTS=true GEMINI_API_KEY='<secret>' \
+  GOOGLE_AI_MODEL='google:gemini-3.6-flash' \
+  dotnet test tests/MafPlayground.IntegrationTests/MafPlayground.IntegrationTests.csproj \
+  --filter FullyQualifiedName~GoogleGenAIProviderContractTests
+```
+
 Run the real-model evaluation set:
 
 ```bash
@@ -58,9 +69,9 @@ Both use `AI__PROVIDERS__OLLAMA__ENDPOINT` when supplied and otherwise target
 
 ## Scope rules
 
-Tests belong here when they require PostgreSQL, Ollama, a real embedding/chat
-model, an OTLP collector, DevUI over HTTP, Docker Compose, or another external
-system. New integration tests should:
+Tests belong here when they require PostgreSQL, Google Gen AI, Ollama, a real
+embedding/chat model, an OTLP collector, DevUI over HTTP, Docker Compose, or
+another external system. New integration tests should:
 
 - be opt-in through an explicit configuration switch;
 - use isolated test identifiers or databases;

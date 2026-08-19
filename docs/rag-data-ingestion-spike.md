@@ -2,9 +2,9 @@
 
 ## Status
 
-- Branch: `spike-microsoft-data-ingestion`
-- Base: `main` at `b76fc62362c756229b6c48d9fcca2aea2649fef6`
-- Scope: document reading and token-aware chunking only
+- Branch: `spike-openxml-document-readers`
+- Base: `main` at `6ab35500155d84c9c12b26a57f245e57689398bf`
+- Scope: PDF, DOCX, PPTX, and Markdown reading plus token-aware chunking
 - Explicit non-goal: replacing EF Core, PostgreSQL, pgvector, or `IKnowledgeStore`
 
 ## Decision summary
@@ -19,14 +19,18 @@ coordination and EF Core store, implement critical readers behind
 `IngestionDocumentReader`, and isolate the preview dependency to the retrieval
 ingestion boundary until its compatibility guarantees stabilize.
 
+DOCX and PPTX use native repository-owned readers over the stable Open XML SDK.
+MarkItDown was explicitly not adopted, so the ingestion deployment has no Python,
+MarkItDown executable, MCP server, or Office installation requirement.
+
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Source[PDF or Markdown] --> Reader[IngestionDocumentReader implementation]
+    Source[PDF, DOCX, PPTX or Markdown] --> Reader[IngestionDocumentReader implementation]
     Reader --> Document[Structured IngestionDocument]
     Document --> Coordinator[Existing ingestion coordinator]
-    Coordinator --> Chunker[DocumentTokenChunker per source section]
+    Coordinator --> Chunker[Repository token splitter per source section]
     Chunker --> ExistingChunks[DocumentChunk]
     ExistingChunks --> Embeddings[IEmbeddingGenerator]
     Embeddings --> Store[Existing IKnowledgeStore]
@@ -48,11 +52,17 @@ The spike pins packages compatible with the repository's
 - `Microsoft.Extensions.DataIngestion.Abstractions`
   `10.7.0-preview.1.26309.5` (transitive)
 - `Microsoft.Extensions.DataIngestion.Markdig` `10.7.0-preview.1.26309.5`
-- `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1`
+- `Microsoft.ML.Tokenizers` `2.0.0` (retrieval contract and BERT implementation)
+- `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1` (tests only)
+- `DocumentFormat.OpenXml` `3.5.1`
 
-The tokenizer data package is required at runtime by
-`TiktokenTokenizer.CreateForEncoding("cl100k_base")`; the main DataIngestion
-package does not bring that vocabulary automatically.
+The retrieval core depends only on the async tokenizer abstraction. Each
+embedding provider supplies local or remote token-boundary operations and a
+stable identity that participates in the chunking identity. For supported
+`nomic-embed-text` aliases,
+the Ollama adapter requests verbose `/api/show` metadata, builds a BERT tokenizer
+from the installed GGUF vocabulary, and includes the vocabulary hash in that
+identity. Unknown Ollama models fail explicitly instead of using an approximation.
 
 ### Reading
 
@@ -78,19 +88,32 @@ available for diagnostics and trigger OCR warnings. This improves digitally
 generated PDFs but does not add OCR, table reconstruction, header/footer
 removal, or semantic layout classification.
 
+`DocxDocumentExtractor` reads WordprocessingML directly with Open XML SDK. It
+creates logical sections at Word heading styles, represents ordinary paragraphs
+and list items as paragraph elements, and converts tables to
+`IngestionDocumentTable`. It intentionally ignores Word pagination because DOCX
+does not define a stable rendered page number. Document images produce explicit
+warnings and are not interpreted.
+
+`PptxDocumentExtractor` reads PresentationML directly. Every slide becomes one
+section whose `PageNumber` is the slide number. Title placeholders become
+headers, other text shapes become paragraphs, and DrawingML tables become
+`IngestionDocumentTable`. Images, charts, and speaker notes produce explicit
+warnings until dedicated extractors exist.
+
 ### Chunking
 
-`IDocumentChunker` makes chunking replaceable and asynchronous. The default spike
-registration uses `MicrosoftDataIngestionDocumentChunker`; the previous
-character chunker remains available for side-by-side tests.
+`IDocumentChunker` keeps chunking replaceable and asynchronous. The application
+registers `MicrosoftDataIngestionDocumentChunker` as its only chunker; the
+previous character-based implementation and its configuration were removed.
 
 The Microsoft adapter:
 
 1. receives the reader's `IngestionDocument` without flattening it;
-2. runs `DocumentTokenChunker` independently per original section;
+2. performs normalized token splitting independently per original section;
 3. maps chunks back to the existing `DocumentChunk` contract;
 4. preserves page number and header context from the source;
-5. carries tokenizer, size, overlap, strategy, and package version in the
+5. carries provider tokenizer identity, size, overlap, strategy, and package version in the
    chunking identity so existing documents are reindexed when the strategy
    changes.
 
@@ -119,6 +142,8 @@ not adopted.
 
 - Chunk size and overlap are expressed in tokens instead of characters.
 - Markdown becomes a supported source through an official reader.
+- DOCX and PPTX become supported through native .NET readers without an external
+  conversion process.
 - Existing page-level PDF citation metadata survives chunking.
 - The embedding and persistence layers require no redesign.
 - Chunking strategy versioning integrates with the existing idempotent reingest
@@ -130,18 +155,22 @@ not adopted.
    `Microsoft.Extensions.DataIngestion.Abstractions`, are preview packages. The
    abstractions are the intended implementation boundary, but the current
    package version does not yet provide a GA compatibility guarantee.
-2. Tokenizer vocabulary is an additional deployment dependency.
-3. `SectionChunker` preserves header context but does not apply token overlap in
-   its current implementation. The spike therefore uses `DocumentTokenChunker`
-   once per source section.
+2. Tokenizer metadata must be available from the installed Ollama model through
+   verbose `/api/show`; ingestion fails clearly when it is absent.
+3. The preview `DocumentTokenChunker` forces token index calculations without
+   normalization, which violates chunk limits for BERT/WordPiece tokenizers.
+   The repository adapter therefore owns the small splitting loop while retaining
+   the DataIngestion document model and provider-supplied tokenizer.
 4. Processing one source section at a time preserves pages but prevents chunks
    from crossing page boundaries. This is desirable for citations, but should be
    evaluated for documents whose paragraphs span pages.
 5. The new document boundary can retain tables, images, nested sections, and
-   metadata, but the custom PDF reader currently produces only page sections and
-   paragraphs.
-6. `cl100k_base` is a practical spike tokenizer, not a universally correct
-   tokenizer for every embedding or chat model.
+   metadata. The PDF reader currently produces only page sections and paragraphs;
+   Office readers produce headings, paragraphs, and tables but do not interpret
+   images or charts.
+6. The Ollama adapter intentionally supports only known `nomic-embed-text`
+   aliases. Adding another embedding model requires an explicit tokenizer
+   implementation and contract tests.
 7. `IngestionPipeline<T>` was not adopted because its writer boundary would
    bypass or duplicate the repository's document-level hash, metadata,
    idempotency, and atomic EF Core replacement semantics.
@@ -151,8 +180,8 @@ not adopted.
 ### Phase 1: evaluate this adapter
 
 - Build a representative PDF and Markdown evaluation corpus.
-- Compare the old character chunker with the token chunker using Recall@K, MRR,
-  citation accuracy, retrieved token count, latency, and index size.
+- Evaluate the token chunker using Recall@K, MRR, citation accuracy, retrieved
+  token count, latency, and index size.
 - Include tables, long pages, headings, repeated text, scanned PDFs, and content
   spanning page boundaries.
 - Tune `MaxTokensPerChunk` and `OverlapTokens` based on those results.
@@ -172,8 +201,9 @@ regressing citation fidelity.
   documents.
 - Add deterministic extraction-quality checks and route scanned or low-quality
   documents to an OCR-capable `IngestionDocumentReader` adapter.
-- Keep MarkItDown, Docling, and external document services optional and behind
-  replaceable reader adapters.
+- Keep OCR, Docling, and external document services optional and behind
+  replaceable reader adapters. Do not introduce MarkItDown unless this explicit
+  architectural decision changes.
 
 Exit criterion: supported formats retain the structure needed for the selected
 chunking policies.
@@ -206,6 +236,9 @@ The spike adds deterministic tests for:
 - token limits and overlap behavior;
 - page and section preservation;
 - Markdown header/content extraction;
+- DOCX heading, paragraph, list, and table extraction;
+- PPTX slide, title, and body extraction;
+- DOCX section and PPTX slide metadata surviving token chunking;
 - chunking identity versioning.
 
 Verification completed on the spike branch:
@@ -214,15 +247,16 @@ Verification completed on the spike branch:
 - `dotnet build MafPlayground.slnx --no-restore -m:1 /nodeReuse:false`
   completed with zero warnings and zero errors;
 - `dotnet test MafPlayground.slnx --no-build --no-restore -m:1
-  /nodeReuse:false` passed 144 unit tests; six opt-in integration tests were
+  /nodeReuse:false` passed 158 unit tests; nine opt-in integration tests were
   skipped by their existing configuration.
+- The live `NomicTokenizer_ChunksAndEmbedsWithInstalledModelMetadata` contract
+  test passed against Ollama with the installed `nomic-embed-text` model.
 
 Before production adoption, add:
 
 - golden extraction tests per document format;
 - PDF reading-order, columns, repeated header/footer, table, and empty-page cases;
-- tokenizer-data missing and invalid-encoding failures;
-- cancellation during chunk streaming;
+- cancellation during chunking;
 - concurrent ingestion of the same source;
 - batch partial failure, retry, and resume;
 - PostgreSQL round-trip tests with the new chunk identities;

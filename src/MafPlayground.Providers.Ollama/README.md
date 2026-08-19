@@ -9,7 +9,7 @@ from leaking into agents, workflows, tools, retrieval contracts, or tests.
 | Adapter | Neutral contract | Purpose |
 | --- | --- | --- |
 | `OllamaChatClientProvider` | `IChatClientProvider` | Creates `IChatClient` for a selected Ollama chat model. |
-| `OllamaEmbeddingGeneratorProvider` | `IEmbeddingGeneratorProvider` | Creates the embedding generator used by ingestion and search. |
+| `OllamaEmbeddingGeneratorProvider` | `IEmbeddingGeneratorProvider` | Creates the embedding generator and resolves the installed model's tokenizer. |
 | `OllamaModelPricingSource` | `IModelPricingSource` | Normalizes configured per-million-token rates for cost telemetry. |
 | `OllamaProviderOptions` | Typed provider configuration | Owns endpoint and pricing validation. |
 
@@ -28,6 +28,19 @@ ollama:nomic-embed-text
 
 Chat and embedding selection are independent. Both clients use the same
 provider-owned endpoint unless another provider adapter is selected.
+
+## Embedding tokenizer support
+
+Token-aware ingestion supports `nomic-embed-text`, `nomic-embed-text:latest`,
+`nomic-embed-text:v1.5`, and `nomic-embed-text:137m-v1.5-fp16`. The adapter asks
+Ollama for verbose model metadata, constructs a BERT tokenizer from the
+installed GGUF vocabulary, and hashes that vocabulary into the chunking
+identity. It does not use an OpenAI tokenizer approximation.
+
+Other Ollama embedding models fail with
+`EmbeddingTokenizerNotSupportedException` before document extraction. Supporting
+another model requires an explicit tokenizer implementation and tests; there is
+no generic fallback.
 
 ## Configuration
 
@@ -66,13 +79,13 @@ rates are useful only for exercising cost telemetry.
 
 ## Failure and capability boundaries
 
-Connection, model availability, streaming, structured-output, and usage metadata
-behavior comes from Ollama/OllamaSharp. The adapter does not hide permanent
-provider failures or invent token usage. Cross-provider timeout and cost
+Connection, model availability, verbose tokenizer metadata, streaming,
+structured-output, and usage metadata behavior comes from Ollama/OllamaSharp.
+The adapter does not hide permanent provider failures or invent token usage.
+Cross-provider timeout and cost
 decorators are composed through `MafPlayground.AI` and
 `MafPlayground.Observability`.
 
 To add another provider, create another `Providers.*` project implementing only
 the required neutral ports, register it in the host, and leave existing agents,
 workflows, tools, and retrieval services unchanged.
-

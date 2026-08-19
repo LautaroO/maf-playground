@@ -23,6 +23,16 @@ public sealed class DocumentExtractorRegistryTests
         Assert.Contains("More than one", exception.Message);
     }
 
+    [Fact]
+    public void Resolve_SupportsNativeOpenXmlReaders()
+    {
+        DocumentExtractorRegistry registry = new(
+            [new DocxDocumentExtractor(), new PptxDocumentExtractor()]);
+
+        Assert.IsType<DocxDocumentExtractor>(registry.Resolve("policy.DOCX"));
+        Assert.IsType<PptxDocumentExtractor>(registry.Resolve("overview.PPTX"));
+    }
+
     private sealed class FakeExtractor(params string[] extensions) : IDocumentExtractor
     {
         public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string>(extensions);

@@ -19,7 +19,9 @@ public sealed class KnowledgeSearchFactory(
         KnowledgeMetadata metadataFilters = KnowledgeMetadata.Create(
             searchOptions.MetadataFilters);
 
-        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(knowledgeBaseId);
+        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(
+            knowledgeBaseId,
+            EmbeddingPurpose.Query);
         return new KnowledgeSearchService(
             selection.EmbeddingGenerator,
             store,
@@ -127,7 +129,9 @@ public sealed class KnowledgeIngestionService(
             throw new FileNotFoundException("Document was not found.", fullPath);
         }
 
-        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(knowledgeBaseId);
+        KnowledgeBaseRuntimeSelection selection = runtime.Resolve(
+            knowledgeBaseId,
+            EmbeddingPurpose.Document);
         ResolvedKnowledgeBase knowledgeBase = selection.KnowledgeBase;
         ValidateSourcePath(fullPath, sourceRoot);
         FileInfo file = new(fullPath);
@@ -142,7 +146,12 @@ public sealed class KnowledgeIngestionService(
         string hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         string sourceId = CreateSourceId(fullPath, sourceRoot);
 
-        string chunkingIdentity = chunker.GetIdentity(knowledgeBase.Ingestion);
+        EmbeddingTokenizer tokenizer = await runtime.ResolveTokenizerAsync(
+            knowledgeBase,
+            cancellationToken);
+        string chunkingIdentity = chunker.GetIdentity(
+            knowledgeBase.Ingestion,
+            tokenizer);
         StoredDocumentState? state = await store.GetDocumentStateAsync(
             knowledgeBase.Collection,
             sourceId,
@@ -176,6 +185,7 @@ public sealed class KnowledgeIngestionService(
         IReadOnlyList<DocumentChunk> drafts = await chunker.ChunkAsync(
             extracted,
             knowledgeBase.Ingestion,
+            tokenizer,
             cancellationToken);
         if (drafts.Count == 0)
         {
@@ -289,19 +299,44 @@ public sealed class KnowledgeBaseRuntime(
 {
     private readonly ConcurrentDictionary<string, Lazy<IEmbeddingGenerator<string, Embedding<float>>>>
         _embeddingGenerators = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, EmbeddingTokenizer>
+        _tokenizers = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
-    internal KnowledgeBaseRuntimeSelection Resolve(KnowledgeBaseId knowledgeBaseId)
+    internal KnowledgeBaseRuntimeSelection Resolve(
+        KnowledgeBaseId knowledgeBaseId,
+        EmbeddingPurpose purpose)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ResolvedKnowledgeBase knowledgeBase = catalog.GetRequired(knowledgeBaseId);
         Lazy<IEmbeddingGenerator<string, Embedding<float>>> generator =
             _embeddingGenerators.GetOrAdd(
-                knowledgeBase.EmbeddingModel.ToString(),
+                $"{knowledgeBase.EmbeddingIdentity}/{purpose}",
                 _ => new Lazy<IEmbeddingGenerator<string, Embedding<float>>>(
-                    () => embeddingProviders.Create(knowledgeBase.EmbeddingModel),
+                    () => embeddingProviders.Create(
+                        knowledgeBase.EmbeddingModel,
+                        knowledgeBase.EmbeddingDimensions,
+                        purpose),
                     LazyThreadSafetyMode.ExecutionAndPublication));
         return new KnowledgeBaseRuntimeSelection(knowledgeBase, generator.Value);
+    }
+
+    internal async ValueTask<EmbeddingTokenizer> ResolveTokenizerAsync(
+        ResolvedKnowledgeBase knowledgeBase,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(knowledgeBase);
+        string key = knowledgeBase.EmbeddingModel.ToString();
+        if (_tokenizers.TryGetValue(key, out EmbeddingTokenizer? tokenizer))
+        {
+            return tokenizer;
+        }
+
+        EmbeddingTokenizer created = await embeddingProviders.CreateTokenizerAsync(
+            knowledgeBase.EmbeddingModel,
+            cancellationToken);
+        return _tokenizers.GetOrAdd(key, created);
     }
 
     public void Dispose()
@@ -321,6 +356,7 @@ public sealed class KnowledgeBaseRuntime(
         }
 
         _embeddingGenerators.Clear();
+        _tokenizers.Clear();
         _disposed = true;
     }
 }
