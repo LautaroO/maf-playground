@@ -169,11 +169,16 @@ public sealed class ObservabilityServiceExtensionsTests
         services.AddMafPlaygroundObservability(CreateCostConfiguration());
 
         using ServiceProvider provider = services.BuildServiceProvider();
+        using Activity invocationScope = new Activity(
+            nameof(CostTracking_AttachesEstimateToMafModelCallSpan)).Start();
+        ActivityTraceId invocationTraceId = invocationScope.TraceId;
         await provider.GetRequiredService<BasicAgent>().Agent.RunAsync("hello");
 
         Activity costActivity = Assert.Single(
             stoppedActivities,
-            activity => activity.GetTagItem("maf_playground.gen_ai.cost") is not null);
+            activity =>
+                activity.TraceId == invocationTraceId &&
+                activity.GetTagItem("maf_playground.gen_ai.cost") is not null);
         Assert.Equal(
             1_000_000L,
             Convert.ToInt64(costActivity.GetTagItem("gen_ai.usage.input_tokens")));
