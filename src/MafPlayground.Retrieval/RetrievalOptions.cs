@@ -25,6 +25,12 @@ public sealed class KnowledgeIngestionOptions
 
     public int ChunkOverlapCharacters { get; set; } = 200;
 
+    public string TokenizerEncoding { get; set; } = "cl100k_base";
+
+    public int MaxTokensPerChunk { get; set; } = 400;
+
+    public int OverlapTokens { get; set; } = 40;
+
     public int EmbeddingBatchSize { get; set; } = 16;
 
     public long MaxFileBytes { get; set; } = 20 * 1024 * 1024;
@@ -51,6 +57,12 @@ public sealed record KnowledgeIngestionSettings(
     int ChunkOverlapCharacters,
     int EmbeddingBatchSize)
 {
+    public string TokenizerEncoding { get; init; } = "cl100k_base";
+
+    public int MaxTokensPerChunk { get; init; } = 400;
+
+    public int OverlapTokens { get; init; } = 40;
+
     public long MaxFileBytes { get; init; } = 20 * 1024 * 1024;
 
     public int MaxDocumentSections { get; init; } = 1_000;
@@ -80,8 +92,6 @@ public sealed record ResolvedKnowledgeBase(
 {
     public string EmbeddingIdentity => $"{EmbeddingModel}/{EmbeddingDimensions}";
 
-    public string ChunkingIdentity =>
-        $"chars:{Ingestion.ChunkSizeCharacters}:overlap:{Ingestion.ChunkOverlapCharacters}";
 }
 
 public sealed class KnowledgeBaseCatalog
@@ -205,6 +215,25 @@ public sealed class KnowledgeBaseCatalog
                 $"Knowledge base '{name}' requires chunk overlap greater than or equal to zero and smaller than chunk size.");
         }
 
+        if (string.IsNullOrWhiteSpace(ingestion.TokenizerEncoding))
+        {
+            throw new KnowledgeBaseConfigurationException(
+                $"Knowledge base '{name}' requires a tokenizer encoding.");
+        }
+
+        if (ingestion.MaxTokensPerChunk <= 0)
+        {
+            throw new KnowledgeBaseConfigurationException(
+                $"Knowledge base '{name}' requires a positive token chunk size.");
+        }
+
+        if (ingestion.OverlapTokens < 0 ||
+            ingestion.OverlapTokens >= ingestion.MaxTokensPerChunk)
+        {
+            throw new KnowledgeBaseConfigurationException(
+                $"Knowledge base '{name}' requires token overlap greater than or equal to zero and smaller than token chunk size.");
+        }
+
         if (ingestion.EmbeddingBatchSize <= 0)
         {
             throw new KnowledgeBaseConfigurationException(
@@ -229,6 +258,9 @@ public sealed class KnowledgeBaseCatalog
                 ingestion.ChunkOverlapCharacters,
                 ingestion.EmbeddingBatchSize)
             {
+                TokenizerEncoding = ingestion.TokenizerEncoding.Trim(),
+                MaxTokensPerChunk = ingestion.MaxTokensPerChunk,
+                OverlapTokens = ingestion.OverlapTokens,
                 MaxFileBytes = ingestion.MaxFileBytes,
                 MaxDocumentSections = ingestion.MaxDocumentSections,
                 MaxExtractedCharacters = ingestion.MaxExtractedCharacters,

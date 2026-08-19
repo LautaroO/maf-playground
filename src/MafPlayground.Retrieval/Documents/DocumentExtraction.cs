@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DataIngestion;
+
 namespace MafPlayground.Retrieval.Documents;
 
 public interface IDocumentExtractor
@@ -8,10 +10,11 @@ public interface IDocumentExtractor
 
 public sealed record ExtractedDocument(
     string Title,
-    IReadOnlyList<ExtractedDocumentSection> Sections,
-    IReadOnlyList<string> Warnings);
-
-public sealed record ExtractedDocumentSection(string Text, int? PageNumber = null, string? Name = null);
+    IngestionDocument Document,
+    IReadOnlyList<string> Warnings)
+{
+    public IList<IngestionDocumentSection> Sections => Document.Sections;
+}
 
 public sealed class DocumentExtractorRegistry
 {
