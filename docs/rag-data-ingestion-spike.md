@@ -2,9 +2,9 @@
 
 ## Status
 
-- Branch: `spike-microsoft-data-ingestion`
-- Base: `main` at `b76fc62362c756229b6c48d9fcca2aea2649fef6`
-- Scope: document reading and token-aware chunking only
+- Branch: `spike-openxml-document-readers`
+- Base: `main` at `6ab35500155d84c9c12b26a57f245e57689398bf`
+- Scope: PDF, DOCX, PPTX, and Markdown reading plus token-aware chunking
 - Explicit non-goal: replacing EF Core, PostgreSQL, pgvector, or `IKnowledgeStore`
 
 ## Decision summary
@@ -19,11 +19,15 @@ coordination and EF Core store, implement critical readers behind
 `IngestionDocumentReader`, and isolate the preview dependency to the retrieval
 ingestion boundary until its compatibility guarantees stabilize.
 
+DOCX and PPTX use native repository-owned readers over the stable Open XML SDK.
+MarkItDown was explicitly not adopted, so the ingestion deployment has no Python,
+MarkItDown executable, MCP server, or Office installation requirement.
+
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Source[PDF or Markdown] --> Reader[IngestionDocumentReader implementation]
+    Source[PDF, DOCX, PPTX or Markdown] --> Reader[IngestionDocumentReader implementation]
     Reader --> Document[Structured IngestionDocument]
     Document --> Coordinator[Existing ingestion coordinator]
     Coordinator --> Chunker[DocumentTokenChunker per source section]
@@ -49,6 +53,7 @@ The spike pins packages compatible with the repository's
   `10.7.0-preview.1.26309.5` (transitive)
 - `Microsoft.Extensions.DataIngestion.Markdig` `10.7.0-preview.1.26309.5`
 - `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1`
+- `DocumentFormat.OpenXml` `3.5.1`
 
 The tokenizer data package is required at runtime by
 `TiktokenTokenizer.CreateForEncoding("cl100k_base")`; the main DataIngestion
@@ -77,6 +82,19 @@ fallback when block analysis produces no paragraphs. Empty page sections remain
 available for diagnostics and trigger OCR warnings. This improves digitally
 generated PDFs but does not add OCR, table reconstruction, header/footer
 removal, or semantic layout classification.
+
+`DocxDocumentExtractor` reads WordprocessingML directly with Open XML SDK. It
+creates logical sections at Word heading styles, represents ordinary paragraphs
+and list items as paragraph elements, and converts tables to
+`IngestionDocumentTable`. It intentionally ignores Word pagination because DOCX
+does not define a stable rendered page number. Document images produce explicit
+warnings and are not interpreted.
+
+`PptxDocumentExtractor` reads PresentationML directly. Every slide becomes one
+section whose `PageNumber` is the slide number. Title placeholders become
+headers, other text shapes become paragraphs, and DrawingML tables become
+`IngestionDocumentTable`. Images, charts, and speaker notes produce explicit
+warnings until dedicated extractors exist.
 
 ### Chunking
 
@@ -119,6 +137,8 @@ not adopted.
 
 - Chunk size and overlap are expressed in tokens instead of characters.
 - Markdown becomes a supported source through an official reader.
+- DOCX and PPTX become supported through native .NET readers without an external
+  conversion process.
 - Existing page-level PDF citation metadata survives chunking.
 - The embedding and persistence layers require no redesign.
 - Chunking strategy versioning integrates with the existing idempotent reingest
@@ -138,8 +158,9 @@ not adopted.
    from crossing page boundaries. This is desirable for citations, but should be
    evaluated for documents whose paragraphs span pages.
 5. The new document boundary can retain tables, images, nested sections, and
-   metadata, but the custom PDF reader currently produces only page sections and
-   paragraphs.
+   metadata. The PDF reader currently produces only page sections and paragraphs;
+   Office readers produce headings, paragraphs, and tables but do not interpret
+   images or charts.
 6. `cl100k_base` is a practical spike tokenizer, not a universally correct
    tokenizer for every embedding or chat model.
 7. `IngestionPipeline<T>` was not adopted because its writer boundary would
@@ -172,8 +193,9 @@ regressing citation fidelity.
   documents.
 - Add deterministic extraction-quality checks and route scanned or low-quality
   documents to an OCR-capable `IngestionDocumentReader` adapter.
-- Keep MarkItDown, Docling, and external document services optional and behind
-  replaceable reader adapters.
+- Keep OCR, Docling, and external document services optional and behind
+  replaceable reader adapters. Do not introduce MarkItDown unless this explicit
+  architectural decision changes.
 
 Exit criterion: supported formats retain the structure needed for the selected
 chunking policies.
@@ -206,6 +228,9 @@ The spike adds deterministic tests for:
 - token limits and overlap behavior;
 - page and section preservation;
 - Markdown header/content extraction;
+- DOCX heading, paragraph, list, and table extraction;
+- PPTX slide, title, and body extraction;
+- DOCX section and PPTX slide metadata surviving token chunking;
 - chunking identity versioning.
 
 Verification completed on the spike branch:
@@ -214,7 +239,7 @@ Verification completed on the spike branch:
 - `dotnet build MafPlayground.slnx --no-restore -m:1 /nodeReuse:false`
   completed with zero warnings and zero errors;
 - `dotnet test MafPlayground.slnx --no-build --no-restore -m:1
-  /nodeReuse:false` passed 144 unit tests; six opt-in integration tests were
+  /nodeReuse:false` passed 147 unit tests; six opt-in integration tests were
   skipped by their existing configuration.
 
 Before production adoption, add:

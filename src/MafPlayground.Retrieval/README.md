@@ -8,7 +8,7 @@ MAF agents, DevUI, PostgreSQL entities, or a concrete embedding provider SDK.
 
 ```mermaid
 flowchart LR
-    File[Document] --> Registry[DocumentExtractorRegistry]
+    File[PDF, DOCX, PPTX or Markdown] --> Registry[DocumentExtractorRegistry]
     Registry --> Extractor[IDocumentExtractor]
     Extractor --> Document[IngestionDocument]
     Document --> Chunker[IDocumentChunker]
@@ -26,6 +26,8 @@ flowchart LR
 | `IDocumentExtractor` | Resolves repository diagnostics around a structured `IngestionDocument`. |
 | `DocumentExtractorRegistry` | Resolves exactly one extractor by normalized extension. |
 | `PdfDocumentExtractor` | Repository implementation of `IngestionDocumentReader` using PdfPig word, block, and reading-order analysis; preserves pages and reports pages that need OCR. |
+| `DocxDocumentExtractor` | Native Open XML reader that maps headings, paragraphs, lists, and tables into `IngestionDocument`. |
+| `PptxDocumentExtractor` | Native Open XML reader that creates one section per slide and maps titles, text shapes, and tables. |
 | `MarkdownDocumentExtractor` | Adapts the DataIngestion Markdig reader without flattening its `IngestionDocument`. |
 | `MicrosoftDataIngestionDocumentChunker` | Creates token-bounded chunks per source section while preserving page/section metadata. |
 | `DocumentChunker` | Legacy character chunker retained for comparison during the spike. |
@@ -92,11 +94,20 @@ embedding and persistence.
 
 ## Extending formats and storage
 
-Markdown is supported through the DataIngestion Markdig reader. Add text, DOCX,
-or OCR by implementing `IngestionDocumentReader` and registering it behind the
-repository extraction boundary; no ingestion or agent change is required. Add another
-vector database by implementing `IKnowledgeStore` and, when migrations are
-needed, `IRetrievalDatabaseInitializer` in an infrastructure project.
+Markdown is supported through the DataIngestion Markdig reader. DOCX and PPTX
+use repository-owned `IngestionDocumentReader` implementations over the Open XML
+SDK; they do not require Microsoft Office, MarkItDown, Python, or MCP. Add another
+format or OCR by implementing `IngestionDocumentReader` and registering it behind
+the repository extraction boundary; no ingestion or agent change is required.
+Add another vector database by implementing `IKnowledgeStore` and, when
+migrations are needed, `IRetrievalDatabaseInitializer` in an infrastructure
+project.
+
+The native Office readers intentionally support `.docx` and `.pptx`, not the
+legacy binary `.doc` and `.ppt` formats. DOCX citations use logical headings
+because pagination is a rendering concern. PPTX citations use slide numbers.
+Images, charts, and speaker notes are currently reported as warnings rather than
+silently treated as extracted text.
 
 Retrieved documents are untrusted input. Agents must inject them as data and
 enforce authorization before constructing metadata filters when tenant or ACL
@@ -106,8 +117,8 @@ bound filters and cannot widen their scope.
 
 ## Tests
 
-Deterministic tests cover model selection, registry conflicts, PDF and Markdown
-extraction, character and token chunk boundaries, source metadata, ingestion
-skipping, embedding validation, and search contracts. Store round trips belong in
-integration tests. See `docs/rag-data-ingestion-spike.md` for the spike findings
-and migration plan.
+Deterministic tests cover model selection, registry conflicts, PDF, DOCX, PPTX,
+and Markdown extraction, Office structure surviving token chunking, character
+and token chunk boundaries, source metadata, ingestion skipping, embedding
+validation, and search contracts. Store round trips belong in integration tests.
+See `docs/rag-data-ingestion-spike.md` for the spike findings and migration plan.

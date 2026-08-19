@@ -76,7 +76,7 @@ public sealed class DocumentChunker : IDocumentChunker
     private static string? FindSectionName(IngestionDocumentSection section) =>
         section.Elements
             .OfType<IngestionDocumentHeader>()
-            .Select(header => header.Text?.Trim().TrimStart('#').Trim())
+            .Select(header => header.GetMarkdown().Trim().TrimStart('#').Trim())
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
         (section.PageNumber is int pageNumber ? $"Page {pageNumber}" : null);
 }
