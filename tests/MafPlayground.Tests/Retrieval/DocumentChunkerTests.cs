@@ -1,5 +1,6 @@
 using MafPlayground.Retrieval;
 using MafPlayground.Retrieval.Documents;
+using Microsoft.Extensions.DataIngestion;
 
 namespace MafPlayground.Tests.Retrieval;
 
@@ -9,7 +10,15 @@ public sealed class DocumentChunkerTests
     public void Chunk_PreservesSourceSectionPage()
     {
         DocumentChunker chunker = new();
-        ExtractedDocument document = new("Help", [new("First sentence. Second sentence.", 7, "Page 7")], []);
+        IngestionDocument ingestionDocument = new("Help");
+        IngestionDocumentSection section = new() { PageNumber = 7 };
+        section.Elements.Add(new IngestionDocumentParagraph(
+            "First sentence. Second sentence.")
+        {
+            PageNumber = 7,
+        });
+        ingestionDocument.Sections.Add(section);
+        ExtractedDocument document = new("Help", ingestionDocument, []);
 
         IReadOnlyList<DocumentChunk> chunks = chunker.Chunk(
             document,

@@ -96,7 +96,7 @@ public sealed class KnowledgeSearchService(
 
 public sealed class KnowledgeIngestionService(
     DocumentExtractorRegistry extractors,
-    DocumentChunker chunker,
+    IDocumentChunker chunker,
     KnowledgeBaseRuntime runtime,
     IKnowledgeStore store)
 {
@@ -142,6 +142,7 @@ public sealed class KnowledgeIngestionService(
         string hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         string sourceId = CreateSourceId(fullPath, sourceRoot);
 
+        string chunkingIdentity = chunker.GetIdentity(knowledgeBase.Ingestion);
         StoredDocumentState? state = await store.GetDocumentStateAsync(
             knowledgeBase.Collection,
             sourceId,
@@ -149,7 +150,7 @@ public sealed class KnowledgeIngestionService(
         if (state is not null &&
             state.ContentHash == hash &&
             state.EmbeddingIdentity == knowledgeBase.EmbeddingIdentity &&
-            state.ChunkingIdentity == knowledgeBase.ChunkingIdentity &&
+            state.ChunkingIdentity == chunkingIdentity &&
             state.Metadata.Equals(metadata))
         {
             return new(knowledgeBase.Id, sourceId, 0, true, []);
@@ -164,16 +165,18 @@ public sealed class KnowledgeIngestionService(
                 $"{knowledgeBase.Ingestion.MaxDocumentSections}.");
         }
 
-        long extractedCharacters = extracted.Sections.Sum(section => (long)section.Text.Length);
+        long extractedCharacters = extracted.Sections.Sum(
+            section => (long)section.GetMarkdown().Length);
         if (extractedCharacters > knowledgeBase.Ingestion.MaxExtractedCharacters)
         {
             throw new DocumentResourceLimitException(
                 $"Extracted document text contains {extractedCharacters} characters; the configured maximum is " +
                 $"{knowledgeBase.Ingestion.MaxExtractedCharacters}.");
         }
-        IReadOnlyList<DocumentChunk> drafts = chunker.Chunk(
+        IReadOnlyList<DocumentChunk> drafts = await chunker.ChunkAsync(
             extracted,
-            knowledgeBase.Ingestion);
+            knowledgeBase.Ingestion,
+            cancellationToken);
         if (drafts.Count == 0)
         {
             return new(knowledgeBase.Id, sourceId, 0, false, extracted.Warnings);
@@ -219,7 +222,7 @@ public sealed class KnowledgeIngestionService(
             fullPath,
             hash,
             knowledgeBase.EmbeddingIdentity,
-            knowledgeBase.ChunkingIdentity,
+            chunkingIdentity,
             metadata);
         await store.ReplaceDocumentAsync(document, chunks, cancellationToken);
         return new(

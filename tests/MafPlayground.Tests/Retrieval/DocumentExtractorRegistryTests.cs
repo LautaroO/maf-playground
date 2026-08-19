@@ -1,4 +1,5 @@
 using MafPlayground.Retrieval.Documents;
+using Microsoft.Extensions.DataIngestion;
 
 namespace MafPlayground.Tests.Retrieval;
 
@@ -26,6 +27,9 @@ public sealed class DocumentExtractorRegistryTests
     {
         public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string>(extensions);
         public Task<ExtractedDocument> ExtractAsync(string path, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ExtractedDocument("fake", [], []));
+            Task.FromResult(new ExtractedDocument(
+                "fake",
+                new IngestionDocument("fake"),
+                []));
     }
 }

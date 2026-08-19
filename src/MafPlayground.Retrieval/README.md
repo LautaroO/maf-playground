@@ -10,7 +10,8 @@ MAF agents, DevUI, PostgreSQL entities, or a concrete embedding provider SDK.
 flowchart LR
     File[Document] --> Registry[DocumentExtractorRegistry]
     Registry --> Extractor[IDocumentExtractor]
-    Extractor --> Chunker[DocumentChunker]
+    Extractor --> Document[IngestionDocument]
+    Document --> Chunker[IDocumentChunker]
     Chunker --> Embeddings[IEmbeddingGenerator]
     Embeddings --> Store[IKnowledgeStore]
     Query[Search query] --> Embeddings
@@ -22,10 +23,12 @@ flowchart LR
 
 | Component | Responsibility |
 | --- | --- |
-| `IDocumentExtractor` | Converts one supported format into neutral sections, metadata, and warnings. |
+| `IDocumentExtractor` | Resolves repository diagnostics around a structured `IngestionDocument`. |
 | `DocumentExtractorRegistry` | Resolves exactly one extractor by normalized extension. |
-| `PdfDocumentExtractor` | Initial text-only PDF adapter; reports pages that need OCR. |
-| `DocumentChunker` | Normalizes and overlaps character-bounded chunks while preserving page/section metadata. |
+| `PdfDocumentExtractor` | Repository implementation of `IngestionDocumentReader` using PdfPig word, block, and reading-order analysis; preserves pages and reports pages that need OCR. |
+| `MarkdownDocumentExtractor` | Adapts the DataIngestion Markdig reader without flattening its `IngestionDocument`. |
+| `MicrosoftDataIngestionDocumentChunker` | Creates token-bounded chunks per source section while preserving page/section metadata. |
+| `DocumentChunker` | Legacy character chunker retained for comparison during the spike. |
 | `IEmbeddingGeneratorProvider` | Provider adapter port for embedding models. |
 | `EmbeddingProviderRegistry` | Resolves `provider:model` embedding selections. |
 | `KnowledgeBaseCatalog` | Validates named knowledge bases, embedding identities, and ingestion policies. |
@@ -62,8 +65,9 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 | Knowledge-base option | Default |
 | --- | ---: |
 | `EmbeddingDimensions` | `768` |
-| `Ingestion:ChunkSizeCharacters` | `1200` |
-| `Ingestion:ChunkOverlapCharacters` | `200` |
+| `Ingestion:TokenizerEncoding` | `cl100k_base` |
+| `Ingestion:MaxTokensPerChunk` | `400` |
+| `Ingestion:OverlapTokens` | `40` |
 | `Ingestion:EmbeddingBatchSize` | `16` |
 | `Ingestion:MaxFileBytes` | `20971520` |
 | `Ingestion:MaxDocumentSections` | `1000` |
@@ -88,8 +92,9 @@ embedding and persistence.
 
 ## Extending formats and storage
 
-Add Markdown, text, DOCX, or OCR by implementing/registering
-`IDocumentExtractor`; no ingestion or agent change is required. Add another
+Markdown is supported through the DataIngestion Markdig reader. Add text, DOCX,
+or OCR by implementing `IngestionDocumentReader` and registering it behind the
+repository extraction boundary; no ingestion or agent change is required. Add another
 vector database by implementing `IKnowledgeStore` and, when migrations are
 needed, `IRetrievalDatabaseInitializer` in an infrastructure project.
 
@@ -101,6 +106,8 @@ bound filters and cannot widen their scope.
 
 ## Tests
 
-Deterministic tests cover model selection, registry conflicts, PDF extraction and
-warnings, chunk boundaries/overlap, source IDs, ingestion skipping, embedding
-validation, and search contracts. Store round trips belong in integration tests.
+Deterministic tests cover model selection, registry conflicts, PDF and Markdown
+extraction, character and token chunk boundaries, source metadata, ingestion
+skipping, embedding validation, and search contracts. Store round trips belong in
+integration tests. See `docs/rag-data-ingestion-spike.md` for the spike findings
+and migration plan.

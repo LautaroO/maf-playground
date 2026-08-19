@@ -42,6 +42,23 @@ public sealed class KnowledgeBaseProfilesTests
     }
 
     [Fact]
+    public void Catalog_RejectsInvalidTokenOverlap()
+    {
+        KnowledgeBaseOptions definition = CreateKnowledgeBase("help", "fake:model");
+        definition.Ingestion.MaxTokensPerChunk = 100;
+        definition.Ingestion.OverlapTokens = 100;
+
+        Assert.Throws<KnowledgeBaseConfigurationException>(() =>
+            new KnowledgeBaseCatalog(new KnowledgeBaseCatalogOptions
+            {
+                KnowledgeBases = new Dictionary<string, KnowledgeBaseOptions>
+                {
+                    ["Help"] = definition,
+                },
+            }));
+    }
+
+    [Fact]
     public void Catalog_RejectsKnowledgeBaseIncompatibleWithStoreDimensions()
     {
         KnowledgeBaseCatalog catalog = new(new KnowledgeBaseCatalogOptions
@@ -432,7 +449,18 @@ public sealed class KnowledgeBaseProfilesTests
             CancellationToken cancellationToken = default) => Task.FromResult(
                 new ExtractedDocument(
                     "test",
-                    [new ExtractedDocumentSection("A legal retention policy applies.")],
+                    CreateDocument(),
                     []));
+
+        private static Microsoft.Extensions.DataIngestion.IngestionDocument CreateDocument()
+        {
+            Microsoft.Extensions.DataIngestion.IngestionDocument document = new("test");
+            Microsoft.Extensions.DataIngestion.IngestionDocumentSection section = new();
+            section.Elements.Add(
+                new Microsoft.Extensions.DataIngestion.IngestionDocumentParagraph(
+                    "A legal retention policy applies."));
+            document.Sections.Add(section);
+            return document;
+        }
     }
 }
