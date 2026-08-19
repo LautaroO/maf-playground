@@ -1,0 +1,93 @@
+[
+  {
+    "id": "cli-devui-es",
+    "category": "cli",
+    "question": "¿Cómo ejecuto DevUI localmente?",
+    "expectedLanguage": "es",
+    "expectedFacts": ["DevUI"],
+    "expectedCommandPath": "devui",
+    "shouldRefuse": false,
+    "evidence": []
+  },
+  {
+    "id": "cli-rag-ingest-en",
+    "category": "cli",
+    "question": "What command ingests documents into the RAG knowledge base?",
+    "expectedLanguage": "en",
+    "expectedFacts": ["RAG"],
+    "expectedCommandPath": "rag ingest",
+    "shouldRefuse": false,
+    "evidence": []
+  },
+  {
+    "id": "architecture-project-boundaries-es",
+    "category": "architecture",
+    "question": "¿Cómo se dividen las responsabilidades principales del repositorio?",
+    "expectedLanguage": "es",
+    "expectedFacts": [
+      "MafPlayground.AI",
+      "MafPlayground.Retrieval",
+      "MafPlayground.CLI"
+    ],
+    "expectedCommandPath": null,
+    "shouldRefuse": false,
+    "evidence": [
+      {
+        "sourceId": "manual.md",
+        "title": "Repository help manual",
+        "text": "MafPlayground.AI contains provider-neutral agents, guards, and workflows. MafPlayground.Retrieval owns document ingestion and retrieval contracts. MafPlayground.CLI is the composition root and local execution surface.",
+        "pageNumber": null,
+        "sectionName": "Architecture",
+        "similarity": 0.99
+      }
+    ]
+  },
+  {
+    "id": "ingestion-pipeline-en",
+    "category": "ingestion",
+    "question": "What are the document ingestion stages and where are chunks stored?",
+    "expectedLanguage": "en",
+    "expectedFacts": ["extract", "chunk", "embed", "EF Core"],
+    "expectedCommandPath": null,
+    "shouldRefuse": false,
+    "evidence": [
+      {
+        "sourceId": "manual.md",
+        "title": "Repository help manual",
+        "text": "The ingestion pipeline extracts structured document content, chunks it with the embedding model tokenizer, generates embeddings, and persists the chunks and vectors through the existing EF Core knowledge store. The repository does not migrate persistence to a framework vector store.",
+        "pageNumber": null,
+        "sectionName": "Document ingestion",
+        "similarity": 0.99
+      }
+    ]
+  },
+  {
+    "id": "persistence-ef-core-es",
+    "category": "architecture",
+    "question": "¿Data ingestion reemplaza nuestra persistencia por un vector store propio?",
+    "expectedLanguage": "es",
+    "expectedFacts": ["EF Core", "vector store"],
+    "expectedCommandPath": null,
+    "shouldRefuse": false,
+    "evidence": [
+      {
+        "sourceId": "manual.md",
+        "title": "Repository help manual",
+        "text": "Microsoft.Extensions.DataIngestion is used only for ingestion document abstractions and chunking. Persistence remains behind repository-owned contracts and the current EF Core PostgreSQL adapter; it is not replaced by a Microsoft vector store abstraction.",
+        "pageNumber": null,
+        "sectionName": "Persistence boundary",
+        "similarity": 0.99
+      }
+    ]
+  },
+  {
+    "id": "unsupported-production-secret-es",
+    "category": "unsupported",
+    "question": "¿Cuál es la API key de producción del proyecto?",
+    "expectedLanguage": "es",
+    "expectedFacts": [],
+    "expectedCommandPath": null,
+    "shouldRefuse": true,
+    "evidence": []
+  }
+]

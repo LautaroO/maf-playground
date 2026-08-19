@@ -12,7 +12,7 @@ endpoints, PostgreSQL, DevUI, OTLP exporters, or a specific hosting model.
 | --- | --- | --- |
 | `Agents/BasicAgent` | `AIAgent` | General conversation with trusted context and a deterministic date/time tool. |
 | `Agents/BasicRagAgent` | `AIAgent`, context, middleware | Grounded answers from semantic retrieval with citation enforcement. |
-| `Agents/RepositoryHelpAgent` | `AIAgent`, context | Repository- and CLI-specific grounded help over a dedicated knowledge base. |
+| `Agents/RepositoryHelpAgent` | `AIAgent`, context, tools | Repository help with RAG, deterministic live-CLI evidence, and bounded command lookup tools. |
 | `Workflows/Translation` | Native MAF workflow | Parallel translation, semantic validation, feedback retry, and fan-in. |
 | `Tools` | Deterministic functions | Reusable application capabilities exposed to agents. |
 | `Contracts` | Provider-neutral ports and data contracts | Shared interfaces for providers, decorators, pricing, and trusted user context. |
@@ -54,6 +54,15 @@ and shared contracts. A host then selects any combination of `AddBasicAgent`,
 `AddAIServices` remains a convenience aggregate for the core sample features.
 Repository help is registered explicitly because its host must
 also provide an `IRepositoryCliCommandCatalog` adapter.
+
+`RepositoryCliContextProvider` keeps CLI routing outside the prompt: it adds
+high-confidence live command evidence for lexical matches in the request or
+retrieved CLI reference, and exposes `find_cli_commands` plus
+`get_cli_command` as bounded fallbacks. The host adapter owns the live command
+tree; the reusable AI project depends only on the catalog contract.
+Live-command evidence marks its exact invocation as required inline code. The
+shared grounded-answer validator rejects altered, omitted, or refused required
+evidence and permits one bounded repair before returning the safe fallback.
 
 Decorators have unique explicit order values. The effective call path is cost
 telemetry, content guard, budget reservation, timeout, and finally the provider;

@@ -111,4 +111,57 @@ public sealed class CitationValidatorTests
 
         Assert.True(result.IsValid);
     }
+
+    [Fact]
+    public void Validate_RequiresApplicationOwnedInlineCodeFromCitedEvidence()
+    {
+        const string invocation =
+            "dotnet run --project src/MafPlayground.CLI -- devui";
+        Dictionary<string, RagEvidence> evidence = new()
+        {
+            ["e1"] = new(
+                "e1",
+                $"Run `{invocation}`.",
+                "[CLI reference, source: cli-reference.md]",
+                1,
+                [invocation]),
+        };
+        RagAnswerDraft draft = new(
+            false,
+            [new RagClaim($"Run '{invocation}'.", ["e1"])]);
+
+        RagAnswerValidationResult result = _validator.Validate(draft, evidence);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Contains(
+                "must include required inline code",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_RejectsRefusalWhenApplicationRequiresEvidence()
+    {
+        Dictionary<string, RagEvidence> evidence = new()
+        {
+            ["e1"] = new(
+                "e1",
+                "Command `rag ingest` uses the exact invocation `dotnet run -- rag ingest`.",
+                "[CLI reference, source: cli-reference.md]",
+                1,
+                ["dotnet run -- rag ingest"]),
+        };
+
+        RagAnswerValidationResult result = _validator.Validate(
+            new RagAnswerDraft(true, []),
+            evidence);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Contains(
+                "cannot ignore application-required evidence",
+                StringComparison.Ordinal));
+    }
 }

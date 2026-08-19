@@ -49,6 +49,7 @@ internal sealed class ChatClientRagAnswerRepairService(IChatClient chatClient)
                         Return one atomic claim per independently verifiable statement.
                         Every claim must reference one or more exact citationId values from the supplied evidence.
                         Every command, option, identifier, or other inline-code value must appear verbatim in the evidence cited by that claim.
+                        When cited evidence has requiredInlineCode values, include every one verbatim in inline backticks in that claim.
                         If the evidence is insufficient, set insufficientEvidence to true and return an empty claims collection.
                         Do not call tools, retrieve more information, or invent citation IDs.
                         Return only the requested structured response.

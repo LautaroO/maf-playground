@@ -13,6 +13,9 @@
     <PackageVersion Include="Microsoft.Agents.AI.Workflows" Version="1.16.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Evaluation" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Evaluation.Quality" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Evaluation.Reporting" Version="10.7.0" />
     <PackageVersion Include="Microsoft.Extensions.DataIngestion" Version="10.7.0-preview.1.26309.5" />
     <PackageVersion Include="Microsoft.Extensions.DataIngestion.Markdig" Version="10.7.0-preview.1.26309.5" />
     <PackageVersion Include="Microsoft.ML.Tokenizers" Version="2.0.0" />

@@ -66,14 +66,11 @@ internal sealed class StructuredRagAgent(
             validation = validator.Validate(draft, invocation.Evidence);
         }
 
-        if (!validation.IsValid)
-        {
-            draft = new RagAnswerDraft(true, []);
-        }
-
         ChatMessage finalMessage = new(
             ChatRole.Assistant,
-            validator.Render(draft, invocation.Evidence));
+            validation.IsValid
+                ? validator.Render(draft, invocation.Evidence)
+                : CitationValidator.NoEvidenceAnswer);
         if (session is not null)
         {
             committedHistory.AddRange(bufferedMessages);

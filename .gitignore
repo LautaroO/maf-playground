@@ -17,6 +17,7 @@ TestResults/
 **/TestResults/
 coverage/
 coverage-results/
+eval-results/
 *.coverage
 *.coveragexml
 *.trx

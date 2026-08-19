@@ -37,7 +37,8 @@ public sealed class RagInvocationContext
     public RagEvidence AddEvidence(
         string text,
         string citation,
-        double similarity)
+        double similarity,
+        IReadOnlyList<string>? requiredInlineCode = null)
     {
         RagEvidence? existing = Evidence.Values.FirstOrDefault(item =>
             string.Equals(item.Citation, citation, StringComparison.Ordinal) &&
@@ -48,7 +49,12 @@ public sealed class RagInvocationContext
         }
 
         string citationId = $"e{++_nextCitationId}";
-        RagEvidence evidence = new(citationId, text, citation, similarity);
+        RagEvidence evidence = new(
+            citationId,
+            text,
+            citation,
+            similarity,
+            requiredInlineCode);
         Evidence.Add(citationId, evidence);
         return evidence;
     }

@@ -12,7 +12,8 @@ public sealed record RagEvidence(
     string CitationId,
     string Text,
     string Citation,
-    double Similarity);
+    double Similarity,
+    IReadOnlyList<string>? RequiredInlineCode = null);
 
 public sealed record RagSearchToolResult(
     IReadOnlyList<RagEvidence> Evidence,

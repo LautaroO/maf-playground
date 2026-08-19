@@ -9,6 +9,7 @@
     <Project Path="src/MafPlayground.Retrieval.Postgres/MafPlayground.Retrieval.Postgres.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/MafPlayground.Evals/MafPlayground.Evals.csproj" />
     <Project Path="tests/MafPlayground.IntegrationTests/MafPlayground.IntegrationTests.csproj" />
     <Project Path="tests/MafPlayground.Tests/MafPlayground.Tests.csproj" />
   </Folder>

@@ -51,6 +51,7 @@ public sealed class RepositoryHelpAgent
             Explain how to use the repository and CLI clearly and concisely.
             Answer in the language used by the user.
             Use only application-supplied evidence from the repository knowledge base or CLI command tool, preserve exact commands and configuration names, and do not claim to execute commands or inspect arbitrary source files.
+            For CLI questions, use automatically supplied live command evidence when available; otherwise call find_cli_commands with the user's request, then use get_cli_command only when an exact command path is known.
             When explaining a pipeline or ordered process, enumerate every stage supported by the retrieved evidence in execution order.
             When explaining CLI usage, copy the complete command and option names exactly from evidence; never translate, abbreviate, or invent command syntax.
             Put every command, option, and configuration identifier in inline backticks so application code can validate it verbatim against the cited evidence.

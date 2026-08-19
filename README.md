@@ -15,6 +15,7 @@ The repository includes:
   ordered fan-in;
 - a local CLI harness and DevUI host;
 - OpenTelemetry logs, traces, metrics, and model-cost estimates;
+- versioned, provider-neutral agent quality evaluations with cached reports;
 - Google Gen AI and Ollama model adapters plus replaceable PostgreSQL/pgvector
   persistence.
 
@@ -74,6 +75,7 @@ flowchart TB
 | [`MafPlayground.Retrieval`](src/MafPlayground.Retrieval/README.md) | File-format-neutral ingestion, chunking, embedding, search, and storage contracts. |
 | [`MafPlayground.Retrieval.Postgres`](src/MafPlayground.Retrieval.Postgres/README.md) | EF Core/PostgreSQL/pgvector implementation of the retrieval store. |
 | [`MafPlayground.Tests`](tests/MafPlayground.Tests/README.md) | Fast deterministic unit and component tests. |
+| [`MafPlayground.Evals`](tests/MafPlayground.Evals/README.md) | Versioned agent datasets, deterministic quality gates, and opt-in LLM judges. |
 | [`MafPlayground.IntegrationTests`](tests/MafPlayground.IntegrationTests/README.md) | Explicitly opt-in tests that require external infrastructure. |
 
 The CLI keeps its host-only support code grouped by responsibility: terminal
@@ -213,9 +215,11 @@ dotnet run --project src/MafPlayground.CLI -- \
 
 The agent can retrieve and refine searches over these documents. It cannot
 execute commands, inspect arbitrary source files, or mutate the repository.
-For exact syntax, the agent can call a narrow deterministic lookup tool backed
-by the live command tree. Natural-language interpretation remains with the
-model, while the tool returns only commands that actually exist.
+For CLI questions, deterministic routing enriches matching user or retrieved
+text with exact commands from the live `System.CommandLine` tree. The agent can
+also call `find_cli_commands` with a natural-language request or
+`get_cli_command` with a known exact path. Both tools return only commands that
+actually exist; conceptual questions continue through semantic retrieval.
 
 ## CLI command map
 

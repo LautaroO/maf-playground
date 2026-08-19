@@ -126,11 +126,14 @@ knowledge.
 dedicated `RepositoryHelp` knowledge base. Its scope is this repository, its
 architecture, configuration, and CLI. It is instructed to answer in the user's
 language and preserves exact command and configuration names from evidence.
-When exact syntax is needed, the agent can call a narrow command lookup tool.
-That tool resolves an exact command path against the live `System.CommandLine`
-tree; natural-language understanding remains with the agent. Conceptual
-questions continue through semantic retrieval and the grounded response
-pipeline.
+For CLI questions, deterministic routing enriches matching user or retrieved
+text with exact commands from the live `System.CommandLine` tree. The agent can
+also call `find_cli_commands` with a natural-language request or
+`get_cli_command` with a known exact path. These tools cannot execute commands
+and return only entries from that tree. The grounded-answer validator requires
+selected live invocations verbatim in inline code and performs one bounded
+repair before falling back safely. Conceptual questions continue through
+semantic retrieval and the grounded response pipeline.
 
 ### Translation workflow
 

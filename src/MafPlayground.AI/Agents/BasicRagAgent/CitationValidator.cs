@@ -23,6 +23,12 @@ public sealed class CitationValidator
                 issues.Add("An insufficient-evidence response cannot contain claims.");
             }
 
+            if (evidence.Values.Any(item => item.RequiredInlineCode?.Count > 0))
+            {
+                issues.Add(
+                    "An insufficient-evidence response cannot ignore application-required evidence.");
+            }
+
             return new RagAnswerValidationResult(issues.Count == 0, issues);
         }
 
@@ -74,6 +80,18 @@ public sealed class CitationValidator
                     {
                         issues.Add(
                             $"Claim {index + 1} inline code '{literal}' does not appear verbatim in its cited evidence.");
+                    }
+                }
+
+                foreach (string requiredLiteral in citedEvidence
+                    .SelectMany(item => item.RequiredInlineCode ?? []))
+                {
+                    if (!claim.Text.Contains(
+                            $"`{requiredLiteral}`",
+                            StringComparison.Ordinal))
+                    {
+                        issues.Add(
+                            $"Claim {index + 1} must include required inline code '{requiredLiteral}' verbatim.");
                     }
                 }
             }
