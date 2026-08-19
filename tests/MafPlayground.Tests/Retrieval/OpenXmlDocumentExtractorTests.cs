@@ -145,7 +145,7 @@ public sealed class OpenXmlDocumentExtractorTests
         new(new W.Run(new W.Text(text)));
 
     private static KnowledgeIngestionSettings CreateChunkingSettings() =>
-        new(1200, 200, 1)
+        new(1)
         {
             MaxTokensPerChunk = 100,
             OverlapTokens = 10,

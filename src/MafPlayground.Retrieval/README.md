@@ -30,7 +30,6 @@ flowchart LR
 | `PptxDocumentExtractor` | Native Open XML reader that creates one section per slide and maps titles, text shapes, and tables. |
 | `MarkdownDocumentExtractor` | Adapts the DataIngestion Markdig reader without flattening its `IngestionDocument`. |
 | `MicrosoftDataIngestionDocumentChunker` | Creates token-bounded chunks per source section while preserving page/section metadata. |
-| `DocumentChunker` | Legacy character chunker retained for comparison during the spike. |
 | `IEmbeddingGeneratorProvider` | Provider adapter port for embedding models. |
 | `EmbeddingProviderRegistry` | Resolves `provider:model` embedding selections. |
 | `KnowledgeBaseCatalog` | Validates named knowledge bases, embedding identities, and ingestion policies. |
@@ -118,7 +117,7 @@ bound filters and cannot widen their scope.
 ## Tests
 
 Deterministic tests cover model selection, registry conflicts, PDF, DOCX, PPTX,
-and Markdown extraction, Office structure surviving token chunking, character
-and token chunk boundaries, source metadata, ingestion skipping, embedding
+and Markdown extraction, Office structure surviving token chunking, token chunk
+boundaries, source metadata, ingestion skipping, embedding
 validation, and search contracts. Store round trips belong in integration tests.
 See `docs/rag-data-ingestion-spike.md` for the spike findings and migration plan.

@@ -98,9 +98,9 @@ warnings until dedicated extractors exist.
 
 ### Chunking
 
-`IDocumentChunker` makes chunking replaceable and asynchronous. The default spike
-registration uses `MicrosoftDataIngestionDocumentChunker`; the previous
-character chunker remains available for side-by-side tests.
+`IDocumentChunker` keeps chunking replaceable and asynchronous. The application
+registers `MicrosoftDataIngestionDocumentChunker` as its only chunker; the
+previous character-based implementation and its configuration were removed.
 
 The Microsoft adapter:
 
@@ -172,8 +172,8 @@ not adopted.
 ### Phase 1: evaluate this adapter
 
 - Build a representative PDF and Markdown evaluation corpus.
-- Compare the old character chunker with the token chunker using Recall@K, MRR,
-  citation accuracy, retrieved token count, latency, and index size.
+- Evaluate the token chunker using Recall@K, MRR, citation accuracy, retrieved
+  token count, latency, and index size.
 - Include tables, long pages, headings, repeated text, scanned PDFs, and content
   spanning page boundaries.
 - Tune `MaxTokensPerChunk` and `OverlapTokens` based on those results.
@@ -239,7 +239,7 @@ Verification completed on the spike branch:
 - `dotnet build MafPlayground.slnx --no-restore -m:1 /nodeReuse:false`
   completed with zero warnings and zero errors;
 - `dotnet test MafPlayground.slnx --no-build --no-restore -m:1
-  /nodeReuse:false` passed 147 unit tests; six opt-in integration tests were
+  /nodeReuse:false` passed 145 unit tests; six opt-in integration tests were
   skipped by their existing configuration.
 
 Before production adoption, add:

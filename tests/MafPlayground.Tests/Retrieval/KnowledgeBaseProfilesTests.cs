@@ -25,23 +25,6 @@ public sealed class KnowledgeBaseProfilesTests
     }
 
     [Fact]
-    public void Catalog_RejectsInvalidChunkOverlap()
-    {
-        KnowledgeBaseOptions definition = CreateKnowledgeBase("help", "fake:model");
-        definition.Ingestion.ChunkSizeCharacters = 100;
-        definition.Ingestion.ChunkOverlapCharacters = 100;
-
-        Assert.Throws<KnowledgeBaseConfigurationException>(() =>
-            new KnowledgeBaseCatalog(new KnowledgeBaseCatalogOptions
-            {
-                KnowledgeBases = new Dictionary<string, KnowledgeBaseOptions>
-                {
-                    ["Help"] = definition,
-                },
-            }));
-    }
-
-    [Fact]
     public void Catalog_RejectsInvalidTokenOverlap()
     {
         KnowledgeBaseOptions definition = CreateKnowledgeBase("help", "fake:model");
@@ -170,7 +153,7 @@ public sealed class KnowledgeBaseProfilesTests
             new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
         KnowledgeIngestionService ingestion = new(
             new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
-            new DocumentChunker(),
+            new MicrosoftDataIngestionDocumentChunker(),
             runtime,
             store);
         string path = Path.Combine(
@@ -188,7 +171,9 @@ public sealed class KnowledgeBaseProfilesTests
             Assert.NotNull(store.ReplacedDocument);
             Assert.Equal("legal-collection", store.ReplacedDocument.Collection);
             Assert.Equal("fake:legal-model/3", store.ReplacedDocument.EmbeddingIdentity);
-            Assert.Equal("chars:100:overlap:10", store.ReplacedDocument.ChunkingIdentity);
+            Assert.Contains(
+                "document-tokens-per-section:cl100k_base:max:400:overlap:40",
+                store.ReplacedDocument.ChunkingIdentity);
             Assert.Equal(KnowledgeMetadata.Empty, store.ReplacedDocument.Metadata);
             Assert.NotEmpty(store.ReplacedChunks);
         }
@@ -214,7 +199,7 @@ public sealed class KnowledgeBaseProfilesTests
             new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
         KnowledgeIngestionService ingestion = new(
             new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
-            new DocumentChunker(),
+            new MicrosoftDataIngestionDocumentChunker(),
             runtime,
             store);
         string path = Path.Combine(
@@ -266,7 +251,7 @@ public sealed class KnowledgeBaseProfilesTests
             new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
         KnowledgeIngestionService ingestion = new(
             new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
-            new DocumentChunker(),
+            new MicrosoftDataIngestionDocumentChunker(),
             runtime,
             new RecordingKnowledgeStore());
         string sourceRoot = Path.Combine(
@@ -310,7 +295,7 @@ public sealed class KnowledgeBaseProfilesTests
             new EmbeddingProviderRegistry([new RecordingEmbeddingProvider()]));
         KnowledgeIngestionService ingestion = new(
             new DocumentExtractorRegistry([new FakeDocumentExtractor()]),
-            new DocumentChunker(),
+            new MicrosoftDataIngestionDocumentChunker(),
             runtime,
             new RecordingKnowledgeStore());
         string path = Path.Combine(
@@ -362,8 +347,6 @@ public sealed class KnowledgeBaseProfilesTests
             EmbeddingDimensions = 3,
             Ingestion = new KnowledgeIngestionOptions
             {
-                ChunkSizeCharacters = 100,
-                ChunkOverlapCharacters = 10,
                 EmbeddingBatchSize = 4,
             },
         };

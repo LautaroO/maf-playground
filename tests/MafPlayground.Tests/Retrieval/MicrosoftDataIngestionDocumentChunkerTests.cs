@@ -23,7 +23,7 @@ public sealed class MicrosoftDataIngestionDocumentChunkerTests
             "Help",
             ingestionDocument,
             []);
-        KnowledgeIngestionSettings settings = new(1200, 200, 1)
+        KnowledgeIngestionSettings settings = new(1)
         {
             TokenizerEncoding = "cl100k_base",
             MaxTokensPerChunk = 24,
@@ -67,7 +67,7 @@ public sealed class MicrosoftDataIngestionDocumentChunkerTests
             "Help",
             ingestionDocument,
             []);
-        KnowledgeIngestionSettings settings = new(1200, 200, 1)
+        KnowledgeIngestionSettings settings = new(1)
         {
             MaxTokensPerChunk = 30,
             OverlapTokens = 0,

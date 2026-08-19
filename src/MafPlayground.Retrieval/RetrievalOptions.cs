@@ -21,10 +21,6 @@ public sealed class KnowledgeBaseOptions
 
 public sealed class KnowledgeIngestionOptions
 {
-    public int ChunkSizeCharacters { get; set; } = 1200;
-
-    public int ChunkOverlapCharacters { get; set; } = 200;
-
     public string TokenizerEncoding { get; set; } = "cl100k_base";
 
     public int MaxTokensPerChunk { get; set; } = 400;
@@ -52,10 +48,7 @@ public sealed class KnowledgeSearchOptions
         new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
-public sealed record KnowledgeIngestionSettings(
-    int ChunkSizeCharacters,
-    int ChunkOverlapCharacters,
-    int EmbeddingBatchSize)
+public sealed record KnowledgeIngestionSettings(int EmbeddingBatchSize)
 {
     public string TokenizerEncoding { get; init; } = "cl100k_base";
 
@@ -202,19 +195,6 @@ public sealed class KnowledgeBaseCatalog
         }
 
         KnowledgeIngestionOptions ingestion = definition.Ingestion ?? new();
-        if (ingestion.ChunkSizeCharacters <= 0)
-        {
-            throw new KnowledgeBaseConfigurationException(
-                $"Knowledge base '{name}' requires a positive chunk size.");
-        }
-
-        if (ingestion.ChunkOverlapCharacters < 0 ||
-            ingestion.ChunkOverlapCharacters >= ingestion.ChunkSizeCharacters)
-        {
-            throw new KnowledgeBaseConfigurationException(
-                $"Knowledge base '{name}' requires chunk overlap greater than or equal to zero and smaller than chunk size.");
-        }
-
         if (string.IsNullOrWhiteSpace(ingestion.TokenizerEncoding))
         {
             throw new KnowledgeBaseConfigurationException(
@@ -253,10 +233,7 @@ public sealed class KnowledgeBaseCatalog
             definition.Collection.Trim(),
             embeddingModel!,
             definition.EmbeddingDimensions,
-            new KnowledgeIngestionSettings(
-                ingestion.ChunkSizeCharacters,
-                ingestion.ChunkOverlapCharacters,
-                ingestion.EmbeddingBatchSize)
+            new KnowledgeIngestionSettings(ingestion.EmbeddingBatchSize)
             {
                 TokenizerEncoding = ingestion.TokenizerEncoding.Trim(),
                 MaxTokensPerChunk = ingestion.MaxTokensPerChunk,
