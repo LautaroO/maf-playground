@@ -55,8 +55,8 @@ flowchart TB
 | Open-ended conversation | Basic and Basic RAG agents | `AIAgent` |
 | Trusted user data | `UserContextProvider` | `AIContextProvider` |
 | Current date/time | `CurrentDateTimeTool` | Deterministic tool/function |
-| RAG evidence | `RagContextProvider` | Retrieval-backed context plus one narrow search tool |
-| Repository and CLI help | `RepositoryHelpAgent` | Dedicated grounded agent over the `RepositoryHelp` knowledge base |
+| RAG evidence | `RagContextProvider` | Configurable automatic retrieval plus a narrow search tool |
+| Repository and CLI help | `HelpAgent` | Reusable agentic-RAG help agent with conditional, read-only context tools |
 | Citation enforcement | Structured claims, `CitationValidator`, and stateless repair | Deterministic claim-to-evidence mapping with bounded repair |
 | Translation orchestration | Native translation graph | Workflow executors, typed messages, fan-out/fan-in edges |
 | Timeouts and cost | Chat-client decorators | Provider-neutral cross-cutting infrastructure |
@@ -214,13 +214,20 @@ dotnet run --project src/MafPlayground.CLI -- \
   agent repository-help --prompt "How do I run DevUI?"
 ```
 
-The agent can retrieve and refine searches over these documents. It cannot
-execute commands, inspect arbitrary source files, or mutate the repository.
-For CLI questions, deterministic routing enriches matching user or retrieved
-text with exact commands from the live `System.CommandLine` tree. The agent can
-also call `find_cli_commands` with a natural-language request or
-`get_cli_command` with a known exact path. Both tools return only commands that
-actually exist; conceptual questions continue through semantic retrieval.
+The reusable `HelpAgent` is configured by the CLI host with repository-specific
+instructions, the `RepositoryHelp` knowledge base, and a live
+`System.CommandLine` capability catalog. Another host can supply a different
+definition and catalog without changing the agent implementation.
+
+The agent decides whether the turn needs application context. Greetings and
+introductions stay conversational and do not search. Before answering about the
+repository, CLI, or application capabilities, it is instructed to call
+`search_knowledge_base`, `find_help_capabilities`, or `get_help_capability`.
+These tools return bounded read-only evidence; they cannot execute commands,
+inspect arbitrary source files, or mutate the repository. C# enforces the
+search budget, evidence-to-citation mapping, exact live commands, and safe
+fallback. Ambiguous questions can produce one clarifying question in the
+current agent session.
 
 ## CLI command map
 

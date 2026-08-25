@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using MafPlayground.AI.Agents.BasicRagAgent;
-using MafPlayground.AI.Agents.RepositoryHelpAgent;
+using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Guards.Content;
 using MafPlayground.Retrieval;
@@ -9,12 +9,40 @@ using Microsoft.Extensions.Options;
 
 namespace MafPlayground.Tests.AI.Agents;
 
-public sealed class RepositoryHelpAgentTests
+public sealed class HelpAgentTests
 {
+    [Fact]
+    public void Agent_RejectsMissingFactory()
+    {
+        Assert.Throws<ArgumentNullException>(() => new HelpAgent(null!));
+    }
+
+    [Fact]
+    public void Definition_RejectsEmptyHostMetadata()
+    {
+        Assert.Throws<ArgumentException>(() => new HelpAgentDefinition(
+            string.Empty,
+            "Description",
+            "Instructions"));
+    }
+
+    [Fact]
+    public void Capability_RejectsEmptyRequiredInlineCode()
+    {
+        Assert.Throws<ArgumentException>(() => new HelpCapability(
+            "reports",
+            "Open the reports area.",
+            "[Product help]",
+            [string.Empty]));
+    }
+
     [Fact]
     public async Task Agent_UsesDedicatedKnowledgeBaseAndGroundedCitations()
     {
-        using FakeChatClient chatClient = new(
+        using ToolCallingChatClient chatClient = new(
+            "search_knowledge_base",
+            "refinedQuery",
+            "run the repository help agent",
             """{"insufficientEvidence":false,"claims":[{"text":"Run the repository help agent with agent repository-help.","citationIds":["e1"]}]}""");
         StubKnowledgeSearchFactory searchFactory = new([
             new(
@@ -25,7 +53,7 @@ public sealed class RepositoryHelpAgentTests
                 "maf-playground agent repository-help",
                 0.91),
         ]);
-        RepositoryHelpAgentOptions options = new()
+        HelpAgentOptions options = new()
         {
             KnowledgeBase = "RepositoryHelp",
             Retrieval = new RagRetrievalOptions
@@ -35,7 +63,7 @@ public sealed class RepositoryHelpAgentTests
                 MaximumAdditionalSearches = 1,
             },
         };
-        RepositoryHelpAgent agent = new(
+        HelpAgent agent = new(new HelpAgentFactory(
             chatClient,
             searchFactory,
             new CitationValidator(),
@@ -43,8 +71,9 @@ public sealed class RepositoryHelpAgentTests
             AgentGuardPipeline.CreateDisabled(),
             new ContentGuard(new RegexPiiContentInspector()),
             new GuardProfileResolver(Options.Create(new AIGuardOptions())),
+            CreateDefinition(),
             Options.Create(options),
-            new StubCommandCatalog());
+            new StubCapabilityCatalog()));
 
         string response = (await agent.Agent.RunAsync(
             "¿Cómo ejecuto el agente de ayuda?")).Text;
@@ -56,48 +85,45 @@ public sealed class RepositoryHelpAgentTests
             "[MafPlayground CLI reference, source: cli-reference.md]",
             response,
             StringComparison.Ordinal);
+        Assert.Equal(1, searchFactory.SearchCallCount);
         Assert.Contains(
             "Answer in the language used by the user.",
-            Assert.Single(chatClient.RequestOptions)!.Instructions,
+            chatClient.RequestOptions[0]!.Instructions,
             StringComparison.Ordinal);
         Assert.Contains(
             "copy the complete command",
-            Assert.Single(chatClient.RequestOptions)!.Instructions,
+            chatClient.RequestOptions[0]!.Instructions,
             StringComparison.Ordinal);
         Assert.Contains(
             "enumerate every stage",
-            Assert.Single(chatClient.RequestOptions)!.Instructions,
+            chatClient.RequestOptions[0]!.Instructions,
             StringComparison.Ordinal);
         Assert.Contains(
-            "inline backticks",
-            Assert.Single(chatClient.RequestOptions)!.Instructions,
+            "inline-code values",
+            chatClient.RequestOptions[0]!.Instructions,
             StringComparison.Ordinal);
         Assert.Contains(
-            Assert.Single(chatClient.RequestOptions)!.Tools!,
-            tool => tool.Name == "get_cli_command");
+            chatClient.RequestOptions[0]!.Tools!,
+            tool => tool.Name == "get_help_capability");
         Assert.Contains(
-            Assert.Single(chatClient.RequestOptions)!.Tools!,
-            tool => tool.Name == "find_cli_commands");
-        Assert.Contains(
-            Assert.Single(chatClient.Requests),
-            message => message.Text?.Contains(
-                "dotnet run --project src/MafPlayground.CLI -- agent repository-help",
-                StringComparison.Ordinal) == true);
+            chatClient.RequestOptions[0]!.Tools!,
+            tool => tool.Name == "find_help_capabilities");
+        Assert.Contains("agent repository-help", chatClient.ToolResult?.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task Agent_ExecutesCliToolAndValidatesItsEvidence()
     {
         using ToolCallingChatClient chatClient = new(
-            "get_cli_command",
-            "commandPath",
+            "get_help_capability",
+            "capabilityId",
             "devui",
             """
             {"insufficientEvidence":false,"claims":[{"text":"Run `dotnet run --project src/MafPlayground.CLI -- devui`.","citationIds":["e1"]}]}
             """);
-        RepositoryHelpAgent agent = CreateAgent(
+        HelpAgent agent = CreateAgent(
             chatClient,
-            new StubCommandCatalog());
+            new StubCapabilityCatalog());
 
         string response = (await agent.Agent.RunAsync(
             "¿Cómo ejecuto DevUI?")).Text;
@@ -117,49 +143,95 @@ public sealed class RepositoryHelpAgentTests
     public async Task Agent_CliToolReturnsBoundedErrorForUnknownCommand()
     {
         using ToolCallingChatClient chatClient = new(
-            "get_cli_command",
-            "commandPath",
+            "get_help_capability",
+            "capabilityId",
             "unknown command",
             """{"insufficientEvidence":true,"claims":[]}""");
-        RepositoryHelpAgent agent = CreateAgent(
+        HelpAgent agent = CreateAgent(
             chatClient,
-            new StubCommandCatalog());
+            new StubCapabilityCatalog());
 
         string response = (await agent.Agent.RunAsync(
             "Run a command that does not exist.")).Text;
 
         Assert.Equal(2, chatClient.CallCount);
         Assert.Contains(
-            "Unknown command path",
+            "Unknown capability ID",
             chatClient.ToolResult?.ToString(),
             StringComparison.Ordinal);
         Assert.Equal(CitationValidator.NoEvidenceAnswer, response);
     }
 
     [Fact]
-    public async Task Agent_AutomaticallySuppliesExactLiveCommandEvidence()
+    public async Task Agent_GetHelpCapabilityToolValidatesCapabilityId()
+    {
+        using ToolCallingChatClient chatClient = new(
+            "get_help_capability",
+            "capabilityId",
+            new string('x', 513),
+            """{"insufficientEvidence":true,"claims":[]}""");
+        HelpAgent agent = CreateAgent(
+            chatClient,
+            new StubCapabilityCatalog());
+
+        string response = (await agent.Agent.RunAsync(
+            "Find an invalid capability.")).Text;
+
+        Assert.Contains(
+            "between 1 and 512 characters",
+            chatClient.ToolResult?.ToString(),
+            StringComparison.Ordinal);
+        Assert.Equal(CitationValidator.NoEvidenceAnswer, response);
+    }
+
+    [Fact]
+    public async Task Agent_DoesNotRetrieveContextForPurelySocialTurn()
     {
         using FakeChatClient chatClient = new(
             """
-            {"insufficientEvidence":false,"claims":[{"text":"Run `dotnet run --project src/MafPlayground.CLI -- devui`.","citationIds":["e1"]}]}
+            {"insufficientEvidence":false,"claims":[],"conversationalResponse":"¡Hola, Lautaro! Cuando quieras, haceme tus consultas."}
             """);
-        RepositoryHelpAgent agent = CreateAgent(
-            chatClient,
-            new StubCommandCatalog());
+        StubKnowledgeSearchFactory searchFactory = new([]);
+        StubCapabilityCatalog capabilityCatalog = new();
+        HelpAgent agent = CreateAgent(chatClient, capabilityCatalog, searchFactory: searchFactory);
 
         string response = (await agent.Agent.RunAsync(
-            "¿Cómo ejecuto DevUI?")).Text;
+            "Hola, mi nombre es Lautaro y voy a hacerte un par de consultas.")).Text;
 
-        IReadOnlyList<ChatMessage> request = Assert.Single(chatClient.Requests);
+        Assert.Equal("¡Hola, Lautaro! Cuando quieras, haceme tus consultas.", response);
+        Assert.Equal(0, searchFactory.SearchCallCount);
+        Assert.Equal(0, capabilityCatalog.SearchCallCount);
+        Assert.Equal(0, capabilityCatalog.FindCallCount);
+    }
+
+    [Fact]
+    public async Task Agent_PreservesSocialIntroductionInConversationSession()
+    {
+        const string greeting =
+            "¡Hola, Lautaro! Cuando quieras, haceme tus consultas.";
+        using FakeChatClient chatClient = new(
+            $$"""
+            {"insufficientEvidence":false,"claims":[],"conversationalResponse":"{{greeting}}"}
+            """);
+        chatClient.EnqueueResponse(
+            """{"insufficientEvidence":true,"claims":[],"clarifyingQuestion":"¿Sobre qué parte de la app querés consultar?"}""");
+        HelpAgent agent = CreateAgent(chatClient, new StubCapabilityCatalog());
+        Microsoft.Agents.AI.AgentSession session =
+            await agent.Agent.CreateSessionAsync();
+
+        await agent.Agent.RunAsync(
+            "Hola, mi nombre es Lautaro y voy a hacerte un par de consultas.",
+            session);
+        await agent.Agent.RunAsync("Tengo una duda.", session);
+
         Assert.Contains(
-            request,
-            message => message.Text?.Contains(
-                "matching live CLI commands",
-                StringComparison.Ordinal) == true);
+            chatClient.Requests[1],
+            message => message.Role == ChatRole.User &&
+                message.Text?.Contains("Lautaro", StringComparison.Ordinal) == true);
         Assert.Contains(
-            "dotnet run --project src/MafPlayground.CLI -- devui",
-            response,
-            StringComparison.Ordinal);
+            chatClient.Requests[1],
+            message => message.Role == ChatRole.Assistant &&
+                message.Text == greeting);
     }
 
     [Fact]
@@ -167,7 +239,10 @@ public sealed class RepositoryHelpAgentTests
     {
         const string invocation =
             "dotnet run --project src/MafPlayground.CLI -- devui";
-        using FakeChatClient chatClient = new(
+        using ToolCallingChatClient chatClient = new(
+            "get_help_capability",
+            "capabilityId",
+            "devui",
             $$"""
             {"insufficientEvidence":false,"claims":[{"text":"Run '{{invocation}}'.","citationIds":["e1"]}]}
             """);
@@ -175,9 +250,9 @@ public sealed class RepositoryHelpAgentTests
             new RagAnswerDraft(
                 false,
                 [new RagClaim($"Run `{invocation}`.", ["e1"])]));
-        RepositoryHelpAgent agent = CreateAgent(
+        HelpAgent agent = CreateAgent(
             chatClient,
-            new StubCommandCatalog(),
+            new StubCapabilityCatalog(),
             repairService);
 
         string response = (await agent.Agent.RunAsync(
@@ -190,15 +265,18 @@ public sealed class RepositoryHelpAgentTests
     [Fact]
     public async Task Agent_ReturnsSafeFallbackWhenCliRepairRemainsInvalid()
     {
-        using FakeChatClient chatClient = new(
+        using ToolCallingChatClient chatClient = new(
+            "get_help_capability",
+            "capabilityId",
+            "devui",
             """
             {"insufficientEvidence":true,"claims":[]}
             """);
         RecordingRepairService repairService = new(
             new RagAnswerDraft(true, []));
-        RepositoryHelpAgent agent = CreateAgent(
+        HelpAgent agent = CreateAgent(
             chatClient,
-            new StubCommandCatalog(),
+            new StubCapabilityCatalog(),
             repairService);
 
         string response = (await agent.Agent.RunAsync(
@@ -209,18 +287,18 @@ public sealed class RepositoryHelpAgentTests
     }
 
     [Fact]
-    public async Task Agent_FindCliCommandsToolResolvesNaturalLanguageRequest()
+    public async Task Agent_FindHelpCapabilitiesToolResolvesNaturalLanguageRequest()
     {
         using ToolCallingChatClient chatClient = new(
-            "find_cli_commands",
+            "find_help_capabilities",
             "request",
             "run devui",
             """
             {"insufficientEvidence":false,"claims":[{"text":"Run `dotnet run --project src/MafPlayground.CLI -- devui`.","citationIds":["e1"]}]}
             """);
-        RepositoryHelpAgent agent = CreateAgent(
+        HelpAgent agent = CreateAgent(
             chatClient,
-            new StubCommandCatalog());
+            new StubCapabilityCatalog());
 
         string response = (await agent.Agent.RunAsync(
             "Which CLI command should I use?")).Text;
@@ -237,38 +315,68 @@ public sealed class RepositoryHelpAgentTests
     }
 
     [Fact]
-    public async Task Agent_FindCliCommandsToolReturnsBoundedNoMatchResult()
+    public async Task Agent_FindHelpCapabilitiesToolReturnsBoundedNoMatchResult()
     {
         using ToolCallingChatClient chatClient = new(
-            "find_cli_commands",
+            "find_help_capabilities",
             "request",
             "operate the warp drive",
             """{"insufficientEvidence":true,"claims":[]}""");
-        RepositoryHelpAgent agent = CreateAgent(
+        HelpAgent agent = CreateAgent(
             chatClient,
-            new StubCommandCatalog());
+            new StubCapabilityCatalog());
 
         string response = (await agent.Agent.RunAsync(
             "Which CLI command should I use?")).Text;
 
         Assert.Contains(
-            "No matching CLI command was found",
+            "No matching application capability was found",
             chatClient.ToolResult?.ToString(),
             StringComparison.Ordinal);
         Assert.Equal(CitationValidator.NoEvidenceAnswer, response);
     }
 
     [Fact]
-    public async Task Agent_FindCliCommandsToolReturnsBoundedValidationResult()
+    public async Task Agent_PreservesClarifyingQuestionInConversationSession()
+    {
+        const string clarifyingQuestion =
+            "Which part of the application do you want help with?";
+        using FakeChatClient chatClient = new(
+            $$"""
+            {"insufficientEvidence":true,"claims":[],"clarifyingQuestion":"{{clarifyingQuestion}}"}
+            """);
+        chatClient.EnqueueResponse(
+            """{"insufficientEvidence":true,"claims":[],"clarifyingQuestion":null}""");
+        HelpAgent agent = CreateAgent(chatClient, new StubCapabilityCatalog());
+        Microsoft.Agents.AI.AgentSession session =
+            await agent.Agent.CreateSessionAsync();
+
+        string firstResponse = (await agent.Agent.RunAsync(
+            "Help me.",
+            session)).Text;
+        string secondResponse = (await agent.Agent.RunAsync(
+            "The reporting area.",
+            session)).Text;
+
+        Assert.Equal(clarifyingQuestion, firstResponse);
+        Assert.Equal(CitationValidator.NoEvidenceAnswer, secondResponse);
+        Assert.Contains(
+            chatClient.Requests[1],
+            message => message.Role == ChatRole.Assistant &&
+                message.Text == clarifyingQuestion);
+    }
+
+    [Fact]
+    public async Task Agent_FindHelpCapabilitiesToolReturnsBoundedValidationResult()
     {
         using ToolCallingChatClient chatClient = new(
-            "find_cli_commands",
+            "find_help_capabilities",
             "request",
             new string('x', 513),
             """{"insufficientEvidence":true,"claims":[]}""");
-        RepositoryHelpAgent agent = CreateAgent(
+        HelpAgent agent = CreateAgent(
             chatClient,
-            new StubCommandCatalog());
+            new StubCapabilityCatalog());
 
         string response = (await agent.Agent.RunAsync(
             "Which CLI command should I use?")).Text;
@@ -280,20 +388,27 @@ public sealed class RepositoryHelpAgentTests
         Assert.Equal(CitationValidator.NoEvidenceAnswer, response);
     }
 
-    private static RepositoryHelpAgent CreateAgent(
+    private static HelpAgent CreateAgent(
         IChatClient chatClient,
-        IRepositoryCliCommandCatalog commandCatalog,
-        IRagAnswerRepairService? repairService = null) =>
-        new(
+        IHelpCapabilityCatalog capabilityCatalog,
+        IRagAnswerRepairService? repairService = null,
+        StubKnowledgeSearchFactory? searchFactory = null) =>
+        new(new HelpAgentFactory(
             chatClient,
-            new StubKnowledgeSearchFactory([]),
+            searchFactory ?? new StubKnowledgeSearchFactory([]),
             new CitationValidator(),
             repairService ?? new UnexpectedRepairService(),
             AgentGuardPipeline.CreateDisabled(),
             new ContentGuard(new RegexPiiContentInspector()),
             new GuardProfileResolver(Options.Create(new AIGuardOptions())),
-            Options.Create(new RepositoryHelpAgentOptions()),
-            commandCatalog);
+            CreateDefinition(),
+            Options.Create(new HelpAgentOptions { KnowledgeBase = "RepositoryHelp" }),
+            capabilityCatalog));
+
+    private static HelpAgentDefinition CreateDefinition() => new(
+        "test-help-agent",
+        "Test help agent.",
+        "Explain how to use the repository and copy the complete command. When explaining a pipeline, enumerate every stage.");
 
     private sealed class RecordingRepairService(RagAnswerDraft repairedDraft)
         : IRagAnswerRepairService
@@ -319,23 +434,29 @@ public sealed class RepositoryHelpAgentTests
 
         public KnowledgeSearchOptions? SearchOptions { get; private set; }
 
+        public int SearchCallCount { get; private set; }
+
         public IKnowledgeSearch Create(
             KnowledgeBaseId knowledgeBaseId,
             KnowledgeSearchOptions searchOptions)
         {
             KnowledgeBase = knowledgeBaseId;
             SearchOptions = searchOptions;
-            return new StubKnowledgeSearch(results);
+            return new StubKnowledgeSearch(results, () => SearchCallCount++);
         }
     }
 
     private sealed class StubKnowledgeSearch(
-        IReadOnlyList<KnowledgeSearchResult> results) : IKnowledgeSearch
+        IReadOnlyList<KnowledgeSearchResult> results,
+        Action onSearch) : IKnowledgeSearch
     {
         public Task<IReadOnlyList<KnowledgeSearchResult>> SearchAsync(
             string query,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(results);
+            CancellationToken cancellationToken = default)
+        {
+            onSearch();
+            return Task.FromResult(results);
+        }
     }
 
     private sealed class UnexpectedRepairService : IRagAnswerRepairService
@@ -349,28 +470,37 @@ public sealed class RepositoryHelpAgentTests
             throw new InvalidOperationException("Repair was not expected.");
     }
 
-    private sealed class StubCommandCatalog : IRepositoryCliCommandCatalog
+    private sealed class StubCapabilityCatalog : IHelpCapabilityCatalog
     {
-        public IReadOnlyList<string> CommandPaths =>
+        public int FindCallCount { get; private set; }
+
+        public int SearchCallCount { get; private set; }
+
+        public IReadOnlyList<string> CapabilityIds =>
             ["agent repository-help", "devui"];
 
-        public RepositoryCliCommand? Find(string commandPath) => commandPath switch
+        public HelpCapability? Find(string capabilityId)
         {
-            "agent repository-help" => new RepositoryCliCommand(
-                "agent repository-help",
-                "dotnet run --project src/MafPlayground.CLI -- agent repository-help",
-                "Run repository help."),
-            "devui" => new RepositoryCliCommand(
-                    "devui",
-                    "dotnet run --project src/MafPlayground.CLI -- devui",
-                    "Run DevUI."),
-            _ => null,
-        };
+            FindCallCount++;
+            return capabilityId switch
+            {
+                "agent repository-help" => CreateCapability(
+                    "agent repository-help",
+                    "dotnet run --project src/MafPlayground.CLI -- agent repository-help",
+                    "Run repository help."),
+                "devui" => CreateCapability(
+                        "devui",
+                        "dotnet run --project src/MafPlayground.CLI -- devui",
+                        "Run DevUI."),
+                _ => null,
+            };
+        }
 
-        public IReadOnlyList<RepositoryCliCommand> Search(
+        public IReadOnlyList<HelpCapability> Search(
             string request,
             int maxResults = 3)
         {
+            SearchCallCount++;
             if (request.Contains("devui", StringComparison.OrdinalIgnoreCase))
             {
                 return [Find("devui")!];
@@ -383,6 +513,15 @@ public sealed class RepositoryHelpAgentTests
             }
             return [];
         }
+
+        private static HelpCapability CreateCapability(
+            string id,
+            string invocation,
+            string description) => new(
+                id,
+                $"Command `{id}` uses the exact invocation `{invocation}`. {description}",
+                "[MafPlayground CLI reference, source: cli-reference.md]",
+                [invocation]);
     }
 
     private sealed class ToolCallingChatClient(
@@ -397,6 +536,8 @@ public sealed class RepositoryHelpAgentTests
 
         public object? ToolResult { get; private set; }
 
+        public List<ChatOptions?> RequestOptions { get; } = [];
+
         public ChatClientMetadata Metadata { get; } = new("fake");
 
         public Task<ChatResponse> GetResponseAsync(
@@ -405,6 +546,7 @@ public sealed class RepositoryHelpAgentTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            RequestOptions.Add(options);
             ChatMessage[] request = messages.ToArray();
             ToolResult = request
                 .SelectMany(message => message.Contents)

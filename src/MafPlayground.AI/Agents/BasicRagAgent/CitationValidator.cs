@@ -2,6 +2,9 @@ namespace MafPlayground.AI.Agents.BasicRagAgent;
 
 public sealed class CitationValidator
 {
+    public const int MaximumClarifyingQuestionCharacters = 512;
+    public const int MaximumConversationalResponseCharacters = 1_000;
+
     public const string NoEvidenceAnswer =
         "The knowledge base does not contain enough information to answer that question.";
 
@@ -16,6 +19,66 @@ public sealed class CitationValidator
         }
 
         IReadOnlyList<RagClaim> claims = draft.Claims ?? [];
+        if (draft.ConversationalResponse is not null)
+        {
+            if (draft.InsufficientEvidence)
+            {
+                issues.Add("A conversational response cannot report insufficient evidence.");
+            }
+            if (draft.ClarifyingQuestion is not null)
+            {
+                issues.Add("A conversational response cannot contain a clarifying question.");
+            }
+            if (string.IsNullOrWhiteSpace(draft.ConversationalResponse))
+            {
+                issues.Add("A conversational response cannot be empty.");
+            }
+            else if (draft.ConversationalResponse.Length > MaximumConversationalResponseCharacters)
+            {
+                issues.Add(
+                    $"A conversational response cannot exceed {MaximumConversationalResponseCharacters} characters.");
+            }
+            if (claims.Count > 0)
+            {
+                issues.Add("A conversational response cannot contain claims.");
+            }
+            if (evidence.Values.Any(item => item.RequiredInlineCode?.Count > 0))
+            {
+                issues.Add(
+                    "A conversational response cannot ignore application-required evidence.");
+            }
+
+            return new RagAnswerValidationResult(issues.Count == 0, issues);
+        }
+
+        if (draft.ClarifyingQuestion is not null)
+        {
+            if (!draft.InsufficientEvidence)
+            {
+                issues.Add("A clarifying question requires insufficientEvidence to be true.");
+            }
+            if (string.IsNullOrWhiteSpace(draft.ClarifyingQuestion))
+            {
+                issues.Add("A clarifying question cannot be empty.");
+            }
+            else if (draft.ClarifyingQuestion.Length > MaximumClarifyingQuestionCharacters)
+            {
+                issues.Add(
+                    $"A clarifying question cannot exceed {MaximumClarifyingQuestionCharacters} characters.");
+            }
+            if (claims.Count > 0)
+            {
+                issues.Add("A clarifying question cannot contain claims.");
+            }
+            if (evidence.Values.Any(item => item.RequiredInlineCode?.Count > 0))
+            {
+                issues.Add(
+                    "A clarifying question cannot ignore application-required evidence.");
+            }
+
+            return new RagAnswerValidationResult(issues.Count == 0, issues);
+        }
+
         if (draft.InsufficientEvidence)
         {
             if (claims.Count > 0)
@@ -114,7 +177,12 @@ public sealed class CitationValidator
 
         if (draft.InsufficientEvidence)
         {
-            return NoEvidenceAnswer;
+            return draft.ClarifyingQuestion?.Trim() ?? NoEvidenceAnswer;
+        }
+
+        if (draft.ConversationalResponse is not null)
+        {
+            return draft.ConversationalResponse.Trim();
         }
 
         return string.Join(

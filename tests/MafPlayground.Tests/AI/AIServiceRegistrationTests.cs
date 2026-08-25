@@ -1,8 +1,9 @@
 using MafPlayground.AI;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
-using MafPlayground.AI.Agents.RepositoryHelpAgent;
+using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.AI.Workflows.Translation;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -26,7 +27,7 @@ public sealed class AIServiceRegistrationTests
         Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == typeof(BasicRagAgent));
         Assert.DoesNotContain(
             services,
-            descriptor => descriptor.ServiceType == typeof(RepositoryHelpAgent));
+            descriptor => descriptor.ServiceType == typeof(HelpAgent));
         Assert.DoesNotContain(
             services,
             descriptor => descriptor.ServiceType == typeof(TranslationWorkflowRunner));
@@ -46,6 +47,47 @@ public sealed class AIServiceRegistrationTests
         _ = provider.GetRequiredService<IChatClient>();
 
         Assert.Equal([50, 350], applied);
+    }
+
+    [Fact]
+    public void HelpAgentRegistration_UsesDedicatedSingletonFactory()
+    {
+        ServiceCollection services = new();
+
+        services.AddHelpAgent(new HelpAgentDefinition(
+            "test-help-agent",
+            "Test help agent.",
+            "Answer application help questions."));
+
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IHelpAgentFactory) &&
+                descriptor.ImplementationType == typeof(HelpAgentFactory) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(HelpAgent) &&
+                descriptor.Lifetime == ServiceLifetime.Singleton);
+    }
+
+    [Fact]
+    public void HelpAgentRegistration_PreservesHostSuppliedFactory()
+    {
+        using FakeChatClient chatClient = new("ok");
+        AIAgent expectedAgent = new ChatClientAgent(chatClient);
+        RecordingHelpAgentFactory factory = new(expectedAgent);
+        ServiceCollection services = new();
+        services.AddSingleton<IHelpAgentFactory>(factory);
+        services.AddHelpAgent(new HelpAgentDefinition(
+            "test-help-agent",
+            "Test help agent.",
+            "Answer application help questions."));
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        HelpAgent helpAgent = provider.GetRequiredService<HelpAgent>();
+
+        Assert.Same(expectedAgent, helpAgent.Agent);
+        Assert.Equal(1, factory.CreateCallCount);
     }
 
     [Fact]
@@ -84,5 +126,17 @@ public sealed class AIServiceRegistrationTests
         public string Name => "fake";
 
         public IChatClient CreateChatClient(string model) => chatClient;
+    }
+
+    private sealed class RecordingHelpAgentFactory(AIAgent agent)
+        : IHelpAgentFactory
+    {
+        public int CreateCallCount { get; private set; }
+
+        public AIAgent Create()
+        {
+            CreateCallCount++;
+            return agent;
+        }
     }
 }

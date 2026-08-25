@@ -7,7 +7,8 @@ public sealed record RepositoryHelpExpectations(
     bool ShouldRefuse,
     IReadOnlyList<string> ExpectedFacts,
     IReadOnlyList<string> ExpectedCitations,
-    string? ExpectedInvocation);
+    string? ExpectedInvocation,
+    bool ShouldClarify = false);
 
 public sealed class RepositoryHelpEvaluationContext : EvaluationContext
 {

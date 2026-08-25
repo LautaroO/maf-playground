@@ -71,6 +71,16 @@ public static class RepositoryHelpEvalDataset
                     $"Refusal case '{item.Id}' cannot supply evidence or an expected command.");
             }
 
+            if (item.ShouldClarify &&
+                (item.ShouldRefuse ||
+                    item.ExpectedFacts.Count > 0 ||
+                    item.Evidence.Count > 0 ||
+                    item.ExpectedCommandPath is not null))
+            {
+                throw new InvalidDataException(
+                    $"Clarification case '{item.Id}' cannot also require facts, evidence, a command, or refusal.");
+            }
+
             if (item.Evidence.Any(evidence =>
                     string.IsNullOrWhiteSpace(evidence.SourceId) ||
                     string.IsNullOrWhiteSpace(evidence.Title) ||

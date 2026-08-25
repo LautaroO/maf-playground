@@ -104,6 +104,14 @@ multilingual `google:gemini-embedding-2` embeddings in the dedicated
 `repository-help-multilingual-v1` collection and therefore requires
 `GEMINI_API_KEY`; the selected chat model remains independent.
 
+The command is a concrete host for the reusable `HelpAgent` in
+`MafPlayground.AI`. This project supplies repository-specific instructions and a
+`System.CommandLine` implementation of `IHelpCapabilityCatalog`; another CLI,
+web UI, or product domain can supply its own definition and catalog. The catalog
+tools return help evidence only and never execute the described capability. The
+agent skips context tools for purely social turns and selects a knowledge or
+capability tool before answering application questions.
+
 ## Local testing surfaces
 
 - Interactive agent commands keep a MAF session across prompts.

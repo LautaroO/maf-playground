@@ -14,6 +14,8 @@ public sealed class RepositoryHelpDatasetTests
         Assert.Contains(cases, item => item.Category == "architecture");
         Assert.Contains(cases, item => item.Category == "ingestion");
         Assert.Contains(cases, item => item.Category == "unsupported");
+        Assert.Contains(cases, item => item.Category == "conversation");
+        Assert.Contains(cases, item => item.Category == "ambiguous" && item.ShouldClarify);
         Assert.Contains(cases, item => item.ExpectedLanguage == "es");
         Assert.Contains(cases, item => item.ExpectedLanguage == "en");
     }

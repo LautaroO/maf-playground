@@ -10,7 +10,8 @@ public sealed record RepositoryHelpEvalCase(
     IReadOnlyList<string> ExpectedFacts,
     string? ExpectedCommandPath,
     bool ShouldRefuse,
-    IReadOnlyList<RepositoryHelpEvalEvidence> Evidence)
+    IReadOnlyList<RepositoryHelpEvalEvidence> Evidence,
+    bool ShouldClarify = false)
 {
     public IReadOnlyList<KnowledgeSearchResult> ToSearchResults() => Evidence
         .Select(item => new KnowledgeSearchResult(

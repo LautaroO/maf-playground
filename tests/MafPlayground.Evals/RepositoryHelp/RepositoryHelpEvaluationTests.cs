@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using MafPlayground.AI;
-using MafPlayground.AI.Agents.RepositoryHelpAgent;
+using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.AI.Configuration;
 using MafPlayground.AI.Resilience;
 using MafPlayground.CLI;
@@ -36,8 +36,8 @@ public sealed class RepositoryHelpEvaluationTests(ITestOutputHelper output)
             "EVALUATION_JUDGE_MODEL",
             subjectModel);
         IConfiguration configuration = CreateProviderConfiguration();
-        IRepositoryCliCommandCatalog commandCatalog =
-            new SystemCommandLineRepositoryCliCommandCatalog(
+        IHelpCapabilityCatalog capabilityCatalog =
+            new SystemCommandLineHelpCapabilityCatalog(
                 Parser.CreateRootCommand());
         using ServiceProvider judgeServices = CreateJudgeServices(
             judgeModel,
@@ -61,10 +61,10 @@ public sealed class RepositoryHelpEvaluationTests(ITestOutputHelper output)
             using ServiceProvider subjectServices = CreateSubjectServices(
                 subjectModel,
                 configuration,
-                commandCatalog,
+                capabilityCatalog,
                 searchResults);
-            RepositoryHelpAgent agent = subjectServices
-                .GetRequiredService<RepositoryHelpAgent>();
+            HelpAgent agent = subjectServices
+                .GetRequiredService<HelpAgent>();
             Stopwatch subjectDuration = Stopwatch.StartNew();
             string response = (await agent.Agent.RunAsync(
                 evalCase.Question,
@@ -74,11 +74,11 @@ public sealed class RepositoryHelpEvaluationTests(ITestOutputHelper output)
             RepositoryHelpExpectations expectations = CreateExpectations(
                 evalCase,
                 searchResults,
-                commandCatalog);
+                capabilityCatalog);
             IReadOnlyList<EvaluationContext> contexts = CreateContexts(
                 expectations,
                 searchResults,
-                commandCatalog,
+                capabilityCatalog,
                 evalCase.ExpectedCommandPath);
             IEvaluator[] evaluators = CreateEvaluators(
                 contexts.OfType<GroundednessEvaluatorContext>().Any(),
@@ -166,7 +166,7 @@ public sealed class RepositoryHelpEvaluationTests(ITestOutputHelper output)
     private static IReadOnlyList<EvaluationContext> CreateContexts(
         RepositoryHelpExpectations expectations,
         IReadOnlyList<KnowledgeSearchResult> searchResults,
-        IRepositoryCliCommandCatalog commandCatalog,
+        IHelpCapabilityCatalog capabilityCatalog,
         string? commandPath)
     {
         List<EvaluationContext> contexts =
@@ -174,10 +174,9 @@ public sealed class RepositoryHelpEvaluationTests(ITestOutputHelper output)
         List<string> grounding = searchResults
             .Select(result => result.Text)
             .ToList();
-        if (commandPath is not null && commandCatalog.Find(commandPath) is { } command)
+        if (commandPath is not null && capabilityCatalog.Find(commandPath) is { } capability)
         {
-            grounding.Add(
-                $"Command `{command.CommandPath}` uses the exact invocation `{command.Invocation}`. {command.Description}");
+            grounding.Add(capability.EvidenceText);
         }
         if (grounding.Count > 0)
         {
@@ -195,39 +194,42 @@ public sealed class RepositoryHelpEvaluationTests(ITestOutputHelper output)
     private static RepositoryHelpExpectations CreateExpectations(
         RepositoryHelpEvalCase evalCase,
         IReadOnlyList<KnowledgeSearchResult> searchResults,
-        IRepositoryCliCommandCatalog commandCatalog)
+        IHelpCapabilityCatalog capabilityCatalog)
     {
-        RepositoryCliCommand? expectedCommand = evalCase.ExpectedCommandPath is null
+        HelpCapability? expectedCapability = evalCase.ExpectedCommandPath is null
             ? null
-            : commandCatalog.Find(evalCase.ExpectedCommandPath) ??
+            : capabilityCatalog.Find(evalCase.ExpectedCommandPath) ??
                 throw new InvalidDataException(
                     $"Dataset case '{evalCase.Id}' references unknown command path '{evalCase.ExpectedCommandPath}'.");
         string[] citations =
         [
             .. searchResults.Select(result => result.Citation),
-            .. expectedCommand is null ? [] : new[] { CliCitation },
+            .. expectedCapability is null ? [] : new[] { CliCitation },
         ];
         return new RepositoryHelpExpectations(
             evalCase.ShouldRefuse,
             evalCase.ExpectedFacts,
             citations.Distinct(StringComparer.Ordinal).ToArray(),
-            expectedCommand?.Invocation);
+            expectedCapability?.RequiredInlineCode.SingleOrDefault(),
+            evalCase.ShouldClarify);
     }
 
     private static ServiceProvider CreateSubjectServices(
         AIModelSelection selection,
         IConfiguration configuration,
-        IRepositoryCliCommandCatalog commandCatalog,
+        IHelpCapabilityCatalog capabilityCatalog,
         IReadOnlyList<KnowledgeSearchResult> searchResults)
     {
         ServiceCollection services = new();
         AddProviders(services, configuration);
         services
             .AddAICore(selection)
-            .AddRepositoryHelpAgent();
+            .AddHelpAgent(RepositoryHelpAgentConfiguration.Definition);
+        services.Configure<HelpAgentOptions>(options =>
+            options.KnowledgeBase = "RepositoryHelp");
         services.AddSingleton<IKnowledgeSearchFactory>(
             new FixtureKnowledgeSearchFactory(searchResults));
-        services.AddSingleton(commandCatalog);
+        services.AddSingleton(capabilityCatalog);
         return services.BuildServiceProvider();
     }
 

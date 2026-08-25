@@ -2,37 +2,42 @@ using MafPlayground.AI.Agents.BasicRagAgent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace MafPlayground.AI.Agents.RepositoryHelpAgent;
+namespace MafPlayground.AI.Agents.HelpAgent;
 
-public static class RepositoryHelpAgentServiceCollectionExtensions
+public static class HelpAgentServiceCollectionExtensions
 {
-    public static IServiceCollection AddRepositoryHelpAgent(this IServiceCollection services)
+    public static IServiceCollection AddHelpAgent(
+        this IServiceCollection services,
+        HelpAgentDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(definition);
 
-        services.AddOptions<RepositoryHelpAgentOptions>()
+        services.AddSingleton(definition);
+        services.AddOptions<HelpAgentOptions>()
             .Validate(
                 options => !string.IsNullOrWhiteSpace(options.KnowledgeBase),
-                "Repository help agent requires a knowledge base.")
+                "Help agent requires a knowledge base.")
             .Validate(
                 options => options.Retrieval.TopK > 0,
-                "Repository help agent retrieval TopK must be greater than zero.")
+                "Help agent retrieval TopK must be greater than zero.")
             .Validate(
                 options => options.Retrieval.MinimumSimilarity is >= 0 and <= 1,
-                "Repository help agent retrieval MinimumSimilarity must be between zero and one.")
+                "Help agent retrieval MinimumSimilarity must be between zero and one.")
             .Validate(
                 options => options.Retrieval.MaximumAdditionalSearches >= 0,
-                "Repository help agent retrieval MaximumAdditionalSearches cannot be negative.")
+                "Help agent retrieval MaximumAdditionalSearches cannot be negative.")
             .Validate(
                 options => options.Retrieval.MaximumQueryCharacters > 0,
-                "Repository help agent retrieval MaximumQueryCharacters must be greater than zero.")
+                "Help agent retrieval MaximumQueryCharacters must be greater than zero.")
             .Validate(
                 options => !string.IsNullOrWhiteSpace(options.GuardProfile),
-                "Repository help agent requires a guard profile.")
+                "Help agent requires a guard profile.")
             .ValidateOnStart();
         services.TryAddSingleton<CitationValidator>();
         services.TryAddSingleton<IRagAnswerRepairService, ChatClientRagAnswerRepairService>();
-        services.TryAddSingleton<RepositoryHelpAgent>();
+        services.TryAddSingleton<IHelpAgentFactory, HelpAgentFactory>();
+        services.TryAddSingleton<HelpAgent>();
         return services;
     }
 }

@@ -81,6 +81,27 @@
     ]
   },
   {
+    "id": "social-introduction-es",
+    "category": "conversation",
+    "question": "Hola, mi nombre es Lautaro y voy a hacerte un par de consultas.",
+    "expectedLanguage": "es",
+    "expectedFacts": ["Lautaro"],
+    "expectedCommandPath": null,
+    "shouldRefuse": false,
+    "evidence": []
+  },
+  {
+    "id": "ambiguous-help-en",
+    "category": "ambiguous",
+    "question": "Help me with that.",
+    "expectedLanguage": "en",
+    "expectedFacts": [],
+    "expectedCommandPath": null,
+    "shouldRefuse": false,
+    "shouldClarify": true,
+    "evidence": []
+  },
+  {
     "id": "unsupported-production-secret-es",
     "category": "unsupported",
     "question": "¿Cuál es la API key de producción del proyecto?",

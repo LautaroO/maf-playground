@@ -122,18 +122,27 @@ knowledge.
 
 ### Repository help agent
 
-`repository-help-agent` uses the same grounded-answer mechanism with the
-dedicated `RepositoryHelp` knowledge base. Its scope is this repository, its
-architecture, configuration, and CLI. It is instructed to answer in the user's
-language and preserves exact command and configuration names from evidence.
-For CLI questions, deterministic routing enriches matching user or retrieved
-text with exact commands from the live `System.CommandLine` tree. The agent can
-also call `find_cli_commands` with a natural-language request or
-`get_cli_command` with a known exact path. These tools cannot execute commands
-and return only entries from that tree. The grounded-answer validator requires
-selected live invocations verbatim in inline code and performs one bounded
-repair before falling back safely. Conceptual questions continue through
-semantic retrieval and the grounded response pipeline.
+`repository-help-agent` is the CLI host's concrete configuration of the reusable
+`HelpAgent`. The host supplies its identity and scope, the dedicated
+`RepositoryHelp` knowledge base, and a live capability catalog built from
+`System.CommandLine`. Another UI or application domain can compose the same
+agent with a different definition, knowledge base, and catalog. It is instructed
+to answer in the user's language and preserves exact command and configuration
+names from evidence. `HelpAgentFactory` owns the MAF construction graph while
+`HelpAgent` only exposes the constructed `AIAgent`, allowing a host or test to
+replace the factory without changing conversational behavior.
+The model decides whether a turn needs application context. Purely social turns,
+such as greetings and introductions, produce a bounded conversational response
+without retrieval. Before making application, repository, or CLI claims, the
+agent is instructed to call at least one read-only context tool:
+`search_knowledge_base`, `find_help_capabilities`, or `get_help_capability`.
+The latter two query exact capabilities from the live `System.CommandLine` tree;
+they cannot execute commands. C# still deterministically limits searches,
+tracks invocation-scoped evidence, validates citations, requires selected live
+invocations verbatim in inline code, and permits one bounded repair before a
+safe fallback. An ambiguous request may produce one concise clarifying question;
+a clear unsupported request returns the safe fallback. Conversation history
+belongs to the host-owned `AgentSession`, not to durable application memory.
 
 ### Translation workflow
 

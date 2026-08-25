@@ -1,6 +1,6 @@
 using System.CommandLine;
 using MafPlayground.AI;
-using MafPlayground.AI.Agents.RepositoryHelpAgent;
+using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.AI.Guards;
 using MafPlayground.AI.Resilience;
 using MafPlayground.CLI.Execution;
@@ -72,14 +72,14 @@ public static class RepositoryHelpAgentCommand
 
         builder.Services
             .AddAICore(chatSelection)
-            .AddRepositoryHelpAgent();
-        builder.Services.AddSingleton<IRepositoryCliCommandCatalog>(
-            new SystemCommandLineRepositoryCliCommandCatalog(Parser.CreateRootCommand()));
+            .AddHelpAgent(RepositoryHelpAgentConfiguration.Definition);
+        builder.Services.AddSingleton<IHelpCapabilityCatalog>(
+            new SystemCommandLineHelpCapabilityCatalog(Parser.CreateRootCommand()));
         builder.Services.Configure<AIGuardOptions>(
             builder.Configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
-        builder.Services.Configure<RepositoryHelpAgentOptions>(
+        builder.Services.Configure<HelpAgentOptions>(
             builder.Configuration.GetSection(
-                RepositoryHelpAgentOptions.ConfigurationSectionName));
+                RepositoryHelpAgentConfiguration.ConfigurationSectionName));
         builder.Services.Configure<AIResilienceOptions>(
             builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
@@ -101,8 +101,8 @@ public static class RepositoryHelpAgentCommand
             await host.StartAsync(cancellationToken);
             try
             {
-                RepositoryHelpAgent agent = host.Services
-                    .GetRequiredService<RepositoryHelpAgent>();
+                HelpAgent agent = host.Services
+                    .GetRequiredService<HelpAgent>();
                 InteractiveAgentConsole console = host.Services
                     .GetRequiredService<InteractiveAgentConsole>();
                 return await console.RunAsync(

@@ -50,7 +50,9 @@ internal sealed class ChatClientRagAnswerRepairService(IChatClient chatClient)
                         Every claim must reference one or more exact citationId values from the supplied evidence.
                         Every command, option, identifier, or other inline-code value must appear verbatim in the evidence cited by that claim.
                         When cited evidence has requiredInlineCode values, include every one verbatim in inline backticks in that claim.
-                        If the evidence is insufficient, set insufficientEvidence to true and return an empty claims collection.
+                        For a purely social turn, return a concise conversationalResponse, set insufficientEvidence to false, and return no claims. Never use conversationalResponse for application facts.
+                        Set clarifyingQuestion only when the user's intent is ambiguous and one concise question could make it answerable.
+                        If the question is clear but the evidence is insufficient, set insufficientEvidence to true, return an empty claims collection, and leave clarifyingQuestion null.
                         Do not call tools, retrieve more information, or invent citation IDs.
                         Return only the requested structured response.
                         """,

@@ -11,6 +11,7 @@ public sealed class RepositoryHelpContractEvaluator : IEvaluator
     public const string CitationCoverageMetricName = "RepositoryHelp.CitationCoverage";
     public const string CommandAccuracyMetricName = "RepositoryHelp.CommandAccuracy";
     public const string RefusalAccuracyMetricName = "RepositoryHelp.RefusalAccuracy";
+    public const string ClarificationAccuracyMetricName = "RepositoryHelp.ClarificationAccuracy";
 
     private static readonly string[] MetricNames =
     [
@@ -19,6 +20,7 @@ public sealed class RepositoryHelpContractEvaluator : IEvaluator
         CitationCoverageMetricName,
         CommandAccuracyMetricName,
         RefusalAccuracyMetricName,
+        ClarificationAccuracyMetricName,
     ];
 
     public IReadOnlyCollection<string> EvaluationMetricNames => MetricNames;
@@ -55,10 +57,13 @@ public sealed class RepositoryHelpContractEvaluator : IEvaluator
                 response.Trim(),
                 CitationValidator.NoEvidenceAnswer,
                 StringComparison.Ordinal);
+        bool clarificationAccurate = !expected.ShouldClarify ||
+            response.TrimEnd().EndsWith('?');
         bool passed = factCoverage == 1 &&
             citationCoverage == 1 &&
             commandAccurate &&
-            refusalAccurate;
+            refusalAccurate &&
+            clarificationAccurate;
 
         EvaluationMetric[] metrics =
         [
@@ -87,6 +92,12 @@ public sealed class RepositoryHelpContractEvaluator : IEvaluator
                 expected.ShouldRefuse
                     ? "The no-evidence response must match the deterministic refusal contract."
                     : "Supported cases must not return the no-evidence response."),
+            CreateBooleanMetric(
+                ClarificationAccuracyMetricName,
+                clarificationAccurate,
+                expected.ShouldClarify
+                    ? "An ambiguous request must produce a concise question."
+                    : "No clarifying question was required."),
         ];
         foreach (EvaluationMetric metric in metrics)
         {

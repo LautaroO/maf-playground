@@ -73,4 +73,28 @@ public sealed class RepositoryHelpContractEvaluatorTests
         Assert.True(result.Get<BooleanMetric>(
             RepositoryHelpContractEvaluator.RefusalAccuracyMetricName).Value);
     }
+
+    [Fact]
+    public async Task EvaluateAsync_RequiresQuestionForAmbiguousRequest()
+    {
+        RepositoryHelpContractEvaluator evaluator = new();
+        RepositoryHelpEvaluationContext context = new(new RepositoryHelpExpectations(
+            ShouldRefuse: false,
+            ExpectedFacts: [],
+            ExpectedCitations: [],
+            ExpectedInvocation: null,
+            ShouldClarify: true));
+
+        EvaluationResult result = await evaluator.EvaluateAsync(
+            [new ChatMessage(ChatRole.User, "Help me with that.")],
+            new ChatResponse(new ChatMessage(
+                ChatRole.Assistant,
+                "Which application area do you mean?")),
+            additionalContext: [context]);
+
+        Assert.True(result.Get<BooleanMetric>(
+            RepositoryHelpContractEvaluator.ClarificationAccuracyMetricName).Value);
+        Assert.True(result.Get<BooleanMetric>(
+            RepositoryHelpContractEvaluator.ContractPassMetricName).Value);
+    }
 }

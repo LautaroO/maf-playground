@@ -1,12 +1,12 @@
-using MafPlayground.AI.Agents.RepositoryHelpAgent;
+using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.CLI;
 using MafPlayground.CLI.Documentation;
 
 namespace MafPlayground.Tests.CLI;
 
-public sealed class SystemCommandLineRepositoryCliCommandCatalogTests
+public sealed class SystemCommandLineHelpCapabilityCatalogTests
 {
-    private readonly SystemCommandLineRepositoryCliCommandCatalog _catalog = new(
+    private readonly SystemCommandLineHelpCapabilityCatalog _catalog = new(
         Parser.CreateRootCommand());
 
     [Theory]
@@ -21,10 +21,14 @@ public sealed class SystemCommandLineRepositoryCliCommandCatalogTests
         string commandPath,
         string expectedInvocation)
     {
-        RepositoryCliCommand command = Assert.IsType<RepositoryCliCommand>(
+        HelpCapability capability = Assert.IsType<HelpCapability>(
             _catalog.Find(commandPath));
 
-        Assert.Equal(expectedInvocation, command.Invocation);
+        Assert.Contains(
+            $"`{expectedInvocation}`",
+            capability.EvidenceText,
+            StringComparison.Ordinal);
+        Assert.Equal(expectedInvocation, Assert.Single(capability.RequiredInlineCode));
     }
 
     [Fact]
@@ -41,10 +45,10 @@ public sealed class SystemCommandLineRepositoryCliCommandCatalogTests
         string request,
         string expectedCommandPath)
     {
-        RepositoryCliCommand command = Assert.Single(
+        HelpCapability capability = Assert.Single(
             _catalog.Search(request, maxResults: 1));
 
-        Assert.Equal(expectedCommandPath, command.CommandPath);
+        Assert.Equal(expectedCommandPath, capability.Id);
     }
 
     [Fact]

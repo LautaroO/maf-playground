@@ -105,7 +105,7 @@ public sealed class InteractiveAgentConsole
                 cancellationToken) ? 0 : 1;
         }
 
-        await _output.WriteLineAsync("Basic agent ready. Type /exit to quit.");
+        await _output.WriteLineAsync("Agent ready. Type /exit to quit.");
 
         while (!cancellationToken.IsCancellationRequested)
         {

@@ -12,7 +12,7 @@ endpoints, PostgreSQL, DevUI, OTLP exporters, or a specific hosting model.
 | --- | --- | --- |
 | `Agents/BasicAgent` | `AIAgent` | General conversation with trusted context and a deterministic date/time tool. |
 | `Agents/BasicRagAgent` | `AIAgent`, context, middleware | Grounded answers from semantic retrieval with citation enforcement. |
-| `Agents/RepositoryHelpAgent` | `AIAgent`, context, tools | Repository help with RAG, deterministic live-CLI evidence, and bounded command lookup tools. |
+| `Agents/HelpAgent` | `AIAgent`, context, tools | Reusable agentic-RAG help with conditional retrieval and a host-supplied capability catalog. |
 | `Workflows/Translation` | Native MAF workflow | Parallel translation, semantic validation, feedback retry, and fan-in. |
 | `Tools` | Deterministic functions | Reusable application capabilities exposed to agents. |
 | `Contracts` | Provider-neutral ports and data contracts | Shared interfaces for providers, decorators, pricing, and trusted user context. |
@@ -45,24 +45,43 @@ registration and configuration.
 ```csharp
 services
     .AddAICore(modelSelection)
-    .AddBasicRagAgent();
+    .AddHelpAgent(new HelpAgentDefinition(
+        "product-help-agent",
+        "Grounded help for this product.",
+        "Explain the product's supported capabilities."));
 ```
 
 `AddAICore` registers the provider-neutral client pipeline, resilience, guards,
 and shared contracts. A host then selects any combination of `AddBasicAgent`,
-`AddBasicRagAgent`, `AddRepositoryHelpAgent`, and `AddTranslationWorkflow`.
+`AddBasicRagAgent`, `AddHelpAgent`, and `AddTranslationWorkflow`.
 `AddAIServices` remains a convenience aggregate for the core sample features.
-Repository help is registered explicitly because its host must
-also provide an `IRepositoryCliCommandCatalog` adapter.
+Application help is registered explicitly because its host must also provide an
+`IHelpCapabilityCatalog` adapter and a domain-specific `HelpAgentDefinition`.
+`HelpAgent` itself is a thin holder for the resulting `AIAgent`.
+`IHelpAgentFactory`/`HelpAgentFactory` owns construction of the knowledge search,
+invocation-scoped evidence accessor, context providers, structured-response
+wrapper, guards, and telemetry. The default factory and resulting `HelpAgent`
+are singletons in DI; every separately created agent receives its own evidence
+accessor.
 
-`RepositoryCliContextProvider` keeps CLI routing outside the prompt: it adds
-high-confidence live command evidence for lexical matches in the request or
-retrieved CLI reference, and exposes `find_cli_commands` plus
-`get_cli_command` as bounded fallbacks. The host adapter owns the live command
-tree; the reusable AI project depends only on the catalog contract.
-Live-command evidence marks its exact invocation as required inline code. The
-shared grounded-answer validator rejects altered, omitted, or refused required
-evidence and permits one bounded repair before returning the safe fallback.
+`HelpCapabilityContextProvider` keeps capability lookup outside the prompt: it
+exposes `find_help_capabilities` plus `get_help_capability` as bounded, read-only
+tools. The model skips them for purely social turns and selects one when it needs
+application capabilities. `RagContextProvider` likewise exposes
+`search_knowledge_base` without performing an automatic initial retrieval for
+`HelpAgent`; `BasicRagAgent` retains automatic retrieval. A CLI, web host, or
+another domain owns the concrete catalog; the
+reusable AI project depends only on its provider-neutral contract. Catalog
+evidence can mark commands, routes, labels, or configuration values as required
+inline code. The shared validator rejects altered or omitted required evidence
+and permits one bounded repair before returning the safe fallback.
+
+`RagAnswerDraft.ClarifyingQuestion` allows one concise question when the user's
+intent is ambiguous. It is validated as claim-free and bounded. A clear but
+unsupported request still returns the deterministic insufficient-evidence
+fallback. `RagAnswerDraft.ConversationalResponse` is the separate, bounded,
+claim-free shape for greetings, introductions, acknowledgements, and farewells;
+it must not be used for application facts.
 
 Decorators have unique explicit order values. The effective call path is cost
 telemetry, content guard, budget reservation, timeout, and finally the provider;
@@ -83,6 +102,8 @@ colon, so provider model names can contain additional colons.
 ## State and failure model
 
 - Agent sessions own conversation history.
+- Hosts create and isolate one session per conversation; the help agent does not
+  turn conversation history into durable application memory.
 - Context providers construct invocation-scoped trusted or retrieved context.
 - Translation branch records are workflow execution state.
 - Durable documents and embeddings belong to `IKnowledgeStore`, not this project.

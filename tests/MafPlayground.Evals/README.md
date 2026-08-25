@@ -6,7 +6,7 @@ normal `dotnet test` runs never call a real model.
 
 ## Spike scope
 
-The first dataset evaluates `RepositoryHelpAgent`. The spike intentionally uses
+The first dataset evaluates the repository-configured `HelpAgent`. The spike intentionally uses
 fixed in-memory search results: this makes answer-generation regressions
 reproducible and prevents an embedding change, re-index, or PostgreSQL state from
 changing the test inputs.
@@ -15,7 +15,7 @@ changing the test inputs.
 versioned dataset
       |
       v
-fixture knowledge search ---> RepositoryHelpAgent ---> response
+fixture knowledge search ---> HelpAgent ---> response
       |                              |
       |                              v
       +---- retrieved context --> deterministic contracts
@@ -29,7 +29,7 @@ fixture knowledge search ---> RepositoryHelpAgent ---> response
 | --- | --- | --- |
 | `RepositoryHelpEvalDataset` | Deterministic code | Load and validate versioned cases. |
 | Fixture knowledge search | Retrieval test infrastructure | Supply stable ranked evidence without a database. |
-| `RepositoryHelpAgent` | MAF `AIAgent` | System under evaluation; production behavior is not duplicated. |
+| Repository-configured `HelpAgent` | MAF `AIAgent` | System under evaluation; production behavior is not duplicated. |
 | `RepositoryHelpContractEvaluator` | Deterministic `IEvaluator` | Gate exact facts, citations, live CLI commands, and refusal behavior. |
 | MEAI quality evaluators | Bounded LLM judges | Record relevance, groundedness, and retrieval quality. |
 | Disk reporting | Test infrastructure | Cache judge responses and persist scenario history. |
@@ -47,6 +47,8 @@ covers:
 - exact CLI commands in Spanish and English;
 - repository project boundaries;
 - document ingestion and EF Core persistence;
+- a social introduction that must remain conversational;
+- clarification of an ambiguous help request;
 - grounded refusal for unavailable production secrets.
 
 Expected commands are stored as command paths, not copied command strings. The
@@ -61,7 +63,8 @@ The deterministic evaluator reports:
 - `RepositoryHelp.FactCoverage`;
 - `RepositoryHelp.CitationCoverage`;
 - `RepositoryHelp.CommandAccuracy`;
-- `RepositoryHelp.RefusalAccuracy`.
+- `RepositoryHelp.RefusalAccuracy`;
+- `RepositoryHelp.ClarificationAccuracy`.
 
 Only `RepositoryHelp.ContractPass` gates the spike. The built-in `Relevance`,
 `Groundedness`, and `Retrieval` scores are recorded but do not gate yet. Their
@@ -126,7 +129,7 @@ The initial 2026-08-19 six-case run passed three deterministic contracts:
 It exposed three behavioral failures:
 
 1. Both CLI questions returned the no-evidence fallback because the model did
-   not call `get_cli_command`.
+   not call the capability lookup tool.
 2. The EF Core question returned only `No` plus a valid citation; it omitted the
    required explanation and literals.
 3. One `RetrievalEvaluator` call exceeded the production 60-second model-call
@@ -136,12 +139,14 @@ It exposed three behavioral failures:
 
 This baseline is retained here rather than hidden by weakening the dataset.
 
-After adding deterministic live-command routing and required-inline-code
-validation, both CLI cases pass their exact command, citation, and refusal
-contracts. The final validation run passed five of six deterministic contracts;
-only the independently variable EF Core explanation still missed one required
-fact. The CLI behavior no longer depends on the model deciding to call a tool or
-copying command syntax faithfully.
+That earlier spike then used deterministic live-command routing plus
+required-inline-code validation and passed five of six deterministic contracts;
+only the independently variable EF Core explanation missed one required fact.
+The current design intentionally returns context selection to the agent so
+social turns can avoid retrieval. Required-inline-code validation still prevents
+the model from altering a command after a capability tool returns it, while the
+unit suite verifies that application questions call a tool and social turns do
+not touch either context source.
 
 ## Gaps and next steps
 

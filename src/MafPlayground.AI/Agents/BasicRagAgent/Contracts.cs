@@ -2,7 +2,9 @@ namespace MafPlayground.AI.Agents.BasicRagAgent;
 
 public sealed record RagAnswerDraft(
     bool InsufficientEvidence,
-    IReadOnlyList<RagClaim>? Claims);
+    IReadOnlyList<RagClaim>? Claims,
+    string? ClarifyingQuestion = null,
+    string? ConversationalResponse = null);
 
 public sealed record RagClaim(
     string? Text,

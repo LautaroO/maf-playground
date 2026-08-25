@@ -164,4 +164,122 @@ public sealed class CitationValidatorTests
                 "cannot ignore application-required evidence",
                 StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Validate_AcceptsBoundedClaimFreeClarifyingQuestion()
+    {
+        RagAnswerDraft draft = new(
+            true,
+            [],
+            "Which part of the application do you want help with?");
+
+        RagAnswerValidationResult result = _validator.Validate(
+            draft,
+            new Dictionary<string, RagEvidence>());
+
+        Assert.True(result.IsValid);
+        Assert.Equal(
+            draft.ClarifyingQuestion,
+            _validator.Render(draft, new Dictionary<string, RagEvidence>()));
+    }
+
+    [Theory]
+    [InlineData(false, "Which area?")]
+    [InlineData(true, "")]
+    public void Validate_RejectsInvalidClarifyingQuestionShape(
+        bool insufficientEvidence,
+        string clarifyingQuestion)
+    {
+        RagAnswerDraft draft = new(
+            insufficientEvidence,
+            [new RagClaim("Unsupported claim.", [])],
+            clarifyingQuestion);
+
+        Assert.False(_validator.Validate(
+            draft,
+            new Dictionary<string, RagEvidence>()).IsValid);
+    }
+
+    [Fact]
+    public void Validate_RejectsOversizedClarifyingQuestion()
+    {
+        RagAnswerDraft draft = new(
+            true,
+            [],
+            new string('x', CitationValidator.MaximumClarifyingQuestionCharacters + 1));
+
+        Assert.False(_validator.Validate(
+            draft,
+            new Dictionary<string, RagEvidence>()).IsValid);
+    }
+
+    [Fact]
+    public void Validate_AcceptsBoundedClaimFreeConversationalResponse()
+    {
+        RagAnswerDraft draft = new(
+            false,
+            [],
+            ConversationalResponse: "¡Hola, Lautaro! ¿En qué puedo ayudarte?");
+
+        RagAnswerValidationResult result = _validator.Validate(
+            draft,
+            new Dictionary<string, RagEvidence>());
+
+        Assert.True(result.IsValid);
+        Assert.Equal(
+            draft.ConversationalResponse,
+            _validator.Render(draft, new Dictionary<string, RagEvidence>()));
+    }
+
+    [Fact]
+    public void Validate_RejectsConversationalResponseWithAnotherOutputShape()
+    {
+        RagAnswerDraft draft = new(
+            true,
+            [new RagClaim("Application fact.", ["e1"])],
+            "Which area?",
+            "Hello!");
+
+        RagAnswerValidationResult result = _validator.Validate(draft, _evidence);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, issue => issue.Contains("insufficient evidence", StringComparison.Ordinal));
+        Assert.Contains(result.Issues, issue => issue.Contains("clarifying question", StringComparison.Ordinal));
+        Assert.Contains(result.Issues, issue => issue.Contains("cannot contain claims", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_RejectsOversizedConversationalResponse()
+    {
+        RagAnswerDraft draft = new(
+            false,
+            [],
+            ConversationalResponse: new string(
+                'x',
+                CitationValidator.MaximumConversationalResponseCharacters + 1));
+
+        Assert.False(_validator.Validate(
+            draft,
+            new Dictionary<string, RagEvidence>()).IsValid);
+    }
+
+    [Fact]
+    public void Validate_RejectsConversationalResponseThatIgnoresRequiredEvidence()
+    {
+        Dictionary<string, RagEvidence> evidence = new()
+        {
+            ["e1"] = new(
+                "e1",
+                "Run `maf help`.",
+                "[CLI reference]",
+                1,
+                ["maf help"]),
+        };
+        RagAnswerDraft draft = new(
+            false,
+            [],
+            ConversationalResponse: "Hello!");
+
+        Assert.False(_validator.Validate(draft, evidence).IsValid);
+    }
 }
