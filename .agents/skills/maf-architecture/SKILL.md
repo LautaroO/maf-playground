@@ -1,91 +1,94 @@
 ---
 name: maf-architecture
-description: Design Microsoft Agent Framework architectures in C#/.NET. Use when deciding between deterministic code, tools, agents, workflows, middleware, memory, context providers, structured outputs, human approval, durable execution, hosting, CLI test harnesses, or DevUI. Do not use for generic .NET work unrelated to agentic systems.
+description: Design or refactor Microsoft Agent Framework architecture in C#/.NET. Use when deciding whether behavior should be deterministic C# code, a tool, an AIAgent/ChatClientAgent, a Workflow/Executor/edge, middleware, AgentSession state, a context provider/RAG component, checkpoint/durable state, or a provider adapter. Use before implementation when responsibilities or orchestration boundaries are unclear.
 ---
 
-# Microsoft Agent Framework architecture
+# MAF architecture
 
 ## Goal
 
-Produce an idiomatic, provider-neutral design before implementation.
+Choose the smallest idiomatic MAF design before writing code.
 
 ## Required process
 
-1. Read the repository root `AGENTS.md`.
-2. Inspect relevant `.csproj`, package versions, composition roots, existing agents, workflows, tools, and tests.
-3. Read `references/official-sources.md`.
-4. Classify requirements into:
-   - deterministic domain/application logic;
-   - tool/function;
-   - agent;
-   - workflow executor or edge;
-   - middleware;
-   - session state;
-   - context provider or retrieval;
-   - durable state/checkpoint;
-   - provider/cloud adapter.
-5. Prefer the least agentic design that satisfies the requirement.
+1. Read repository `AGENTS.md` and project-specific context.
+2. Inspect installed MAF package versions and existing abstractions.
+3. Detect whether MAF is the center of the repository or one module inside a larger application. If it is one module, read `../../references/application-boundaries.md`.
+4. Read `../../references/official-sources.md`, `../../references/provider-neutrality.md`, and `../../references/langgraph-crosswalk.md` as needed.
+5. Decompose the requirement into semantic decisions, deterministic rules, side effects, state, and external integrations.
+6. Classify each responsibility using the decision matrix below.
+7. Route implementation work to the specialized skill rather than inventing APIs here.
 
-## Decision guide
+## Decision matrix
 
-### Deterministic code
+### Deterministic service
 
-Use normal C# services for calculations, validation, permissions, transformations, rules, and routing that can be specified precisely.
+Choose ordinary C# when behavior is fully specifiable: validation, calculations, transformations, authorization, exact routing, persistence, retry policy, idempotency, or business rules.
 
 ### Tool
 
-Use a tool when an agent needs a bounded capability. Keep authorization and business invariants inside deterministic code.
+Choose a tool when an agent needs a bounded action or lookup. The agent may choose *whether* to call it, but the tool implementation and authorization are deterministic.
+
+Read `$maf-tools` before implementation.
 
 ### Agent
 
-Use an agent for open-ended language understanding, synthesis, planning, semantic classification, or bounded autonomous tool selection.
+Choose an agent for open-ended semantic work: language understanding, synthesis, semantic classification where rules are not exact, planning, conversation, or bounded autonomous tool selection.
+
+Read `$maf-agents` before implementation.
 
 ### Workflow
 
-Use a workflow when steps, ordering, branching, concurrency, retries, approvals, validation, or resumability must be explicit.
+Choose a workflow when the *process itself* must be controlled: required sequence, deterministic branches, parallelism, retries, approvals, pause/resume, checkpoints, aggregation, or explicit state transitions.
 
-A workflow executor is conceptually similar to a LangGraph node. Typed workflow edges are similar to explicit graph transitions, but should use MAF's native contracts rather than a custom graph engine.
+An executor is roughly the MAF equivalent of a LangGraph node, but avoid recreating a generic state-machine style if typed messages/edges express the flow.
 
-### Combined design
+Read `$maf-workflows` before implementation.
 
-Prefer a workflow containing small agent steps when the process is deterministic but individual steps require semantic judgment.
+### Middleware
 
-### Development and hosting surfaces
+Choose middleware only for cross-cutting interception. First decide whether interception belongs around an entire agent run, a tool/function invocation, or a model-client call.
 
-Keep agents, workflows, tools, and provider-neutral services independent of the executable used to exercise them.
+Read `$maf-middleware`.
 
-- Use a CLI harness for fast conversational or typed local testing.
-- Use DevUI for local interactive execution, entity discovery, workflow graph visualization, and trace inspection.
-- Use an OTLP backend such as Aspire Dashboard for host-wide logs, metrics, and distributed traces.
-- Treat `HarnessAgent` as an opinionated agent runtime and its terminal UX as a sample; neither is synonymous with DevUI.
-- Register a workflow natively when graph visualization matters. Expose it as an agent only when agent semantics are independently required.
-- Keep DevUI out of production composition unless the user explicitly requests and secures it.
+### Session / context / memory
 
-## Provider neutrality
+Use session state for conversation lifetime, context providers for supplied context/knowledge, and application persistence for durable product data. Do not call all of them “memory”.
 
-Provider neutrality is mandatory.
+Read `$maf-context-memory`.
 
-Treat Azure, Microsoft Foundry, Azure OpenAI, and OpenAI code in official documentation as adapter examples only.
+### Provider adapter
 
-Place provider-specific client creation, authentication, model options, response translation, tool registration details, and streaming translation in infrastructure or composition roots.
+If code depends on provider SDK/auth/options/capabilities, isolate it in infrastructure/composition root.
 
-Keep agents, workflow messages, executors, tools, validators, prompts, business services, persistence contracts, and core tests free from provider SDK types.
+Read `$maf-provider-integration`.
 
-The architecture must support changing provider through dependency registration and configuration without redesigning workflows or application logic.
+## Application boundary first
 
-When a required capability differs between providers, define a small capability-oriented interface and make the limitation explicit. Do not contaminate the entire architecture with the lowest-level provider SDK.
+If the solution contains ordinary domain/application projects plus an AI project, treat the AI project as an orchestration/integration boundary. MAF may call application use cases; it must not become the owner of domain rules. Read `../../references/application-boundaries.md`.
 
-## Deliverable
+## Strong defaults
 
-Return:
+- Workflow controls deterministic process; agents perform bounded semantic steps.
+- Typed messages before shared workflow state.
+- Structured model outputs before workflow branching.
+- Deterministic validators after model outputs.
+- Provider-specific construction at the composition root.
+- Human approval outside prompts for consequential actions.
+- No custom orchestration loop until MAF workflow features have been evaluated.
 
-1. current-state summary;
-2. proposed component diagram in text;
-3. responsibility table;
-4. MAF abstraction selected for each component;
+## Architecture deliverable
+
+Return a compact design containing:
+
+1. current behavior;
+2. component/responsibility breakdown;
+3. selected MAF abstraction for each responsibility;
+4. key data/state lifetimes;
 5. provider-specific boundaries;
-6. failure and state model;
+6. failure/retry/idempotency model;
 7. test strategy;
-8. production risks and open assumptions.
+8. risks/assumptions;
+9. which specialized MAF skills should be used next.
 
-Mark recommendations that are architectural judgment rather than explicit MAF requirements.
+Mark architectural judgment separately from documented MAF requirements.

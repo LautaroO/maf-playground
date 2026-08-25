@@ -1,89 +1,75 @@
 # MAF review checklist
 
-## Architecture
+## Agent
 
-- Is deterministic logic outside the agent?
-- Is open-ended semantic behavior bounded inside agents?
-- Are explicit multi-step flows represented as workflows?
-- Are large manual routers candidates for typed workflow edges?
-- Are MAF abstractions used instead of custom loops or state machines where appropriate?
+- Is semantic/open-ended behavior actually needed?
+- Is `AIAgent`/`ChatClientAgent` being used instead of a handwritten LLM loop where appropriate?
+- Are instructions focused rather than containing business rule engines?
+- Is session lifetime explicit?
+- Are structured outputs validated before use?
 
 ## Tools
 
-- Narrow responsibility and explicit contract?
-- Input validation?
-- Cancellation and timeout?
-- Authorization enforced in code?
-- Idempotency for side effects?
-- Minimum permissions?
-- Independently testable?
-- No unrestricted shell, database, filesystem, or HTTP access?
+- One bounded capability per tool?
+- Clear metadata/descriptions?
+- Deterministic validation and authorization?
+- Cancellation/timeouts?
+- No generic privileged client exposed to the model?
+- Side effects idempotent/approved where needed?
+- MCP server/tool trust reviewed?
 
-## Prompts and outputs
+## Workflow
 
-- Business rules outside prompts where possible?
-- Structured outputs for programmatic decisions?
-- Schema and semantic validation?
-- Bounded repair/retry behavior?
-- No execution from unvalidated free text?
+- Should this process be a workflow rather than an agent loop / giant if-else service?
+- Executors small and responsibility-focused?
+- Typed messages used?
+- Deterministic routing represented as edges/switches?
+- Fan-out/fan-in represented in graph when semantically important?
+- Shared state minimized and isolated?
+- Retry ownership clear?
+- HITL/external waits use request/response rather than polling?
+- Checkpoint/durability requirements explicit?
+- Workflow-as-agent used only for agent semantics?
 
-## State
+## Context / memory
 
-- Session, workflow, checkpoint, memory, context, and application data distinguished?
-- Durable source of truth outside chat history?
-- Serialization/versioning defined?
-- Duplicate execution after resume considered?
-- Retention and privacy defined?
+- Session state vs context provider vs workflow state vs durable app storage distinguished?
+- RAG strategy explicitly 2-step, agentic, or hybrid?
+- Retrieval independently testable?
+- Conversation history retention/compaction/privacy considered?
 
-## Provider/cloud isolation
+## Middleware
 
-- Is provider neutrality treated as a hard requirement?
-- Are Azure/OpenAI examples interpreted only as concrete adapters?
-- Are provider SDK types limited to infrastructure, adapters, and composition roots?
-- Are agents, workflow contracts, tools, validators, prompts, and persistence models provider-neutral?
-- Can the model provider change without rewriting application logic or workflows?
-- Are model names, deployment names, regions, API versions, endpoints, and credentials absent from core code?
-- Are provider-specific capabilities hidden behind small capability-oriented interfaces?
-- Are streaming, tool calling, structured outputs, usage metadata, and provider errors translated at the adapter boundary?
-- Are hosting and persistence replaceable?
-- Is configuration typed and are secrets externalized?
+- Correct layer: agent, function, or `IChatClient`?
+- Cross-cutting rather than hidden business flow?
+- Ordering/short-circuit behavior tested?
+
+## Provider
+
+- SDK types isolated?
+- Model/provider selection in composition root/config?
+- Capability differences explicit?
+- Provider swap avoids rewriting workflow/tool/domain contracts?
+- Provider exceptions translated at boundary?
 
 ## Reliability
 
 - Cancellation propagated?
-- Timeouts set?
-- Retries bounded and only for transient failures?
-- Non-idempotent operations protected?
-- Partial failure behavior explicit?
-- Human approval for consequential actions?
+- Timeouts defined?
+- Retry multiplication avoided?
+- Duplicate side effects prevented on retry/resume?
+- Invalid model/tool outputs fail closed?
 
 ## Observability
 
-- Structured logs and tracing?
-- Correlation/workflow IDs?
-- Agent/executor/tool durations?
-- Model usage where available?
-- Sensitive data redacted?
-- External OTLP export and DevUI trace delivery tested independently?
-
-## Local testing and DevUI
-
-- CLI harness, `HarnessAgent`, harness sample console, DevUI, and OTLP dashboard distinguished?
-- DevUI dependencies isolated to a development host or command?
-- Agents registered with `AddAIAgent` and graph workflows with `AddWorkflow`?
-- Workflow-as-agent registration present only for a real agent-shaped use case?
-- Each logical entity discovered exactly once at `/v1/entities`?
-- Agent/workflow name and description exposed from the entity itself?
-- Native workflow topology and executors visible?
-- Hosted input/output protocol tested through `/v1/responses`, not only a typed runner?
-- Structured workflow input behavior confirmed against the installed C# package rather than inferred from Python docs?
-- Agent, model, tool, workflow, and executor spans visible in intended destinations?
-- DevUI loopback-only, development-only, or explicitly authenticated and network-restricted?
+- Agent/model/tool/workflow boundaries traceable?
+- Sensitive payload capture controlled?
+- OTLP destination separate from DevUI trace assumptions?
 
 ## Testing
 
-- Domain, tools, validators, and executors tested without LLM?
-- Workflow branching and failures tested with fakes?
-- Provider adapters contract-tested?
-- Real-model tests opt-in?
-- Prompt injection and malformed outputs tested?
+- Default suite live-model-free?
+- Workflow branches/failure paths covered?
+- Tools/validators independently tested?
+- Provider integration tests isolated?
+- Real-model evaluation opt-in and purpose-specific?

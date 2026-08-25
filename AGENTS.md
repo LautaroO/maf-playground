@@ -363,10 +363,20 @@ dotnet test --no-build
 
 Use targeted project or test commands first when the full solution is expensive. Do not claim a command passed unless it was actually run successfully.
 
-## Skills
+## Skill routing
 
-Use the repository skills under `.agents/skills/` when the task matches them:
+Use the matching repository skill for MAF work:
 
-- `maf-architecture`: choose between deterministic code, tools, agents, workflows, middleware, context, memory, and durability.
-- `maf-implementation`: implement or modify MAF features in C#/.NET using installed package versions and official samples.
-- `maf-review`: review MAF architecture and code for idiomatic use, provider isolation, reliability, testability, and safety.
+- `$maf-architecture` — classify a requirement and choose the MAF abstraction.
+- `$maf-agents` — create or change agents, sessions, structured outputs, and agent composition.
+- `$maf-tools` — local function tools, agent-as-tool, MCP integration, approvals, and tool safety.
+- `$maf-workflows` — orchestrations, executors, typed messages, edges, state, checkpoints, HITL, and workflow-as-agent.
+- `$maf-context-memory` — sessions, history, context providers, RAG, storage, and compaction decisions.
+- `$maf-middleware` — agent, function, and chat-client middleware plus runtime context.
+- `$maf-provider-integration` — isolate and configure model-provider SDKs and capabilities.
+- `$maf-observability` — MAF/OpenTelemetry instrumentation and trace boundaries.
+- `$maf-devui` — DevUI registration, hosting, visualization, execution protocol, and trace/debug setup.
+- `$maf-testing` — deterministic tests, workflow tests, fakes, integration tests, and model evaluation.
+- `$maf-review` — architecture and code review across all of the above.
+
+A task may require more than one skill. Load only the relevant skills and references.

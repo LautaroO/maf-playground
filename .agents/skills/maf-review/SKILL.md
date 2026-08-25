@@ -1,66 +1,51 @@
 ---
 name: maf-review
-description: Review Microsoft Agent Framework C#/.NET code and architecture. Use for pull request review, refactoring advice, or checking whether agents, workflows, tools, middleware, memory, context, structured outputs, provider adapters, hosting, CLI harnesses, and DevUI are used idiomatically.
+description: Review a Microsoft Agent Framework C#/.NET implementation or repository for idiomatic use of AIAgent/ChatClientAgent, tools, workflows/executors/edges, context/session/memory, middleware, provider isolation, structured outputs, reliability, security, observability, testing, durability, and DevUI. Use for architecture/code reviews and identify manual mechanisms that MAF should own.
 ---
 
-# Microsoft Agent Framework review
+# MAF review
+
+Read `../../references/official-sources.md`, `../../references/langgraph-crosswalk.md`, and `references/review-checklist.md`. When MAF is one module inside a larger product, also read `../../references/application-boundaries.md`.
 
 ## Review method
 
-1. Read the repository root `AGENTS.md`.
-2. Inspect package versions and relevant tests.
-3. Read `references/review-checklist.md`.
-4. Compare implementation with current official docs and pinned official .NET samples.
-5. Separate confirmed framework guidance from architectural recommendations.
-6. For DevUI, compare the installed package XML/source with the current .NET implementation; do not assume Python-only documentation describes the C# preview.
+For each agentic component answer:
 
-## Required review structure
-
-### 1. What the implementation currently does
-
-Describe control flow, model calls, tools, state, persistence, and provider dependencies.
-
-### 2. MAF abstraction assessment
-
-For each relevant area, label it:
-
-- appropriate;
-- incomplete;
-- overly manual;
-- over-agentic;
-- provider-coupled;
-- unsafe;
-- unclear due to API/version uncertainty.
-
-### 3. Recommended restructuring
-
-Explain which logic belongs in:
-
-- deterministic services;
-- tools;
-- agents;
-- workflows/executors/edges;
-- middleware;
-- validators/structured outputs;
-- sessions/context/memory;
-- persistence/checkpointing;
-- provider adapters.
-
-### 4. Production concerns
-
-Review cancellation, timeout, retry, idempotency, partial failures, observability, data privacy, prompt injection, tool permissions, and approval boundaries.
-
-### 5. Test plan
-
-Specify deterministic unit tests, workflow tests with fakes, adapter contract tests, and optional real-model evaluations.
+1. What is it currently doing?
+2. Which MAF abstraction is it actually using?
+3. Is that abstraction the right owner of the responsibility?
+4. What has been implemented manually that MAF already models?
+5. What deterministic logic has leaked into prompts/agents?
+6. What provider-specific code has leaked upward?
+7. What state lifetime is being assumed?
+8. What happens on invalid model output, cancellation, retry, resume, duplicate delivery, or partial failure?
+9. Can the important behavior be tested without a live model?
 
 ## Severity
 
-Use:
+Prioritize findings:
 
-- Critical: security, data loss, unauthorized or irreversible execution.
-- High: likely reliability failure, invalid decisions, state corruption, severe coupling.
-- Medium: maintainability, testability, observability, or framework misuse.
-- Low: clarity, naming, duplication, minor idiomatic improvements.
+- **Bug / correctness** — behavior can fail or corrupt state/data.
+- **Architecture** — wrong abstraction/coupling creates meaningful maintenance risk.
+- **Reliability/security** — unsafe tool/model/state/retry behavior.
+- **MAF idiom** — manual mechanism should use a framework primitive.
+- **Quality** — naming, duplication, test ergonomics, observability.
 
-Do not focus on formatting already enforced by analyzers.
+Do not inflate stylistic preferences into architecture bugs.
+
+## Required output
+
+Keep the review actionable:
+
+- current architecture summary;
+- bugs;
+- misuse/missed MAF abstractions;
+- recommended restructuring;
+- provider portability issues;
+- production risks;
+- test gaps;
+- top 3 changes by impact.
+
+## Additional boundary smell for mixed solutions
+
+When MAF is only one project/module, explicitly check whether removing the AI module would also remove domain rules, ordinary use cases, authorization policy, or core persistence behavior. If yes, recommend moving those responsibilities back to application/domain code and keeping MAF as orchestration/adaptation.
