@@ -9,6 +9,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.ML.Tokenizers;
 using Xunit;
 
 namespace MafPlayground.IntegrationTests;
@@ -47,7 +48,7 @@ public sealed class GoogleGenAIProviderContractTests
     }
 
     [GoogleGenAIContractFact]
-    public async Task Embeddings_UseRemoteTokenCountsAndReturnConfiguredDimensions()
+    public async Task Embeddings_UseSemanticChunkingAndReturnConfiguredDimensions()
     {
         IConfiguration configuration = new ConfigurationBuilder().Build();
         ServiceCollection services = new();
@@ -58,34 +59,35 @@ public sealed class GoogleGenAIProviderContractTests
             .Single(candidate => candidate.Name == "google");
         using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(2));
 
-        EmbeddingTokenizer tokenizer = await provider.CreateTokenizerAsync(
-            "gemini-embedding-2",
-            timeout.Token);
         IngestionDocument ingestionDocument = new("google-embedding-contract");
         IngestionDocumentSection section = new();
-        section.Elements.Add(new IngestionDocumentParagraph(string.Join(
-            ' ',
-            Enumerable.Repeat("retrieval evidence must remain grounded", 20))));
+        section.Elements.Add(new IngestionDocumentParagraph(
+            ".NET is a cross-platform developer platform."));
+        section.Elements.Add(new IngestionDocumentParagraph(
+            "C# applications run on the .NET runtime."));
+        section.Elements.Add(new IngestionDocumentParagraph(
+            "Zeus is a deity from ancient Greek mythology."));
         ingestionDocument.Sections.Add(section);
         KnowledgeIngestionSettings settings = new(1)
         {
-            MaxTokensPerChunk = 24,
-            OverlapTokens = 4,
+            ChunkingStrategy = DocumentChunkingStrategy.SemanticSimilarity,
+            MaxTokensPerChunk = 64,
+            SemanticSimilarityThresholdPercentile = 50,
         };
-        IReadOnlyList<DocumentChunk> chunks = await
-            new MicrosoftDataIngestionDocumentChunker().ChunkAsync(
-                new ExtractedDocument(
-                    "Google embedding contract",
-                    ingestionDocument,
-                    []),
-                settings,
-                tokenizer,
-                timeout.Token);
         using IEmbeddingGenerator<string, Embedding<float>> documentGenerator =
             provider.Create(
                 "gemini-embedding-2",
                 768,
                 EmbeddingPurpose.Document);
+        MicrosoftDataIngestionDocumentChunker chunker = new();
+        IReadOnlyList<DocumentChunk> chunks = await chunker.ChunkAsync(
+            new ExtractedDocument(
+                "Google embedding contract",
+                ingestionDocument,
+                []),
+            settings,
+            documentGenerator,
+            timeout.Token);
         using IEmbeddingGenerator<string, Embedding<float>> queryGenerator =
             provider.Create(
                 "gemini-embedding-2",
@@ -101,15 +103,15 @@ public sealed class GoogleGenAIProviderContractTests
                 "grounded retrieval evidence",
                 cancellationToken: timeout.Token);
 
-        Assert.StartsWith(
-            "google:gemini-embedding-2:remote-count-tokens:v1",
-            tokenizer.Identity,
-            StringComparison.Ordinal);
-        Assert.True(chunks.Count > 1);
+        Assert.Contains(
+            "semanticsimilarity:tokenizer:cl100k_base:1.0.1",
+            chunker.GetIdentity(settings));
+        Assert.NotEmpty(chunks);
+        Tokenizer tokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
         foreach (DocumentChunk chunk in chunks)
         {
             Assert.InRange(
-                await tokenizer.CountTokensAsync(chunk.Text, timeout.Token),
+                tokenizer.CountTokens(chunk.Text, considerNormalization: false),
                 1,
                 settings.MaxTokensPerChunk);
         }

@@ -29,11 +29,26 @@ public sealed class KnowledgeBaseProfilesTests
     }
 
     [Fact]
-    public void Catalog_RejectsInvalidTokenOverlap()
+    public void Catalog_RejectsInvalidSemanticSimilarityThreshold()
     {
         KnowledgeBaseOptions definition = CreateKnowledgeBase("help", "fake:model");
-        definition.Ingestion.MaxTokensPerChunk = 100;
-        definition.Ingestion.OverlapTokens = 100;
+        definition.Ingestion.SemanticSimilarityThresholdPercentile = 101;
+
+        Assert.Throws<KnowledgeBaseConfigurationException>(() =>
+            new KnowledgeBaseCatalog(new KnowledgeBaseCatalogOptions
+            {
+                KnowledgeBases = new Dictionary<string, KnowledgeBaseOptions>
+                {
+                    ["Help"] = definition,
+                },
+            }));
+    }
+
+    [Fact]
+    public void Catalog_RejectsNonFiniteSemanticSimilarityThreshold()
+    {
+        KnowledgeBaseOptions definition = CreateKnowledgeBase("help", "fake:model");
+        definition.Ingestion.SemanticSimilarityThresholdPercentile = float.NaN;
 
         Assert.Throws<KnowledgeBaseConfigurationException>(() =>
             new KnowledgeBaseCatalog(new KnowledgeBaseCatalogOptions
@@ -105,7 +120,6 @@ public sealed class KnowledgeBaseProfilesTests
             Assert.Equal(3, created.Dimensions);
             Assert.Equal(EmbeddingPurpose.Query, created.Purpose);
         });
-        Assert.Empty(embeddingProvider.CreatedTokenizerModels);
         Assert.Collection(
             store.Requests,
             request =>
@@ -184,9 +198,8 @@ public sealed class KnowledgeBaseProfilesTests
             Assert.Equal("legal-collection", store.ReplacedDocument.Collection);
             Assert.Equal("fake:legal-model/3/raw-v1", store.ReplacedDocument.EmbeddingIdentity);
             Assert.Contains(
-                "document-tokens-per-section:fake:cl100k_base:max:400:overlap:40",
+                "section:tokenizer:cl100k_base:1.0.1:max:400:threshold:none",
                 store.ReplacedDocument.ChunkingIdentity);
-            Assert.Contains("legal-model", embeddingProvider.CreatedTokenizerModels);
             Assert.Contains(
                 embeddingProvider.CreatedGenerators,
                 created => created is
@@ -434,8 +447,6 @@ public sealed class KnowledgeBaseProfilesTests
 
         public List<CreatedEmbeddingGenerator> CreatedGenerators { get; } = [];
 
-        public List<string> CreatedTokenizerModels { get; } = [];
-
         public IEmbeddingGenerator<string, Embedding<float>> Create(
             string model,
             int dimensions,
@@ -446,18 +457,6 @@ public sealed class KnowledgeBaseProfilesTests
             return new FakeEmbeddingGenerator();
         }
 
-        public ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
-            string model,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            CreatedTokenizerModels.Add(model);
-            return ValueTask.FromResult<EmbeddingTokenizer>(
-                new LocalEmbeddingTokenizer(
-                    Microsoft.ML.Tokenizers.TiktokenTokenizer.CreateForEncoding(
-                        "cl100k_base"),
-                    "fake:cl100k_base"));
-        }
     }
 
     private sealed record CreatedEmbeddingGenerator(

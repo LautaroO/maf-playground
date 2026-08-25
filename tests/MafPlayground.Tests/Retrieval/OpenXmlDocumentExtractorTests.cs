@@ -2,8 +2,8 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using MafPlayground.Retrieval;
 using MafPlayground.Retrieval.Documents;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DataIngestion;
-using Microsoft.ML.Tokenizers;
 using A = DocumentFormat.OpenXml.Drawing;
 using P = DocumentFormat.OpenXml.Presentation;
 using W = DocumentFormat.OpenXml.Wordprocessing;
@@ -51,7 +51,7 @@ public sealed class OpenXmlDocumentExtractorTests
                 new MicrosoftDataIngestionDocumentChunker().ChunkAsync(
                     document,
                     CreateChunkingSettings(),
-                    CreateTokenizer());
+                    new NoOpEmbeddingGenerator());
             Assert.Contains(chunks, chunk => chunk.SectionName == "Security");
             Assert.Contains(chunks, chunk => chunk.SectionName == "Systems");
         }
@@ -87,7 +87,7 @@ public sealed class OpenXmlDocumentExtractorTests
                 new MicrosoftDataIngestionDocumentChunker().ChunkAsync(
                     document,
                     CreateChunkingSettings(),
-                    CreateTokenizer());
+                    new NoOpEmbeddingGenerator());
             Assert.Contains(chunks, chunk =>
                 chunk.PageNumber == 1 && chunk.SectionName == "Architecture");
             Assert.Contains(chunks, chunk =>
@@ -151,13 +151,25 @@ public sealed class OpenXmlDocumentExtractorTests
         new(1)
         {
             MaxTokensPerChunk = 100,
-            OverlapTokens = 10,
         };
 
-    private static EmbeddingTokenizer CreateTokenizer() =>
-        new LocalEmbeddingTokenizer(
-            TiktokenTokenizer.CreateForEncoding("cl100k_base"),
-            "test:cl100k_base");
+    private sealed class NoOpEmbeddingGenerator
+        : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values,
+            EmbeddingGenerationOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "Section chunking must not generate semantic embeddings.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null) =>
+            serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
+
+        public void Dispose()
+        {
+        }
+    }
 
     private static void CreatePptx(string path)
     {

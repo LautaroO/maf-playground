@@ -2,9 +2,10 @@
 
 ## Status
 
-- Branch: `spike-openxml-document-readers`
-- Base: `main` at `6ab35500155d84c9c12b26a57f245e57689398bf`
-- Scope: PDF, DOCX, PPTX, and Markdown reading plus token-aware chunking
+- The original extraction spike was merged into `main`.
+- This follow-up implements configurable Microsoft section, header, and
+  semantic-similarity chunking.
+- Scope: PDF, DOCX, PPTX, and Markdown reading plus structure-aware chunking.
 - Explicit non-goal: replacing EF Core, PostgreSQL, pgvector, or `IKnowledgeStore`
 
 ## Decision summary
@@ -30,7 +31,7 @@ flowchart LR
     Source[PDF, DOCX, PPTX or Markdown] --> Reader[IngestionDocumentReader implementation]
     Reader --> Document[Structured IngestionDocument]
     Document --> Coordinator[Existing ingestion coordinator]
-    Coordinator --> Chunker[Repository token splitter per source section]
+    Coordinator --> Chunker[Microsoft section, header or semantic chunker per source section]
     Chunker --> ExistingChunks[DocumentChunk]
     ExistingChunks --> Embeddings[IEmbeddingGenerator]
     Embeddings --> Store[Existing IKnowledgeStore]
@@ -52,17 +53,14 @@ The spike pins packages compatible with the repository's
 - `Microsoft.Extensions.DataIngestion.Abstractions`
   `10.7.0-preview.1.26309.5` (transitive)
 - `Microsoft.Extensions.DataIngestion.Markdig` `10.7.0-preview.1.26309.5`
-- `Microsoft.ML.Tokenizers` `2.0.0` (retrieval contract and BERT implementation)
-- `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1` (tests only)
+- `Microsoft.ML.Tokenizers` `2.0.0` (transitive tokenizer abstraction)
+- `Microsoft.ML.Tokenizers.Data.Cl100kBase` `1.0.1` (local chunk-size policy)
 - `DocumentFormat.OpenXml` `3.5.1`
 
-The retrieval core depends only on the async tokenizer abstraction. Each
-embedding provider supplies local or remote token-boundary operations and a
-stable identity that participates in the chunking identity. For supported
-`nomic-embed-text` aliases,
-the Ollama adapter requests verbose `/api/show` metadata, builds a BERT tokenizer
-from the installed GGUF vocabulary, and includes the vocabulary hash in that
-identity. Unknown Ollama models fail explicitly instead of using an approximation.
+The retrieval ingestion boundary owns one local `cl100k_base` tokenizer. It is
+an application chunk-size policy, not a claim that every embedding provider uses
+the same vocabulary. Embedding providers remain responsible only for producing
+provider-versioned vectors and do not expose tokenizers to the retrieval core.
 
 ### Reading
 
@@ -110,12 +108,13 @@ previous character-based implementation and its configuration were removed.
 The Microsoft adapter:
 
 1. receives the reader's `IngestionDocument` without flattening it;
-2. performs normalized token splitting independently per original section;
+2. applies the configured `Section`, `Header`, or `SemanticSimilarity` Microsoft
+   chunker independently per original section;
 3. maps chunks back to the existing `DocumentChunk` contract;
 4. preserves page number and header context from the source;
-5. carries provider tokenizer identity, size, overlap, strategy, and package version in the
-   chunking identity so existing documents are reindexed when the strategy
-   changes.
+5. carries local tokenizer identity, size, strategy, semantic threshold, and
+   package version in the chunking identity so existing documents are reindexed
+   when the policy changes.
 
 Chunk content is not trimmed after tokenization. Leading whitespace can affect
 token boundaries; normalizing it after chunk creation can make a chunk count
@@ -140,7 +139,9 @@ not adopted.
 
 ### Confirmed benefits
 
-- Chunk size and overlap are expressed in tokens instead of characters.
+- Chunk size is expressed in locally measured tokens instead of characters.
+- Section, heading hierarchy, or adjacent-element semantic similarity can drive
+  chunk boundaries without changing persistence.
 - Markdown becomes a supported source through an official reader.
 - DOCX and PPTX become supported through native .NET readers without an external
   conversion process.
@@ -155,12 +156,13 @@ not adopted.
    `Microsoft.Extensions.DataIngestion.Abstractions`, are preview packages. The
    abstractions are the intended implementation boundary, but the current
    package version does not yet provide a GA compatibility guarantee.
-2. Tokenizer metadata must be available from the installed Ollama model through
-   verbose `/api/show`; ingestion fails clearly when it is absent.
-3. The preview `DocumentTokenChunker` forces token index calculations without
-   normalization, which violates chunk limits for BERT/WordPiece tokenizers.
-   The repository adapter therefore owns the small splitting loop while retaining
-   the DataIngestion document model and provider-supplied tokenizer.
+2. `cl100k_base` is an approximation for Gemini, Ollama, and other non-OpenAI
+   providers. The configured maximum is a stable local segmentation budget, not
+   an exact provider input-token measurement.
+3. The semantic-similarity strategy embeds every extracted element before final
+   chunks are embedded. This improves boundary selection but adds provider calls,
+   latency, and quota use; the current preview implementation does not batch
+   those element embeddings itself.
 4. Processing one source section at a time preserves pages but prevents chunks
    from crossing page boundaries. This is desirable for citations, but should be
    evaluated for documents whose paragraphs span pages.
@@ -168,9 +170,9 @@ not adopted.
    metadata. The PDF reader currently produces only page sections and paragraphs;
    Office readers produce headings, paragraphs, and tables but do not interpret
    images or charts.
-6. The Ollama adapter intentionally supports only known `nomic-embed-text`
-   aliases. Adding another embedding model requires an explicit tokenizer
-   implementation and contract tests.
+6. The Microsoft element chunkers do not currently apply overlap. Reintroducing
+   overlap requires a separate, evaluated strategy rather than a configuration
+   value that has no effect.
 7. `IngestionPipeline<T>` was not adopted because its writer boundary would
    bypass or duplicate the repository's document-level hash, metadata,
    idempotency, and atomic EF Core replacement semantics.
@@ -184,7 +186,8 @@ not adopted.
   token count, latency, and index size.
 - Include tables, long pages, headings, repeated text, scanned PDFs, and content
   spanning page boundaries.
-- Tune `MaxTokensPerChunk` and `OverlapTokens` based on those results.
+- Tune `MaxTokensPerChunk`, chunking strategy, and semantic threshold based on
+  those results.
 
 Exit criterion: token chunking improves retrieval quality or cost without
 regressing citation fidelity.
@@ -231,26 +234,18 @@ interrupted batch can be safely retried without duplicate state.
 
 ## Test plan
 
-The spike adds deterministic tests for:
+Deterministic coverage includes:
 
-- token limits and overlap behavior;
+- local token limits and section, header, and semantic boundaries;
 - page and section preservation;
 - Markdown header/content extraction;
 - DOCX heading, paragraph, list, and table extraction;
 - PPTX slide, title, and body extraction;
-- DOCX section and PPTX slide metadata surviving token chunking;
+- DOCX section and PPTX slide metadata surviving chunking;
 - chunking identity versioning.
 
-Verification completed on the spike branch:
-
-- `dotnet format MafPlayground.slnx --no-restore --verify-no-changes`
-- `dotnet build MafPlayground.slnx --no-restore -m:1 /nodeReuse:false`
-  completed with zero warnings and zero errors;
-- `dotnet test MafPlayground.slnx --no-build --no-restore -m:1
-  /nodeReuse:false` passed 158 unit tests; nine opt-in integration tests were
-  skipped by their existing configuration.
-- The live `NomicTokenizer_ChunksAndEmbedsWithInstalledModelMetadata` contract
-  test passed against Ollama with the installed `nomic-embed-text` model.
+The current verification results should be taken from the implementation
+handoff or CI run rather than preserving branch-specific test counts here.
 
 Before production adoption, add:
 
@@ -264,7 +259,8 @@ Before production adoption, add:
 
 ## Recommendation
 
-Do not merge this spike as a transparent dependency replacement. Use it as the
-baseline for a measured Phase 1 evaluation. If the evaluation succeeds, retain
-the adapter boundary and EF Core store, then harden configuration, observability,
-and batch behavior before enabling the new chunker by default in production.
+Keep the Microsoft chunkers isolated behind `IDocumentChunker`, retain the EF
+Core store, and evaluate `Section`, `Header`, and `SemanticSimilarity` against a
+labeled corpus before treating one strategy as a production default. The
+repository-help knowledge base is the first bounded use of semantic chunking;
+broader rollout still depends on retrieval-quality, latency, and cost results.

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.AI;
+
 namespace MafPlayground.Retrieval.Documents;
 
 public interface IDocumentChunker
@@ -5,12 +7,10 @@ public interface IDocumentChunker
     ValueTask<IReadOnlyList<DocumentChunk>> ChunkAsync(
         ExtractedDocument document,
         KnowledgeIngestionSettings options,
-        EmbeddingTokenizer tokenizer,
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         CancellationToken cancellationToken = default);
 
-    string GetIdentity(
-        KnowledgeIngestionSettings options,
-        EmbeddingTokenizer tokenizer);
+    string GetIdentity(KnowledgeIngestionSettings options);
 }
 
 public sealed record DocumentChunk(

@@ -61,7 +61,7 @@ public sealed class OllamaProviderContractTests
     }
 
     [OllamaContractFact]
-    public async Task NomicTokenizer_ChunksAndEmbedsWithInstalledModelMetadata()
+    public async Task NomicEmbeddings_AcceptLocallyChunkedContent()
     {
         ServiceCollection serviceCollection = new();
         serviceCollection.AddOllamaProvider(CreateConfiguration());
@@ -71,9 +71,6 @@ public sealed class OllamaProviderContractTests
             .Single(candidate => candidate.Name == "ollama");
         using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(2));
 
-        EmbeddingTokenizer tokenizer = await provider.CreateTokenizerAsync(
-            "nomic-embed-text",
-            timeout.Token);
         IngestionDocument ingestionDocument = new("ollama-contract");
         IngestionDocumentSection section = new();
         section.Elements.Add(new IngestionDocumentParagraph(string.Join(
@@ -84,34 +81,31 @@ public sealed class OllamaProviderContractTests
         KnowledgeIngestionSettings settings = new(1)
         {
             MaxTokensPerChunk = 24,
-            OverlapTokens = 4,
         };
-
-        IReadOnlyList<DocumentChunk> chunks = await
-            new MicrosoftDataIngestionDocumentChunker().ChunkAsync(
-                document,
-                settings,
-                tokenizer,
-                timeout.Token);
         using IEmbeddingGenerator<string, Embedding<float>> generator =
             provider.Create(
                 "nomic-embed-text",
                 768,
                 EmbeddingPurpose.Document);
+        IReadOnlyList<DocumentChunk> chunks = await
+            new MicrosoftDataIngestionDocumentChunker().ChunkAsync(
+                document,
+                settings,
+                generator,
+                timeout.Token);
         GeneratedEmbeddings<Embedding<float>> embeddings =
             await generator.GenerateAsync(
                 chunks.Select(chunk => chunk.Text),
                 cancellationToken: timeout.Token);
 
-        Assert.StartsWith(
-            "ollama:nomic-embed-text:bert:vocab-sha256:",
-            tokenizer.Identity,
-            StringComparison.Ordinal);
         Assert.True(chunks.Count > 1);
+        Microsoft.ML.Tokenizers.Tokenizer tokenizer =
+            Microsoft.ML.Tokenizers.TiktokenTokenizer.CreateForEncoding(
+                "cl100k_base");
         foreach (DocumentChunk chunk in chunks)
         {
             Assert.InRange(
-                await tokenizer.CountTokensAsync(chunk.Text, timeout.Token),
+                tokenizer.CountTokens(chunk.Text, considerNormalization: false),
                 1,
                 settings.MaxTokensPerChunk);
         }

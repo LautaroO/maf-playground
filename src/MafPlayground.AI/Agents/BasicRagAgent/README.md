@@ -98,8 +98,9 @@ but it cannot write to the knowledge base.
 3. `DocumentExtractorRegistry` selects a structured extractor by extension.
 4. Extractors preserve source structure and emit warnings for unsupported
    content such as scanned PDF pages or Office images.
-5. `MicrosoftDataIngestionDocumentChunker` creates token-bounded chunks per
-   source section and retains overlap plus page and section metadata.
+5. `MicrosoftDataIngestionDocumentChunker` applies the configured section,
+   header, or semantic-similarity strategy independently per source section.
+   It uses a local `cl100k_base` budget and retains page and section metadata.
 6. Chunks are embedded in batches and every vector dimension is validated.
 7. The store replaces the document and chunks in one transaction. It skips work
    when content hash, embedding identity, chunking identity, and normalized
@@ -201,8 +202,9 @@ chat model.
         "EmbeddingModel": "ollama:nomic-embed-text",
         "EmbeddingDimensions": 768,
         "Ingestion": {
+          "ChunkingStrategy": "Section",
           "MaxTokensPerChunk": 400,
-          "OverlapTokens": 40,
+          "SemanticSimilarityThresholdPercentile": 95,
           "EmbeddingBatchSize": 16,
           "MaxFileBytes": 20971520,
           "MaxDocumentSections": 1000,

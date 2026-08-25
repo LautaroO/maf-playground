@@ -29,18 +29,13 @@ ollama:nomic-embed-text
 Chat and embedding selection are independent. Both clients use the same
 provider-owned endpoint unless another provider adapter is selected.
 
-## Embedding tokenizer support
+## Embedding chunking
 
-Token-aware ingestion supports `nomic-embed-text`, `nomic-embed-text:latest`,
-`nomic-embed-text:v1.5`, and `nomic-embed-text:137m-v1.5-fp16`. The adapter asks
-Ollama for verbose model metadata, constructs a BERT tokenizer from the
-installed GGUF vocabulary, and hashes that vocabulary into the chunking
-identity. It does not use an OpenAI tokenizer approximation.
-
-Other Ollama embedding models fail with
-`EmbeddingTokenizerNotSupportedException` before document extraction. Supporting
-another model requires an explicit tokenizer implementation and tests; there is
-no generic fallback.
+Chunk sizing is owned by `MafPlayground.Retrieval` and measured locally with
+`cl100k_base`; this adapter no longer reads tokenizer metadata from Ollama.
+Ollama supplies provider-neutral `IEmbeddingGenerator` instances for document,
+query, and optional semantic-similarity chunking. Consequently, chunk counts are
+an application policy rather than exact Ollama model token counts.
 
 ## Configuration
 

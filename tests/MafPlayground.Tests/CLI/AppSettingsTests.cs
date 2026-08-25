@@ -96,6 +96,13 @@ public sealed class AppSettingsTests
             configuration["AI:KnowledgeBases:RepositoryHelp:EmbeddingModel"]);
         Assert.Equal(768, configuration.GetValue<int>(
             "AI:KnowledgeBases:RepositoryHelp:EmbeddingDimensions"));
+        Assert.Equal(
+            "SemanticSimilarity",
+            configuration[
+                "AI:KnowledgeBases:RepositoryHelp:Ingestion:ChunkingStrategy"]);
+        Assert.Equal(95, configuration.GetValue<float>(
+            "AI:KnowledgeBases:RepositoryHelp:Ingestion:" +
+            "SemanticSimilarityThresholdPercentile"));
     }
 
     [Fact]
@@ -120,5 +127,8 @@ public sealed class AppSettingsTests
             configuration["AI:KnowledgeBases:Help:EmbeddingModel"]);
         Assert.Equal(768, configuration.GetValue<int>(
             "AI:KnowledgeBases:Help:EmbeddingDimensions"));
+        Assert.Equal(
+            "Section",
+            configuration["AI:KnowledgeBases:Help:Ingestion:ChunkingStrategy"]);
     }
 }

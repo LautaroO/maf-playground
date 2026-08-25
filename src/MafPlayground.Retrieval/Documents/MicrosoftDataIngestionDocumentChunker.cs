@@ -1,109 +1,103 @@
+using System.Globalization;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DataIngestion;
+using Microsoft.Extensions.DataIngestion.Chunkers;
+using Microsoft.ML.Tokenizers;
 
 namespace MafPlayground.Retrieval.Documents;
 
 public sealed class MicrosoftDataIngestionDocumentChunker : IDocumentChunker
 {
+    private const string ChunkingTokenizerIdentity = "cl100k_base:1.0.1";
     private const string PackageVersion = "10.7.0-preview.1.26309.5";
+    private readonly Tokenizer _tokenizer;
+
+    public MicrosoftDataIngestionDocumentChunker()
+        : this(TiktokenTokenizer.CreateForEncoding("cl100k_base"))
+    {
+    }
+
+    internal MicrosoftDataIngestionDocumentChunker(Tokenizer tokenizer)
+    {
+        _tokenizer = tokenizer ?? throw new ArgumentNullException(nameof(tokenizer));
+    }
 
     public async ValueTask<IReadOnlyList<DocumentChunk>> ChunkAsync(
         ExtractedDocument document,
         KnowledgeIngestionSettings options,
-        EmbeddingTokenizer tokenizer,
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(tokenizer);
+        ArgumentNullException.ThrowIfNull(embeddingGenerator);
 
         List<DocumentChunk> chunks = [];
         foreach (IngestionDocumentSection sourceSection in document.Sections)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string? sectionName = FindSectionName(sourceSection);
-            string content = sourceSection.GetMarkdown();
-            foreach (string chunk in await SplitAsync(
-                         content,
-                         options,
-                         tokenizer,
-                         cancellationToken))
+            IngestionDocument sectionDocument = new(document.Document.Identifier);
+            sectionDocument.Sections.Add(sourceSection);
+            IngestionChunker<string> chunker = CreateChunker(
+                options,
+                embeddingGenerator);
+
+            await foreach (IngestionChunk<string> chunk in chunker.ProcessAsync(
+                               sectionDocument,
+                               cancellationToken))
             {
-                chunks.Add(new DocumentChunk(
-                    chunks.Count,
-                    chunk,
-                    sourceSection.PageNumber,
-                    sectionName));
+                if (!string.IsNullOrWhiteSpace(chunk.Content))
+                {
+                    chunks.Add(new DocumentChunk(
+                        chunks.Count,
+                        chunk.Content,
+                        sourceSection.PageNumber,
+                        FindSectionName(sourceSection)));
+                }
             }
         }
 
         return chunks;
     }
 
-    public string GetIdentity(
-        KnowledgeIngestionSettings options,
-        EmbeddingTokenizer tokenizer)
+    public string GetIdentity(KnowledgeIngestionSettings options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(tokenizer);
-        return $"data-ingestion:{PackageVersion}:document-tokens-per-section:" +
-               $"{tokenizer.Identity}:max:{options.MaxTokensPerChunk}:" +
-               $"overlap:{options.OverlapTokens}";
+        string strategy = options.ChunkingStrategy.ToString().ToLowerInvariant();
+        string threshold = options.ChunkingStrategy ==
+            DocumentChunkingStrategy.SemanticSimilarity
+                ? options.SemanticSimilarityThresholdPercentile.ToString(
+                    CultureInfo.InvariantCulture)
+                : "none";
+        return $"data-ingestion:{PackageVersion}:{strategy}:" +
+               $"tokenizer:{ChunkingTokenizerIdentity}:" +
+               $"max:{options.MaxTokensPerChunk}:threshold:{threshold}";
     }
 
-    private static async ValueTask<IReadOnlyList<string>> SplitAsync(
-        string content,
+    private IngestionChunker<string> CreateChunker(
         KnowledgeIngestionSettings options,
-        EmbeddingTokenizer tokenizer,
-        CancellationToken cancellationToken)
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
     {
-        List<string> chunks = [];
-        if (string.IsNullOrWhiteSpace(content))
+        IngestionChunkerOptions chunkerOptions = new(_tokenizer)
         {
-            return chunks;
-        }
-
-        int start = 0;
-        while (start < content.Length)
+            MaxTokensPerChunk = options.MaxTokensPerChunk,
+            // The selected Microsoft element chunkers do not apply overlap.
+            OverlapTokens = 0,
+        };
+        return options.ChunkingStrategy switch
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            string remaining = content[start..];
-            EmbeddingTokenBoundary end = await tokenizer.GetPrefixBoundaryAsync(
-                remaining,
-                options.MaxTokensPerChunk,
-                cancellationToken);
-            if (end.Index <= 0)
-            {
-                throw new InvalidOperationException(
-                    $"Tokenizer '{tokenizer.Identity}' could not advance while " +
-                    "splitting document content.");
-            }
-
-            string chunk = remaining[..end.Index];
-            if (end.TokenCount > options.MaxTokensPerChunk)
-            {
-                throw new InvalidOperationException(
-                    $"Tokenizer '{tokenizer.Identity}' produced a chunk with " +
-                    $"{end.TokenCount} tokens, exceeding the configured maximum of " +
-                    $"{options.MaxTokensPerChunk}.");
-            }
-            if (!string.IsNullOrWhiteSpace(chunk))
-            {
-                chunks.Add(chunk);
-            }
-            if (end.Index == remaining.Length)
-            {
-                break;
-            }
-
-            EmbeddingTokenBoundary overlap = await tokenizer.GetSuffixBoundaryAsync(
-                chunk,
-                options.OverlapTokens,
-                cancellationToken);
-            int nextStart = start + end.Index - (chunk.Length - overlap.Index);
-            start = nextStart > start ? nextStart : start + end.Index;
-        }
-
-        return chunks;
+            DocumentChunkingStrategy.Section => new SectionChunker(chunkerOptions),
+            DocumentChunkingStrategy.Header => new HeaderChunker(chunkerOptions),
+            DocumentChunkingStrategy.SemanticSimilarity =>
+                new SemanticSimilarityChunker(
+                    embeddingGenerator,
+                    chunkerOptions,
+                    options.SemanticSimilarityThresholdPercentile),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(options),
+                options.ChunkingStrategy,
+                "Unsupported document chunking strategy."),
+        };
     }
 
     private static string? FindSectionName(IngestionDocumentSection section) =>

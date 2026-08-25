@@ -21,9 +21,12 @@ public sealed class KnowledgeBaseOptions
 
 public sealed class KnowledgeIngestionOptions
 {
+    public DocumentChunkingStrategy ChunkingStrategy { get; set; } =
+        DocumentChunkingStrategy.Section;
+
     public int MaxTokensPerChunk { get; set; } = 400;
 
-    public int OverlapTokens { get; set; } = 40;
+    public float SemanticSimilarityThresholdPercentile { get; set; } = 95;
 
     public int EmbeddingBatchSize { get; set; } = 16;
 
@@ -48,9 +51,12 @@ public sealed class KnowledgeSearchOptions
 
 public sealed record KnowledgeIngestionSettings(int EmbeddingBatchSize)
 {
+    public DocumentChunkingStrategy ChunkingStrategy { get; init; } =
+        DocumentChunkingStrategy.Section;
+
     public int MaxTokensPerChunk { get; init; } = 400;
 
-    public int OverlapTokens { get; init; } = 40;
+    public float SemanticSimilarityThresholdPercentile { get; init; } = 95;
 
     public long MaxFileBytes { get; init; } = 20 * 1024 * 1024;
 
@@ -175,11 +181,17 @@ public sealed class KnowledgeBaseCatalog
                 $"Knowledge base '{name}' requires a positive token chunk size.");
         }
 
-        if (ingestion.OverlapTokens < 0 ||
-            ingestion.OverlapTokens >= ingestion.MaxTokensPerChunk)
+        if (!Enum.IsDefined(ingestion.ChunkingStrategy))
         {
             throw new KnowledgeBaseConfigurationException(
-                $"Knowledge base '{name}' requires token overlap greater than or equal to zero and smaller than token chunk size.");
+                $"Knowledge base '{name}' has an unsupported chunking strategy.");
+        }
+
+        if (!float.IsFinite(ingestion.SemanticSimilarityThresholdPercentile) ||
+            ingestion.SemanticSimilarityThresholdPercentile is < 0 or > 100)
+        {
+            throw new KnowledgeBaseConfigurationException(
+                $"Knowledge base '{name}' requires semantic similarity threshold percentile between 0 and 100.");
         }
 
         if (ingestion.EmbeddingBatchSize <= 0)
@@ -203,13 +215,22 @@ public sealed class KnowledgeBaseCatalog
             definition.EmbeddingDimensions,
             new KnowledgeIngestionSettings(ingestion.EmbeddingBatchSize)
             {
+                ChunkingStrategy = ingestion.ChunkingStrategy,
                 MaxTokensPerChunk = ingestion.MaxTokensPerChunk,
-                OverlapTokens = ingestion.OverlapTokens,
+                SemanticSimilarityThresholdPercentile =
+                    ingestion.SemanticSimilarityThresholdPercentile,
                 MaxFileBytes = ingestion.MaxFileBytes,
                 MaxDocumentSections = ingestion.MaxDocumentSections,
                 MaxExtractedCharacters = ingestion.MaxExtractedCharacters,
             });
     }
+}
+
+public enum DocumentChunkingStrategy
+{
+    Section,
+    Header,
+    SemanticSimilarity,
 }
 
 public sealed class KnowledgeBaseConfigurationException(string message)

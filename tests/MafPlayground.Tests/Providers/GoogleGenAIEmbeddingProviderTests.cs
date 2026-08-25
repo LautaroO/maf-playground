@@ -8,30 +8,6 @@ namespace MafPlayground.Tests.Providers;
 
 public sealed class GoogleGenAIEmbeddingProviderTests
 {
-    [Fact]
-    public async Task RemoteTokenizer_ShrinksCandidateToExactTokenLimit()
-    {
-        int calls = 0;
-        GoogleRemoteEmbeddingTokenizer tokenizer = new(
-            "gemini-embedding-2",
-            (text, cancellationToken) =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                calls++;
-                return ValueTask.FromResult((text.Length + 1) / 2);
-            });
-
-        EmbeddingTokenBoundary boundary = await tokenizer
-            .GetPrefixBoundaryAsync(new string('a', 100), 10);
-
-        Assert.InRange(boundary.TokenCount, 1, 10);
-        Assert.Equal(19, boundary.Index);
-        Assert.Equal(2, calls);
-        Assert.Equal(
-            "google:gemini-embedding-2:remote-count-tokens:v1",
-            tokenizer.Identity);
-    }
-
     [Theory]
     [InlineData(EmbeddingPurpose.Document, "title: none | text: evidence")]
     [InlineData(EmbeddingPurpose.Query, "task: search result | query: evidence")]
@@ -136,9 +112,9 @@ public sealed class GoogleGenAIEmbeddingProviderTests
         using Client client = new(apiKey: "test-api-key");
         GoogleGenAIEmbeddingGeneratorProvider provider = new(client);
 
-        EmbeddingTokenizerNotSupportedException exception = Assert.Throws<
-            EmbeddingTokenizerNotSupportedException>(
-                () => provider.CreateTokenizerAsync("unknown-model"));
+        EmbeddingModelNotSupportedException exception = Assert.Throws<
+            EmbeddingModelNotSupportedException>(
+                () => provider.GetEmbeddingIdentity("unknown-model", 768));
 
         Assert.Contains("unknown-model", exception.Message);
         Assert.Contains("gemini-embedding-2", exception.Message);

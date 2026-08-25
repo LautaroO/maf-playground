@@ -40,7 +40,7 @@ integrations remain replaceable adapters.
 | `MafPlayground.Retrieval` | Document extraction, chunking, embeddings, search, and storage contracts. |
 | `MafPlayground.Retrieval.Postgres` | EF Core, PostgreSQL, and pgvector persistence adapter. |
 | `MafPlayground.Providers.Google` | Google Gen AI adapter for Gemini chat, embeddings, and token counting. |
-| `MafPlayground.Providers.Ollama` | Local Ollama adapter for chat, embeddings, tokenizers, and sample pricing. |
+| `MafPlayground.Providers.Ollama` | Local Ollama adapter for chat, embeddings, and sample pricing. |
 | `MafPlayground.Observability` | OpenTelemetry registration and provider-neutral model-cost estimates. |
 
 Provider-specific SDK types stay in provider adapters or the CLI composition
@@ -150,7 +150,8 @@ execution order, are:
 1. Receive a document file and validate its path and resource limits.
 2. Select the format-specific extractor.
 3. Produce a structured ingestion document with sections and metadata.
-4. Split that structure with the token-aware chunker.
+4. Split that structure with the configured Microsoft section, header, or
+   semantic-similarity chunker using a local `cl100k_base` token budget.
 5. Generate document embeddings with the knowledge base's provider adapter.
 6. Persist plain chunk text, metadata, and vectors through EF Core into
    PostgreSQL with pgvector.
@@ -160,9 +161,13 @@ Microsoft data-ingestion reader. DOCX and PPTX use repository-owned Open XML SDK
 extractors. PDF extraction uses PdfPig and works best for PDFs with a normal text
 layer; scanned or image-only pages require a future OCR adapter.
 
-The chunker uses `Microsoft.Extensions.DataIngestion` document structure and the
-tokenizer declared by the selected embedding provider. Chunk text is persisted
-as plain text together with page/section metadata and its embedding vector.
+The chunker uses `Microsoft.Extensions.DataIngestion` document structure and a
+provider-independent local `cl100k_base` tokenizer. `RepositoryHelp` uses
+`SemanticSimilarityChunker`, which compares adjacent document elements with the
+selected knowledge-base embedding generator; `Help` uses `SectionChunker`. Chunking is
+performed independently per original source section so page and section
+citations survive. Chunk text is persisted as plain text together with that
+metadata and its embedding vector.
 
 Re-ingestion is idempotent. It skips unchanged documents when content hash,
 provider-versioned embedding identity, chunking identity, and metadata match. A
@@ -227,7 +232,7 @@ sanitized lifecycle events.
 - collection name;
 - embedding provider and model;
 - vector dimensions;
-- chunk size and overlap;
+- chunking strategy, local token budget, and semantic boundary threshold;
 - embedding batch size;
 - document resource limits.
 
@@ -303,8 +308,9 @@ the key to `appsettings.json` or the repository.
 
 ### Ollama is unavailable
 
-Start the Ollama server and pull the configured model. Unknown Ollama embedding
-models fail explicitly when no compatible tokenizer mapping exists.
+Start the Ollama server and pull the configured model. Chunk sizing does not
+depend on Ollama model metadata; unsupported embedding models are rejected by
+the Ollama runtime or provider adapter.
 
 ### The repository help agent has no evidence
 

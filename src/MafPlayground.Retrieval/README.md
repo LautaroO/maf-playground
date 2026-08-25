@@ -30,7 +30,7 @@ flowchart LR
 | `PptxDocumentExtractor` | Native Open XML reader that creates one section per slide and maps titles, text shapes, and tables. |
 | `MarkdownDocumentExtractor` | Adapts the DataIngestion Markdig reader without flattening its `IngestionDocument`. |
 | `MicrosoftDataIngestionDocumentChunker` | Creates token-bounded chunks per source section while preserving page/section metadata. |
-| `IEmbeddingGeneratorProvider` | Provider adapter port that creates an embedding generator and declares the tokenizer for each model. |
+| `IEmbeddingGeneratorProvider` | Provider adapter port that creates a versioned embedding generator for each model. |
 | `EmbeddingProviderRegistry` | Resolves `provider:model` embedding selections. |
 | `KnowledgeBaseCatalog` | Validates named knowledge bases, embedding identities, and ingestion policies. |
 | `IKnowledgeSearchFactory` | Creates a search service bound to one knowledge base and one agent search policy. |
@@ -68,29 +68,28 @@ additionally register at least one `IEmbeddingGeneratorProvider` and one
 | Knowledge-base option | Default |
 | --- | ---: |
 | `EmbeddingDimensions` | `768` |
+| `Ingestion:ChunkingStrategy` | `Section` |
 | `Ingestion:MaxTokensPerChunk` | `400` |
-| `Ingestion:OverlapTokens` | `40` |
+| `Ingestion:SemanticSimilarityThresholdPercentile` | `95` |
 | `Ingestion:EmbeddingBatchSize` | `16` |
 | `Ingestion:MaxFileBytes` | `20971520` |
 | `Ingestion:MaxDocumentSections` | `1000` |
 | `Ingestion:MaxExtractedCharacters` | `2000000` |
 
 `Collection` and `EmbeddingModel` are required for every named knowledge base.
-The selected embedding provider owns token counting, its versioned identity,
-requested vector dimensions, and the document/query embedding purpose. Tokenizer
-selection is not knowledge-base configuration. Local providers may use an
-in-process tokenizer; remote providers may implement the same async boundary
-through their model API.
+The selected embedding provider owns its versioned identity, requested vector
+dimensions, and document/query embedding purpose. Chunk size is an application
+policy measured locally with `cl100k_base`; it is intentionally an approximation
+of provider token usage. `Section`, `Header`, and `SemanticSimilarity` are the
+supported strategies. The semantic strategy uses the selected document
+embedding generator to compare adjacent elements.
 
-The Ollama adapter supports token-aware ingestion only for the repository's
-`nomic-embed-text` model aliases. It reads the installed model's BERT vocabulary
-from Ollama's verbose model metadata and includes its SHA-256 hash in the
-chunking identity. Other Ollama embedding models fail before extraction with an
-explicit unsupported-tokenizer error.
+Ollama and Google embedding adapters do not supply chunking tokenizers. This
+keeps provider selection independent from document segmentation and allows any
+embedding model accepted by its adapter to use the same chunking policies.
 
 The Google adapter supports `gemini-embedding-2` and
-`gemini-embedding-001`. It uses Google's remote `countTokens` API for exact
-chunk-limit validation, requests the knowledge base's configured dimensions,
+`gemini-embedding-001`, requests the knowledge base's configured dimensions,
 and distinguishes document ingestion from query search. Embedding 2 uses
 Google's asymmetric retrieval text format; Embedding 001 uses the corresponding
 `RETRIEVAL_DOCUMENT` and `RETRIEVAL_QUERY` task types.
@@ -137,7 +136,7 @@ bound filters and cannot widen their scope.
 ## Tests
 
 Deterministic tests cover model selection, registry conflicts, PDF, DOCX, PPTX,
-and Markdown extraction, Office structure surviving token chunking, token chunk
-boundaries, source metadata, ingestion skipping, embedding
+and Markdown extraction, Office structure surviving chunking, section/header/
+semantic boundaries, local token limits, source metadata, ingestion skipping, embedding
 validation, and search contracts. Store round trips belong in integration tests.
 See `docs/rag-data-ingestion-spike.md` for the spike findings and migration plan.

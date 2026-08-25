@@ -160,8 +160,9 @@ dotnet run --project src/MafPlayground.CLI -- \
 ```
 
 `documents/help.pdf` is a four-page fictional help guide with stable,
-page-specific test facts. Ingestion extracts text, chunks it, generates semantic
-embeddings, and writes them to pgvector. Answers must contain exact citations
+page-specific test facts. Ingestion extracts structured text, applies the
+configured Microsoft DataIngestion chunking strategy with a local token budget,
+generates embeddings, and writes them to pgvector. Answers must contain exact citations
 from the current retrieval invocation. Textless PDF pages are reported; OCR is a
 future extension behind `IDocumentExtractor`.
 

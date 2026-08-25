@@ -68,16 +68,6 @@ internal sealed class GoogleGenAIEmbeddingGeneratorProvider
         return new GoogleEmbeddingPurposeGenerator(inner, model, purpose);
     }
 
-    public ValueTask<EmbeddingTokenizer> CreateTokenizerAsync(
-        string model,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureSupported(model);
-        return ValueTask.FromResult<EmbeddingTokenizer>(
-            new GoogleRemoteEmbeddingTokenizer(_getClient().Models, model));
-    }
-
     private static void EnsureSupported(string model)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(model);
@@ -85,7 +75,7 @@ internal sealed class GoogleGenAIEmbeddingGeneratorProvider
                 model.Trim(),
                 StringComparer.OrdinalIgnoreCase))
         {
-            throw new EmbeddingTokenizerNotSupportedException(
+            throw new EmbeddingModelNotSupportedException(
                 "google",
                 model,
                 SupportedModels);
