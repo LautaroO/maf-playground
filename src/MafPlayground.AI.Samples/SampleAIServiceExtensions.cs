@@ -40,7 +40,7 @@ public static class SampleAIServiceExtensions
 
     private static AIBuilder AddBasicServices(AIBuilder builder)
     {
-        builder.Services.AddBasicAgent();
+        builder.Services.AddBasicAgentEntityServices();
         return builder;
     }
 

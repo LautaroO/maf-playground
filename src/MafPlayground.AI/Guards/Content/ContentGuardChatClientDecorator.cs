@@ -27,11 +27,15 @@ internal sealed class ContentGuardChatClientDecorator(
         public override async Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages,
             ChatOptions? chatOptions = null,
-            CancellationToken cancellationToken = default) =>
-            await base.GetResponseAsync(
+            CancellationToken cancellationToken = default)
+        {
+            ChatResponse response = await base.GetResponseAsync(
                 await GuardInputAsync(messages, cancellationToken).ConfigureAwait(false),
                 chatOptions,
                 cancellationToken).ConfigureAwait(false);
+            await GuardOutputAsync(response, cancellationToken).ConfigureAwait(false);
+            return response;
+        }
 
         public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages,
@@ -41,12 +45,51 @@ internal sealed class ContentGuardChatClientDecorator(
             IReadOnlyList<ChatMessage> guarded = await GuardInputAsync(
                 messages,
                 cancellationToken).ConfigureAwait(false);
-            await foreach (ChatResponseUpdate update in base
-                .GetStreamingResponseAsync(guarded, chatOptions, cancellationToken)
-                .WithCancellation(cancellationToken)
-                .ConfigureAwait(false))
+            GuardExecutionContext? execution = contextAccessor.Current;
+            IAsyncEnumerable<ChatResponseUpdate> updates = base.GetStreamingResponseAsync(
+                guarded,
+                chatOptions,
+                cancellationToken);
+            if (execution?.Profile.Content.Enabled != true)
+            {
+                await foreach (ChatResponseUpdate update in updates
+                    .WithCancellation(cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    yield return update;
+                }
+
+                yield break;
+            }
+
+            // Inspect the complete response so protected values split across chunks cannot
+            // bypass the content policy. MAF receives only the guarded updates for history.
+            ChatResponse response = await updates.ToChatResponseAsync(cancellationToken)
+                .ConfigureAwait(false);
+            await GuardOutputAsync(response, cancellationToken).ConfigureAwait(false);
+            foreach (ChatResponseUpdate update in response.ToChatResponseUpdates())
             {
                 yield return update;
+            }
+        }
+
+        private async ValueTask GuardOutputAsync(
+            ChatResponse response,
+            CancellationToken cancellationToken)
+        {
+            GuardExecutionContext? execution = contextAccessor.Current;
+            if (execution?.Profile.Content.Enabled != true)
+            {
+                return;
+            }
+
+            for (int index = 0; index < response.Messages.Count; index++)
+            {
+                response.Messages[index] = await TransformMessageAsync(
+                    response.Messages[index],
+                    execution.Profile.Content.OutputAction,
+                    ContentOrigin.AgentOutput,
+                    cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -76,30 +119,49 @@ internal sealed class ContentGuardChatClientDecorator(
                     execution.Profile.Content.InputAction,
                     ContentOrigin.UserInput,
                     cancellationToken).ConfigureAwait(false);
-                List<AIContent> contents = [];
-                if (guardedText.Length > 0)
-                {
-                    contents.Add(new TextContent(guardedText));
-                }
-
-                foreach (AIContent content in message.Contents)
-                {
-                    if (content is not TextContent)
-                    {
-                        contents.Add(content);
-                    }
-                }
-
-                result.Add(new ChatMessage(message.Role, contents)
-                {
-                    AuthorName = message.AuthorName,
-                    CreatedAt = message.CreatedAt,
-                    MessageId = message.MessageId,
-                    AdditionalProperties = message.AdditionalProperties,
-                });
+                result.Add(CloneWithText(message, guardedText));
             }
 
             return result;
+        }
+
+        private async ValueTask<ChatMessage> TransformMessageAsync(
+            ChatMessage message,
+            GuardAction action,
+            ContentOrigin origin,
+            CancellationToken cancellationToken)
+        {
+            string guardedText = await contentGuard.ApplyAsync(
+                message.Text,
+                action,
+                origin,
+                cancellationToken).ConfigureAwait(false);
+            return CloneWithText(message, guardedText);
+        }
+
+        private static ChatMessage CloneWithText(ChatMessage message, string text)
+        {
+            List<AIContent> contents = [];
+            if (text.Length > 0)
+            {
+                contents.Add(new TextContent(text));
+            }
+
+            foreach (AIContent content in message.Contents)
+            {
+                if (content is not TextContent)
+                {
+                    contents.Add(content);
+                }
+            }
+
+            return new ChatMessage(message.Role, contents)
+            {
+                AuthorName = message.AuthorName,
+                CreatedAt = message.CreatedAt,
+                MessageId = message.MessageId,
+                AdditionalProperties = message.AdditionalProperties,
+            };
         }
     }
 }

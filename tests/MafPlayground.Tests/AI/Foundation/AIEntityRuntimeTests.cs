@@ -5,6 +5,8 @@ using MafPlayground.AI.Runtime.Providers;
 using MafPlayground.AI.Runtime.Sessions;
 using MafPlayground.AI.Runtime;
 using MafPlayground.AI.Runtime.Configuration;
+using MafPlayground.AI.Runtime.Workflows;
+using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -136,6 +138,53 @@ public sealed class AIEntityRuntimeTests
         Assert.DoesNotContain("provider secret", exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(StreamingFailureStage.CreateStream)]
+    [InlineData(StreamingFailureStage.CreateEnumerator)]
+    [InlineData(StreamingFailureStage.MoveNext)]
+    [InlineData(StreamingFailureStage.Dispose)]
+    public async Task ChatClientFactory_TranslatesStreamingProviderFailures(
+        StreamingFailureStage stage)
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IChatClientProvider>(
+            new RecordingProvider("fake", new StreamingFailureChatClient(stage)));
+        services.AddAIRuntime(CreateConfiguration());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IChatClient client = provider.GetRequiredService<IAIChatClientFactory>().Create("entity");
+
+        AIProviderFailureException exception = await Assert.ThrowsAsync<AIProviderFailureException>(
+            () => ConsumeAsync(client.GetStreamingResponseAsync(
+                [new ChatMessage(ChatRole.User, "hello")])));
+
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.DoesNotContain("provider stream secret", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorkflowRunner_DistinguishesMissingOutputFromDefaultValue()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IChatClientProvider>(new RecordingProvider("fake"));
+        services.AddAIRuntime(CreateConfiguration());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IMafWorkflowRunner runner = provider.GetRequiredService<IMafWorkflowRunner>();
+        DefaultValueExecutor executor = new();
+
+        Workflow withoutOutput = new WorkflowBuilder(executor).Build();
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await runner.RunAsync<int, int>(withoutOutput, 42, CancellationToken.None));
+
+        Workflow withOutput = new WorkflowBuilder(executor)
+            .WithOutputFrom(executor)
+            .Build();
+        int output = await runner.RunAsync<int, int>(
+            withOutput,
+            42,
+            CancellationToken.None);
+        Assert.Equal(0, output);
+    }
+
     [Fact]
     public async Task StartupValidation_RejectsSessionEntityWithoutStore()
     {
@@ -172,6 +221,13 @@ public sealed class AIEntityRuntimeTests
         }
 
         return new ConfigurationBuilder().AddInMemoryCollection(configuration).Build();
+    }
+
+    private static async Task ConsumeAsync(IAsyncEnumerable<ChatResponseUpdate> updates)
+    {
+        await foreach (ChatResponseUpdate _ in updates)
+        {
+        }
     }
 
     private sealed record EchoInput(string Value);
@@ -216,6 +272,79 @@ public sealed class AIEntityRuntimeTests
         {
             Timeouts.Add(modelCallTimeout);
             return chatClient;
+        }
+    }
+
+    private sealed class DefaultValueExecutor()
+        : Executor<int, int>("default-value", declareCrossRunShareable: true)
+    {
+        public override ValueTask<int> HandleAsync(
+            int message,
+            IWorkflowContext context,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(0);
+    }
+
+    public enum StreamingFailureStage
+    {
+        CreateStream,
+        CreateEnumerator,
+        MoveNext,
+        Dispose,
+    }
+
+    private sealed class StreamingFailureChatClient(StreamingFailureStage stage) : IChatClient
+    {
+        public ChatClientMetadata Metadata { get; } = new("fake");
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ChatResponse([]));
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            stage == StreamingFailureStage.CreateStream
+                ? throw Failure()
+                : new FailingAsyncEnumerable(stage);
+
+        public object? GetService(Type serviceType, object? serviceKey = null) =>
+            serviceType.IsInstanceOfType(this) ? this : null;
+
+        public void Dispose()
+        {
+        }
+
+        private static InvalidOperationException Failure() =>
+            new("provider stream secret");
+
+        private sealed class FailingAsyncEnumerable(StreamingFailureStage stage)
+            : IAsyncEnumerable<ChatResponseUpdate>
+        {
+            public IAsyncEnumerator<ChatResponseUpdate> GetAsyncEnumerator(
+                CancellationToken cancellationToken = default) =>
+                stage == StreamingFailureStage.CreateEnumerator
+                    ? throw Failure()
+                    : new FailingAsyncEnumerator(stage);
+        }
+
+        private sealed class FailingAsyncEnumerator(StreamingFailureStage stage)
+            : IAsyncEnumerator<ChatResponseUpdate>
+        {
+            public ChatResponseUpdate Current => new(ChatRole.Assistant, "unused");
+
+            public ValueTask<bool> MoveNextAsync() =>
+                stage == StreamingFailureStage.MoveNext
+                    ? ValueTask.FromException<bool>(Failure())
+                    : ValueTask.FromResult(false);
+
+            public ValueTask DisposeAsync() =>
+                stage == StreamingFailureStage.Dispose
+                    ? ValueTask.FromException(Failure())
+                    : ValueTask.CompletedTask;
         }
     }
 }

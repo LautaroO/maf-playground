@@ -15,8 +15,13 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationO
 {
     Args = args,
     ContentRootPath = AppContext.BaseDirectory,
-    EnvironmentName = Environments.Development,
 });
+if (!builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "The ASP.NET Core sample uses header-based development authentication and may only run in Development.");
+}
+
 builder.Services
     .AddAuthentication(DevelopmentAuthenticationHandler.SchemeName)
     .AddScheme<AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>(

@@ -31,11 +31,15 @@ internal sealed class MafWorkflowRunner : IMafWorkflowRunner
             workflow,
             input,
             cancellationToken: cancellationToken).ConfigureAwait(false);
-        TOutput? result = run.OutgoingEvents
+        WorkflowOutputEvent? outputEvent = run.OutgoingEvents
             .OfType<WorkflowOutputEvent>()
-            .Select(output => output.As<TOutput>())
-            .LastOrDefault(output => output is not null);
-        return result ?? throw new InvalidOperationException(
-            "The workflow completed without producing the expected output.");
+            .LastOrDefault(output => output.Is<TOutput>());
+        if (outputEvent is null)
+        {
+            throw new InvalidOperationException(
+                "The workflow completed without producing the expected output.");
+        }
+
+        return outputEvent.As<TOutput>()!;
     }
 }

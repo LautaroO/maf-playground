@@ -23,7 +23,11 @@ public static class AIEndpointRouteBuilderExtensions
         ArgumentNullException.ThrowIfNull(endpoints);
         RouteHandlerBuilder route = endpoints.MapPost(
             $"{prefix.TrimEnd('/')}/entities/{{entityId}}/runs",
-            RunEntityAsync);
+            RunEntityAsync)
+            // Entity authorization is selected dynamically from registry metadata below.
+            // Bypass fallback/default endpoint policies so they cannot preempt anonymous
+            // entities; protected entities are still authenticated and authorized here.
+            .AllowAnonymous();
         return route;
     }
 

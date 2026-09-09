@@ -116,6 +116,9 @@ curl -X POST http://localhost:5000/api/ai/entities/basic-agent/runs \
   -d '{"input":{"message":"Hello"},"sessionId":"conversation-1"}'
 ```
 
+This sample host refuses to start outside the `Development` environment because its
+header-based authentication scheme is intentionally not suitable for deployment.
+
 The header authentication handler is intentionally development-only. Production
 hosts must replace it with real authentication and authorization. In-memory
 agent sessions are also opt-in and process-local: they are bounded and expire,

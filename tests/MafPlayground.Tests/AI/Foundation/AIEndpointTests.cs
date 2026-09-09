@@ -5,6 +5,7 @@ using MafPlayground.AI;
 using MafPlayground.AI.Abstractions;
 using MafPlayground.AI.AspNetCore;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -29,6 +30,11 @@ public sealed class AIEndpointTests
             "/api/ai/entities/missing/runs",
             new { input = new { value = "test" } });
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+
+        HttpResponseMessage anonymous = await client.PostAsJsonAsync(
+            "/api/ai/entities/public-echo/runs",
+            new { input = new { value = "public" } });
+        Assert.Equal(HttpStatusCode.OK, anonymous.StatusCode);
 
         HttpResponseMessage unauthenticated = await client.PostAsJsonAsync(
             "/api/ai/entities/echo/runs",
@@ -127,10 +133,20 @@ public sealed class AIEndpointTests
                 "echo",
                 entity => entity
                     .WithDescription("Echo.")
-                    .RequireAuthorization("AI.Echo"));
+                    .RequireAuthorization("AI.Echo"))
+            .AddWorkflow<AnonymousEchoEntity, EchoInput, EchoOutput>(
+                "public-echo",
+                entity => entity
+                    .WithDescription("Public echo.")
+                    .AllowAnonymousAccess());
         builder.Services.AddAIEndpoints(configuration);
         builder.Services.AddAuthorization(options =>
-            options.AddPolicy("AI.Echo", policy => policy.RequireClaim("allow", "true")));
+        {
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+            options.AddPolicy("AI.Echo", policy => policy.RequireClaim("allow", "true"));
+        });
 
         WebApplication app = builder.Build();
         app.Use(async (context, next) =>
@@ -147,6 +163,7 @@ public sealed class AIEndpointTests
             }
             await next(context);
         });
+        app.UseAuthorization();
         app.MapAIEntities();
         await app.StartAsync();
         return app;
@@ -172,6 +189,15 @@ public sealed class AIEndpointTests
                 "timeout" => throw new TimeoutException("provider detail"),
                 _ => ValueTask.FromResult(new EchoOutput(input.Value)),
             };
+    }
+
+    private sealed class AnonymousEchoEntity : IAIEntity<EchoInput, EchoOutput>
+    {
+        public ValueTask<EchoOutput> ExecuteAsync(
+            EchoInput input,
+            AIExecutionContext context,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new EchoOutput(input.Value));
     }
 
     private sealed class FakeProvider(IChatClient client) : IChatClientProvider

@@ -43,34 +43,96 @@ internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
             ChatOptions? options = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            await using IAsyncEnumerator<ChatResponseUpdate> enumerator = base
-                .GetStreamingResponseAsync(messages, options, cancellationToken)
-                .GetAsyncEnumerator(cancellationToken);
-            while (true)
+            IAsyncEnumerable<ChatResponseUpdate> stream = CreateStream(
+                () => base.GetStreamingResponseAsync(messages, options, cancellationToken));
+            IAsyncEnumerator<ChatResponseUpdate> enumerator = CreateEnumerator(
+                stream,
+                cancellationToken);
+            try
             {
-                bool hasNext;
-                try
+                while (await MoveNextAsync(enumerator).ConfigureAwait(false))
                 {
-                    hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
+                    yield return enumerator.Current;
                 }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    throw new AIProviderFailureException(
-                        "The AI provider streaming call failed.",
-                        exception);
-                }
-
-                if (!hasNext)
-                {
-                    yield break;
-                }
-
-                yield return enumerator.Current;
+            }
+            finally
+            {
+                await DisposeAsync(enumerator).ConfigureAwait(false);
             }
         }
+
+        private static IAsyncEnumerable<ChatResponseUpdate> CreateStream(
+            Func<IAsyncEnumerable<ChatResponseUpdate>> factory)
+        {
+            try
+            {
+                return factory();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw TranslateStreamingFailure(exception);
+            }
+        }
+
+        private static IAsyncEnumerator<ChatResponseUpdate> CreateEnumerator(
+            IAsyncEnumerable<ChatResponseUpdate> stream,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return stream.GetAsyncEnumerator(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw TranslateStreamingFailure(exception);
+            }
+        }
+
+        private static async ValueTask<bool> MoveNextAsync(
+            IAsyncEnumerator<ChatResponseUpdate> enumerator)
+        {
+            try
+            {
+                return await enumerator.MoveNextAsync().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw TranslateStreamingFailure(exception);
+            }
+        }
+
+        private static async ValueTask DisposeAsync(
+            IAsyncEnumerator<ChatResponseUpdate> enumerator)
+        {
+            try
+            {
+                await enumerator.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw TranslateStreamingFailure(exception);
+            }
+        }
+
+        private static AIProviderFailureException TranslateStreamingFailure(
+            Exception exception) => new(
+                "The AI provider streaming call failed.",
+                exception);
     }
 }
