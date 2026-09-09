@@ -7,6 +7,7 @@ public static class AITelemetry
 {
     public const string AgentSourceName = "MafPlayground.Agents";
     public const string WorkflowSourceName = "Microsoft.Agents.AI.Workflows";
+    public const string RuntimeSourceName = "MafPlayground.AI.Runtime";
 
     public const string OperationMeterName = "MafPlayground.AI.Operations";
     public const string OperationCountMetricName = "maf_playground.ai.operation.count";

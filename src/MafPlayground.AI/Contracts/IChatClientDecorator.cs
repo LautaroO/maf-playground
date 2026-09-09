@@ -9,11 +9,15 @@ public interface IChatClientDecorator
 {
     int Order { get; }
 
-    IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection);
+    IChatClient Decorate(
+        IChatClient chatClient,
+        AIModelSelection modelSelection,
+        TimeSpan modelCallTimeout);
 }
 
 public static class ChatClientDecoratorOrder
 {
+    public const int ProviderFailure = 25;
     public const int Timeout = 100;
     public const int Budget = 200;
     public const int ContentGuard = 300;

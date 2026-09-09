@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MafPlayground.AI.Abstractions/MafPlayground.AI.Abstractions.csproj" />
+    <ProjectReference Include="../MafPlayground.AI.Runtime/MafPlayground.AI.Runtime.csproj" />
+    <ProjectReference Include="../MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../MafPlayground.AI/Agents/**/*.cs" Link="Agents/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../MafPlayground.AI/Context/**/*.cs" Link="Context/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../MafPlayground.AI/Contracts/IUserContextAccessor.cs" Link="Contracts/IUserContextAccessor.cs" />
+    <Compile Include="../MafPlayground.AI/Tools/**/*.cs" Link="Tools/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../MafPlayground.AI/Workflows/**/*.cs" Link="Workflows/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

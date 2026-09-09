@@ -30,14 +30,7 @@ public sealed class BasicAgent
             Description = "A basic conversational agent for experimenting with Microsoft Agent Framework.",
             ChatOptions = new ChatOptions
             {
-                Instructions = """
-                    You are a helpful general-purpose assistant.
-                    Answer clearly and concisely. If you are uncertain, say so rather than inventing facts.
-                    Use trusted application context when a request depends on user-specific information.
-                    Never guess missing user context; ask the user when required information is unavailable.
-                    Use the available tools when a response depends on information they provide.
-                    Preserve exact factual values returned by tools. Never modify dates, numbers, identifiers, amounts, or units.
-                    """,
+                Instructions = BasicAgentInstructions.Value,
                 Tools = [currentDateTimeTool.CreateAIFunction()],
             },
             AIContextProviders = [userContextProvider],

@@ -1,24 +1,23 @@
 using System.Runtime.CompilerServices;
 using MafPlayground.AI.Contracts;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 
 namespace MafPlayground.AI.Resilience;
 
 internal sealed class TimeoutChatClientDecorator(
-    IOptions<AIResilienceOptions> options,
     TimeProvider timeProvider) : IChatClientDecorator
 {
-    private readonly TimeSpan _modelCallTimeout = options.Value.ModelCallTimeout;
-
     public int Order => ChatClientDecoratorOrder.Timeout;
 
-    public IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection)
+    public IChatClient Decorate(
+        IChatClient chatClient,
+        AIModelSelection modelSelection,
+        TimeSpan modelCallTimeout)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(modelSelection);
 
-        return new TimeoutChatClient(chatClient, _modelCallTimeout, timeProvider);
+        return new TimeoutChatClient(chatClient, modelCallTimeout, timeProvider);
     }
 
     private sealed class TimeoutChatClient(

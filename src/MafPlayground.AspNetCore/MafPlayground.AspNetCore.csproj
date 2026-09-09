@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RunWorkingDirectory>../..</RunWorkingDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MafPlayground.AI.AspNetCore/MafPlayground.AI.AspNetCore.csproj" />
+    <ProjectReference Include="../MafPlayground.AI.Runtime/MafPlayground.AI.Runtime.csproj" />
+    <ProjectReference Include="../MafPlayground.AI.Samples/MafPlayground.AI.Samples.csproj" />
+    <ProjectReference Include="../MafPlayground.Observability/MafPlayground.Observability.csproj" />
+    <ProjectReference Include="../MafPlayground.Providers.Google/MafPlayground.Providers.Google.csproj" />
+    <ProjectReference Include="../MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
+  </ItemGroup>
+</Project>

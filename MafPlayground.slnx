@@ -1,6 +1,10 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/MafPlayground.AI/MafPlayground.AI.csproj" />
+    <Project Path="src/MafPlayground.AI.Abstractions/MafPlayground.AI.Abstractions.csproj" />
+    <Project Path="src/MafPlayground.AI.AspNetCore/MafPlayground.AI.AspNetCore.csproj" />
+    <Project Path="src/MafPlayground.AI.Runtime/MafPlayground.AI.Runtime.csproj" />
+    <Project Path="src/MafPlayground.AI.Samples/MafPlayground.AI.Samples.csproj" />
+    <Project Path="src/MafPlayground.AspNetCore/MafPlayground.AspNetCore.csproj" />
     <Project Path="src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
     <Project Path="src/MafPlayground.Observability/MafPlayground.Observability.csproj" />
     <Project Path="src/MafPlayground.Providers.Google/MafPlayground.Providers.Google.csproj" />

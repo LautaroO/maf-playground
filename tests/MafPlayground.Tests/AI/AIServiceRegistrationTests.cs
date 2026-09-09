@@ -114,7 +114,8 @@ public sealed class AIServiceRegistrationTests
 
         public IChatClient Decorate(
             IChatClient chatClient,
-            AIModelSelection modelSelection)
+            AIModelSelection modelSelection,
+            TimeSpan modelCallTimeout)
         {
             applied.Add(order);
             return chatClient;

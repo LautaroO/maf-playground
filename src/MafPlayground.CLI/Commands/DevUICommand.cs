@@ -6,6 +6,7 @@ using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.AI.Workflows.Translation;
+using MafPlayground.AI.Runtime;
 using MafPlayground.CLI.DevUI;
 using MafPlayground.CLI.Extensions;
 using MafPlayground.CLI.Documentation;
@@ -115,6 +116,8 @@ public sealed class DevUICommand : ICliCommand
             builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.Configure<TranslationWorkflowOptions>(
             builder.Configuration.GetSection("AI:Workflows:Translation"));
+        builder.Services.ConfigureAIEntities().AddMafPlaygroundSampleEntities();
+        builder.Services.AddInMemoryAgentSessions();
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
         try
         {

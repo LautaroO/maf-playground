@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MafPlayground.AI.Abstractions/MafPlayground.AI.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../MafPlayground.AI/Configuration/**/*.cs" Link="Configuration/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../MafPlayground.AI/Contracts/**/*.cs" Link="Contracts/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Remove="../MafPlayground.AI/Contracts/IUserContextAccessor.cs" />
+    <Compile Include="../MafPlayground.AI/Guards/**/*.cs" Link="Guards/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../MafPlayground.AI/Observability/**/*.cs" Link="Observability/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../MafPlayground.AI/Providers/**/*.cs" Link="Providers/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../MafPlayground.AI/Resilience/**/*.cs" Link="Resilience/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

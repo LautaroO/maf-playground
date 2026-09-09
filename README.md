@@ -27,7 +27,10 @@ exporters stay outside reusable agent and workflow behavior.
 ```mermaid
 flowchart TB
     CLI[MafPlayground.CLI<br/>local host and composition root]
-    AI[MafPlayground.AI<br/>agents, tools, context, workflows]
+    Abstractions[MafPlayground.AI.Abstractions<br/>MAF-free contracts]
+    Runtime[MafPlayground.AI.Runtime<br/>registry, factories, policies, sessions]
+    Samples[MafPlayground.AI.Samples<br/>agents, tools, workflows]
+    Web[MafPlayground.AI.AspNetCore<br/>secured JSON hosting]
     Retrieval[MafPlayground.Retrieval<br/>extraction and retrieval core]
     Google[MafPlayground.Providers.Google<br/>Gemini chat and embeddings]
     Ollama[MafPlayground.Providers.Ollama<br/>chat, embeddings, pricing]
@@ -36,18 +39,22 @@ flowchart TB
     Dev[CLI, DevUI, or a future web/worker host]
 
     Dev --> CLI
-    CLI --> AI
+    CLI --> Runtime
+    CLI --> Samples
+    Web --> Runtime
+    Runtime --> Abstractions
+    Samples --> Runtime
     CLI --> Retrieval
     CLI --> Google
     CLI --> Ollama
     CLI --> Postgres
     CLI --> Obs
-    AI --> Retrieval
-    Google --> AI
-    Ollama --> AI
+    Samples --> Retrieval
+    Google --> Runtime
+    Ollama --> Runtime
     Ollama --> Retrieval
     Postgres --> Retrieval
-    Obs --> AI
+    Obs --> Runtime
 ```
 
 | Concern | Implementation | MAF/application role |
@@ -67,7 +74,11 @@ flowchart TB
 
 | Project | Responsibility |
 | --- | --- |
-| [`MafPlayground.AI`](src/MafPlayground.AI/README.md) | Provider-neutral MAF agents, workflows, tools, context, provider contracts, and resilience decorators. |
+| `MafPlayground.AI.Abstractions` | MAF-free entity, execution, caller, discovery, and invocation contracts. |
+| [`MafPlayground.AI.Runtime`](src/MafPlayground.AI.Runtime/README.md) | Entity registry, model selection, MAF factories/runners, guards, telemetry, and session storage contracts. |
+| `MafPlayground.AI.AspNetCore` | Authorized JSON endpoint mapping, caller claims, limits, and sanitized Problem Details. |
+| [`MafPlayground.AI.Samples`](src/MafPlayground.AI.Samples/README.md) | Sample-owned agents, workflows, prompts, tools, context, and retrieval adapters. |
+| `MafPlayground.AspNetCore` | Development sample host for the unified AI entity endpoint. |
 | [`MafPlayground.CLI`](src/MafPlayground.CLI/README.md) | Local command-line harness, DevUI host, entity inspection, and dependency composition. |
 | [`MafPlayground.Observability`](src/MafPlayground.Observability/README.md) | OpenTelemetry registration and provider-neutral token-cost estimation. |
 | [`MafPlayground.Providers.Google`](src/MafPlayground.Providers.Google/README.md) | Google Gen AI SDK adapter for Gemini chat, embeddings, and token counting. |
@@ -90,6 +101,25 @@ Detailed feature documentation:
 - [Repository help manual](docs/repository-help/manual.md)
 - [Translation workflow](src/MafPlayground.AI/Workflows/Translation/README.md)
 - [Test organization](tests/README.md)
+
+## ASP.NET Core sample
+
+Run the sample host with a configured provider, then invoke either registered
+entity through the same route:
+
+```bash
+dotnet run --project src/MafPlayground.AspNetCore
+curl -X POST http://localhost:5000/api/ai/entities/basic-agent/runs \
+  -H 'Content-Type: application/json' \
+  -H 'X-AI-Subject: local-user' \
+  -H 'X-AI-Permissions: basic' \
+  -d '{"input":{"message":"Hello"},"sessionId":"conversation-1"}'
+```
+
+The header authentication handler is intentionally development-only. Production
+hosts must replace it with real authentication and authorization. In-memory
+agent sessions are also opt-in and process-local: they are bounded and expire,
+but are lost on restart and are not production persistence.
 
 ## Prerequisites
 

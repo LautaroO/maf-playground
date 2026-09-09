@@ -37,10 +37,10 @@ internal static class LocalEntityCatalog
         new(
             "basic-agent",
             LocalEntityKind.Agent,
-            "A basic conversational agent for experimenting with Microsoft Agent Framework.",
-            typeof(string),
-            "What time is it for me?",
-            CreateAgent: services => services.GetRequiredService<BasicAgent>().Agent),
+            "General conversational agent.",
+            typeof(BasicAgentRequest),
+            new BasicAgentRequest("What time is it for me?"),
+            CreateAgent: services => services.GetRequiredService<IBasicAgentSource>().Agent),
         new(
             "basic-rag-agent",
             LocalEntityKind.Agent,
@@ -58,13 +58,13 @@ internal static class LocalEntityCatalog
         new(
             "translation-workflow",
             LocalEntityKind.Workflow,
-            "Translates text in parallel, validates each translation, and retries with feedback.",
+            "Parallel validated translation.",
             typeof(TranslationWorkflowRequest),
             new TranslationWorkflowRequest("Hello, how are you?", ["es", "fr"]),
             CreateWorkflowDiagram: CreateTranslationWorkflowDiagram,
             CreateHostedWorkflow: (services, name) => services
-                .GetRequiredService<TranslationWorkflowFactory>()
-                .CreateForDevUI(name)),
+                .GetRequiredService<ITranslationWorkflowSource>()
+                .CreateWorkflowForDevUI(name)),
     ];
 
     public static LocalEntityDescriptor? Find(

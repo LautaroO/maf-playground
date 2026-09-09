@@ -17,7 +17,9 @@ public static class BasicAgentServiceCollectionExtensions
             .ValidateOnStart();
         services.TryAddSingleton<Tools.CurrentDateTimeTool>();
         services.TryAddSingleton<UserContextProvider>();
+        services.TryAddSingleton<IBasicAgentSource, BasicAgentSource>();
         services.TryAddSingleton<BasicAgent>();
+        services.TryAddScoped<BasicAgentEntity>();
         return services;
     }
 }

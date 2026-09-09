@@ -10,7 +10,10 @@ internal sealed class ContentGuardChatClientDecorator(
 {
     public int Order => ChatClientDecoratorOrder.ContentGuard;
 
-    public IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection)
+    public IChatClient Decorate(
+        IChatClient chatClient,
+        AIModelSelection modelSelection,
+        TimeSpan modelCallTimeout)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         return new ContentGuardChatClient(chatClient, contextAccessor, contentGuard);
