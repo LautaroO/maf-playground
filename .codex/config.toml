@@ -1,0 +1,8 @@
+# Shared project configuration. Keep credentials and personal settings out.
+[marketplaces.lautaro-plugins]
+source_type = "git"
+source = "https://github.com/LautaroO/lautaro-plugins.git"
+sparse_paths = [".agents/plugins"]
+
+[plugins."maf-dotnet@lautaro-plugins"]
+enabled = true

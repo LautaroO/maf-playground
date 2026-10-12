@@ -141,7 +141,7 @@ docker-compose.override.yml
 
 # Personal Codex configuration should normally live in ~/.codex,
 # but ignore machine-specific files if they appear in the repository.
-.codex/config.toml
+# .codex/config.toml is shared project configuration and is tracked.
 .codex/auth.json
 .codex/history.json
 .codex/sessions/

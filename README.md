@@ -432,7 +432,38 @@ for the Google Gen AI, Ollama, and evaluation switches.
   projects depend on the CLI or DevUI.
 
 Repository-specific implementation and review guidance is in [`AGENTS.md`](AGENTS.md)
-and the MAF skills under [`.agents/skills`](.agents/skills).
+and the shared MAF skills supplied by `maf-dotnet@lautaro-plugins`.
+See [Codex setup](docs/codex-setup.md) for installation and discovery.
+
+### Codex MAF plugin
+
+The shared [Codex project configuration](.codex/config.toml) enables
+`maf-dotnet@lautaro-plugins`, distributed from
+[maf-dotnet-template](https://github.com/LautaroO/maf-dotnet-template) through
+[Lautaro Plugins](https://github.com/LautaroO/lautaro-plugins).
+The plugin provides developer guidance; it adds no application runtime dependency.
+
+Install it on each development machine:
+
+```sh
+codex plugin marketplace add https://github.com/LautaroO/lautaro-plugins.git --sparse .agents/plugins
+codex plugin marketplace list
+codex plugin add maf-dotnet@lautaro-plugins --json
+codex plugin list --json
+```
+
+If the marketplace is already registered, refresh it with
+`codex plugin marketplace upgrade lautaro-plugins` instead of adding it again.
+Trust this project through the Codex client so its project configuration can load,
+then start a fresh session. Verify that the plugin is enabled and that its fourteen
+skills, including `maf-adoption`, are discoverable from the installed cache.
+Project configuration alone does not install the plugin.
+
+Use the installed plugin's namespace shown by the client to select its skills
+explicitly. Shared MAF skills and references are maintained in the plugin,
+with no local copies. Reserve `.agents/skills` for workflows specific to this repository.
+Repository rules in `AGENTS.md` remain authoritative. Keep credentials and
+machine-specific trust settings in user configuration, outside this repository.
 
 ## Current limitations
 

@@ -365,7 +365,15 @@ Use targeted project or test commands first when the full solution is expensive.
 
 ## Skill routing
 
-Use the matching repository skill for MAF work:
+Shared MAF skills come exclusively from `maf-dotnet@lautaro-plugins`, enabled
+in `.codex/config.toml`. Follow [Codex setup](docs/codex-setup.md) to install it
+and verify discovery in a fresh trusted-project session. Select the installed
+plugin's namespace shown by the client; do not copy shared skills or resources
+into this repository. Keep project-specific rules in this file and existing
+project documentation. Add a local skill only for a repeatable workflow specific
+to maf-playground that the shared plugin does not provide.
+
+Use the matching installed plugin skill for MAF work:
 
 - `$maf-architecture` — classify a requirement and choose the MAF abstraction.
 - `$maf-agents` — create or change agents, sessions, structured outputs, and agent composition.
@@ -379,4 +387,27 @@ Use the matching repository skill for MAF work:
 - `$maf-testing` — deterministic tests, workflow tests, fakes, integration tests, and model evaluation.
 - `$maf-review` — architecture and code review across all of the above.
 
+- `$maf-adoption` — adopt or update plugin guidance while preserving project rules.
+- `$maf-hosting` — choose and review hosting and protocol boundaries.
+- `$maf-security` — review authorization, tenancy, approvals, and security controls.
+
 A task may require more than one skill. Load only the relevant skills and references.
+
+## Project context index
+
+- Solution and runtime boundaries: [`README.md`](README.md) and the README files
+  under `src/`; project membership is defined by `MafPlayground.slnx`.
+- Framework and package versions: `global.json`, `Directory.Build.props`, and
+  `Directory.Packages.props`. This repository uses MAF 1.16.0; plugin capability
+  documentation may describe newer versions and does not authorize an upgrade.
+- Setup and local operation: [`docs/repository-help/manual.md`](docs/repository-help/manual.md)
+  and [`docs/repository-help/cli-reference.md`](docs/repository-help/cli-reference.md).
+- Retrieval design evidence: [`docs/rag-data-ingestion-spike.md`](docs/rag-data-ingestion-spike.md).
+- Verification: `scripts/verify.sh`, [`tests/README.md`](tests/README.md), and the
+  individual test-project READMEs; real-model tests remain opt-in.
+
+Reuse these canonical documents and the implementation workflow above. Update
+relevant documents when behavior changes; resolve material missing requirements
+before implementing affected behavior. A small, fully specified change needs no
+additional specification document. Do not introduce a second planning process
+solely because the plugin supplies MAF guidance.

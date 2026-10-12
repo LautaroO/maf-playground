@@ -1,54 +1,60 @@
 # Codex setup
 
-## 1. Add repository guidance
+## Shared MAF guidance
 
-Place `AGENTS.md` at the Git repository root.
+Project rules and context live in `AGENTS.md` and existing project documentation.
+Shared skills and references come from `maf-dotnet@lautaro-plugins`; there are no
+local copies. Reserve `.agents/skills/<skill-name>/SKILL.md` for repeatable workflows
+specific to maf-playground. There are currently no repository-specific skills.
 
-Codex reads instruction files from the repository root down to the current working directory. A closer `AGENTS.override.md` takes precedence for that directory.
+## Installation
 
-## 2. Add repository skills
+The tracked `.codex/config.toml` declares the marketplace and enables the plugin;
+it does not install it. Each developer installs it in their Codex environment.
 
-Place skills under:
+Check registered marketplaces:
 
-```text
-.agents/skills/<skill-name>/SKILL.md
+```sh
+codex plugin marketplace list
 ```
 
-Codex scans `.agents/skills` from the current directory toward the repository root.
+If `lautaro-plugins` is absent:
 
-## 3. Optional global configuration
-
-Personal configuration belongs in:
-
-```text
-~/.codex/config.toml
-~/.codex/AGENTS.md
+```sh
+codex plugin marketplace add https://github.com/LautaroO/lautaro-plugins.git --sparse .agents/plugins
 ```
 
-Do not commit personal secrets or machine-specific configuration.
+If already registered, refresh it instead:
 
-## 4. Verify discovery
-
-Launch a new Codex session at the repository root and ask:
-
-```text
-List the instruction files and skills you loaded.
+```sh
+codex plugin marketplace upgrade lautaro-plugins
 ```
 
-For CLI verification of instructions:
+Then install and inspect:
 
-```bash
-codex --ask-for-approval never "Summarize the current instructions."
+```sh
+codex plugin add maf-dotnet@lautaro-plugins --json
+codex plugin list --json
 ```
 
-## 5. Recommended usage
+Installation belongs to the user's Codex environment, not exclusively to this
+repository. Keep personal settings, credentials, and machine-specific trust
+configuration outside source control.
 
-Use `maf-architecture` before substantial design changes.
+## Verify discovery
 
-Use `maf-implementation` after the architecture is clear or for localized MAF changes.
+Open the repository as a trusted project in Codex and start a fresh session.
+Confirm the plugin is enabled and all fourteen skills are discoverable, including
+`maf-adoption`, `maf-architecture`, and `maf-review`. Select skills using the
+installed plugin namespace shown by the client. A cached installation alone does
+not prove discovery in a running session.
 
-Use `maf-review` for pull requests, refactors, and architecture assessments.
+## Usage and versions
 
-## 6. Keep versions aligned
+Use `maf-architecture` when responsibilities or orchestration are unclear, then
+the matching implementation skill such as `maf-agents`, `maf-tools`, or
+`maf-workflows`. Use `maf-review` for reviews and `maf-adoption` for guidance updates.
 
-Record MAF NuGet package versions with central package management or project files. The skill instructs Codex to inspect installed versions before relying on current online samples.
+Repository rules remain authoritative. Inspect `Directory.Packages.props` before
+relying on plugin examples: this application uses MAF 1.16.0, independently of
+the plugin version. Do not upgrade packages just to match plugin documentation.
