@@ -54,6 +54,7 @@ public static class ObservabilityServiceExtensions
             .WithTracing(tracing => tracing
                 .AddSource(
                     AITelemetry.AgentSourceName,
+                    AITelemetry.RuntimeSourceName,
                     AITelemetry.WorkflowSourceName,
                     ObservabilityTelemetry.TestHarnessSourceName)
                 .AddOtlpExporter())

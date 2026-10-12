@@ -8,6 +8,14 @@ public static class BasicAgentServiceCollectionExtensions
 {
     public static IServiceCollection AddBasicAgent(this IServiceCollection services)
     {
+        AddBasicAgentEntityServices(services);
+        services.TryAddSingleton<BasicAgent>();
+        return services;
+    }
+
+    internal static IServiceCollection AddBasicAgentEntityServices(
+        this IServiceCollection services)
+    {
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<BasicAgentOptions>()
@@ -17,7 +25,8 @@ public static class BasicAgentServiceCollectionExtensions
             .ValidateOnStart();
         services.TryAddSingleton<Tools.CurrentDateTimeTool>();
         services.TryAddSingleton<UserContextProvider>();
-        services.TryAddSingleton<BasicAgent>();
+        services.TryAddSingleton<IBasicAgentSource, BasicAgentSource>();
+        services.TryAddScoped<BasicAgentEntity>();
         return services;
     }
 }

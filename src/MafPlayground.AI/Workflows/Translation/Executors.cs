@@ -10,6 +10,7 @@ namespace MafPlayground.AI.Workflows.Translation;
 
 internal sealed class TranslationInputExecutor(
     TranslationWorkflowOptions options,
+    string guardProfile,
     WorkflowGuardCoordinator guards)
     : Executor<TranslationWorkflowInput, GuardedTranslationRequest>(
         "translation-input",
@@ -26,7 +27,7 @@ internal sealed class TranslationInputExecutor(
                 message.TargetLanguages),
             options);
         GuardedWorkflowInput guarded = await guards.StartAsync(
-            options.GuardProfile,
+            guardProfile,
             request.Text,
             cancellationToken);
         return new GuardedTranslationRequest(

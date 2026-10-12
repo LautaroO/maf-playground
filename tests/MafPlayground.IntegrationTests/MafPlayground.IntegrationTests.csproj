@@ -14,7 +14,9 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/MafPlayground.AI/MafPlayground.AI.csproj" />
+    <ProjectReference Include="../../src/MafPlayground.AI.Abstractions/MafPlayground.AI.Abstractions.csproj" />
+    <ProjectReference Include="../../src/MafPlayground.AI.Runtime/MafPlayground.AI.Runtime.csproj" />
+    <ProjectReference Include="../../src/MafPlayground.AI.Samples/MafPlayground.AI.Samples.csproj" />
     <ProjectReference Include="../../src/MafPlayground.Providers.Google/MafPlayground.Providers.Google.csproj" />
     <ProjectReference Include="../../src/MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
     <ProjectReference Include="../../src/MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />

@@ -6,7 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../MafPlayground.AI/MafPlayground.AI.csproj" />
+    <ProjectReference Include="../MafPlayground.AI.Runtime/MafPlayground.AI.Runtime.csproj" />
     <ProjectReference Include="../MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
   </ItemGroup>
 

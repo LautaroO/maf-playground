@@ -36,7 +36,10 @@ internal sealed class CostTrackingChatClientDecorator : IChatClientDecorator
         _pricingSources = sourceMap;
     }
 
-    public IChatClient Decorate(IChatClient chatClient, AIModelSelection modelSelection)
+    public IChatClient Decorate(
+        IChatClient chatClient,
+        AIModelSelection modelSelection,
+        TimeSpan modelCallTimeout)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(modelSelection);

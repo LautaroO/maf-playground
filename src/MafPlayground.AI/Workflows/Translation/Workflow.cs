@@ -16,21 +16,25 @@ public sealed class TranslationWorkflowFactory(
     private readonly AgentTelemetryOptions _telemetryOptions = telemetryOptions.Value;
 
     public Workflow Create() =>
-        Create("translation-workflow", useChatProtocol: false);
+        Create("translation-workflow", useChatProtocol: false, _options.GuardProfile);
+
+    public Workflow CreateForRuntime(string guardProfile) =>
+        Create("translation-workflow", useChatProtocol: false, guardProfile);
 
     public Workflow CreateForDevUI(
         string workflowName = "translation-workflow") =>
-        Create(workflowName, useChatProtocol: true);
+        Create(workflowName, useChatProtocol: true, _options.GuardProfile);
 
     private Workflow Create(
         string workflowName,
-        bool useChatProtocol)
+        bool useChatProtocol,
+        string guardProfile)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowName);
         string[] supportedLanguages = TranslationWorkflowHelpers.ValidateSupportedLanguages(
             _options.SupportedTargetLanguages);
 
-        TranslationInputExecutor input = new(_options, guards);
+        TranslationInputExecutor input = new(_options, guardProfile, guards);
         List<ExecutorBinding> translators = [];
         List<ExecutorBinding> validators = [];
         TranslationAggregatorExecutor aggregator = new(

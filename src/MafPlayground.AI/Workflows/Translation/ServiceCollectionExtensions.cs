@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MafPlayground.AI.Runtime.Providers;
 
 namespace MafPlayground.AI.Workflows.Translation;
 
@@ -29,10 +30,15 @@ public static class TranslationWorkflowServiceCollectionExtensions
                 options => !string.IsNullOrWhiteSpace(options.GuardProfile),
                 "Translation workflow requires a guard profile.")
             .ValidateOnStart();
-        services.TryAddSingleton<ITranslationModel, ChatClientTranslationModel>();
+        services.TryAddSingleton<ITranslationModel>(provider =>
+            new ChatClientTranslationModel(
+                provider.GetRequiredService<IAIChatClientFactory>()
+                    .Create("translation-workflow")));
         services.TryAddSingleton<TranslationService>();
         services.TryAddSingleton<TranslationWorkflowFactory>();
         services.TryAddSingleton<TranslationWorkflowRunner>();
+        services.TryAddSingleton<ITranslationWorkflowSource, TranslationWorkflowSource>();
+        services.TryAddScoped<TranslationWorkflowEntity>();
         return services;
     }
 }
