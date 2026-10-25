@@ -1,8 +1,13 @@
 # MAF Playground
 
-A production-oriented Microsoft Agent Framework (MAF) playground for building,
-running, inspecting, and testing provider-neutral agents and native workflows in
-C#/.NET.
+A practical Microsoft Agent Framework (MAF) reference for C# developers building
+agents and workflows for real application needs. Executable solutions demonstrate
+contracts, separation of responsibilities, provider neutrality, and how to test
+and evaluate behavior, with explicit limits before production deployment.
+
+New to agents? Follow [Your first agent](docs/start-here.md). Looking for a
+specific example or architectural decision? Open the
+[documentation and solution catalog](docs/README.md).
 
 The repository includes:
 

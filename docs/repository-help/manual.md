@@ -11,6 +11,13 @@ This manual is the curated source for conceptual repository help. Exact CLI
 commands and options are documented separately in `cli-reference.md`, which is
 generated from the live `System.CommandLine` command tree.
 
+For a guided introduction, follow [Your first agent](../start-here.md). Use the
+[documentation catalog](../README.md) to browse solutions, architecture, and
+testing references. Updating these Markdown files does not update the help
+agent's indexed knowledge automatically: explicitly re-ingest the curated manual
+and generated CLI reference using the [repository procedure](../../README.md#repository-help-agent).
+The documentation catalog and learning path are not automatically indexed.
+
 The repository help agent is informational. It can search this manual and refine
 that search once, but it cannot execute shell commands, modify files, inspect
 arbitrary source code, or write to the knowledge base.
@@ -35,7 +42,11 @@ integrations remain replaceable adapters.
 
 | Project | Responsibility |
 | --- | --- |
-| `MafPlayground.AI` | Provider-neutral agents, tools, context providers, workflows, guards, and resilience. |
+| `MafPlayground.AI.Abstractions` | MAF-free entity, invocation, caller, and discovery contracts. |
+| `MafPlayground.AI.Runtime` | Entity registry, model resolution, MAF factories/runners, guards, and session storage contracts. |
+| `MafPlayground.AI.Samples` | Example agents, tools, context providers, and native workflows. |
+| `MafPlayground.AI.AspNetCore` | Authorized JSON endpoints and request limits. |
+| `MafPlayground.AspNetCore` | Development-only HTTP sample host. |
 | `MafPlayground.CLI` | Development CLI, dependency composition, entity inspection, and DevUI hosting. |
 | `MafPlayground.Retrieval` | Document extraction, chunking, embeddings, search, and storage contracts. |
 | `MafPlayground.Retrieval.Postgres` | EF Core, PostgreSQL, and pgvector persistence adapter. |
@@ -46,6 +57,10 @@ integrations remain replaceable adapters.
 Provider-specific SDK types stay in provider adapters or the CLI composition
 root. Agents and workflows depend on MAF, Microsoft.Extensions.AI, or
 repository-owned contracts.
+
+`src/MafPlayground.AI` retains shared source linked into the Runtime and Samples
+projects; it is not a separate project in the current solution. See the
+[source layout](../../src/MafPlayground.AI/README.md).
 
 ## Main execution concepts
 
