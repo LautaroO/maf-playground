@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MafPlayground.AI.Runtime.Execution;
 using MafPlayground.AI.Abstractions;
 using Microsoft.Agents.AI.Workflows;
 
@@ -47,6 +48,7 @@ internal sealed class MafWorkflowRunner : IMafWorkflowRunner
                     WorkflowOutputEvent output => output.ExecutorId,
                     _ => null,
                 };
+                AIExecutionObservation.Record("workflow_payload", new { eventType = item.GetType().Name, executorId, data = item.Data }, executorId);
                 observer.Record(new("workflow_event", JsonSerializer.SerializeToElement(new { eventType = item.GetType().Name }), executorId));
                 if (item is WorkflowOutputEvent streamedOutput && streamedOutput.Is<TOutput>())
                 {

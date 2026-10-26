@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MafPlayground.Studio.Capture;
 using MafPlayground.AI.Abstractions;
 using MafPlayground.AI.Runtime.Registry;
 using MafPlayground.Studio.Contracts;
@@ -6,7 +7,7 @@ using MafPlayground.Studio.Contracts;
 namespace MafPlayground.Studio.Execution;
 
 public sealed class StudioEntityExecutor(IAIEntityInvoker invoker, IAIEntityInspection inspection,
-    StudioExecutionProfileBinder profiles, IStudioEventSink events, TimeProvider clock) : IStudioEntityExecutor
+    StudioExecutionProfileBinder profiles, IStudioEventSink events, TimeProvider clock, StudioPayloadStore payloads, StudioActivityListener listener, StudioOptions options) : IStudioEntityExecutor
 {
     public async ValueTask<StudioEntityExecutionResult> ExecuteAsync(StudioRunRequest request, StudioExecutionContext context, CancellationToken cancellationToken)
     {
@@ -17,7 +18,9 @@ public sealed class StudioEntityExecutor(IAIEntityInvoker invoker, IAIEntityInsp
         AIEntityRegistrationInfo registration = inspection.GetRegistration(request.EntityId);
         AIEntityAvailability availability = inspection.GetAvailability(request.EntityId);
         if (!availability.IsAvailable) throw new InvalidOperationException(availability.Reason);
-        Observer observer = new(events, clock, context.RunId);
+        _ = listener;
+        using StudioCaptureScope? capture = options.EnableCapture ? new(context, events, payloads, clock) : null;
+        WorkflowEventMapper observer = new(events, payloads, clock, context.RunId);
         if (!registration.SupportsProfiles)
         {
             observer.Record(new("capability_unavailable", JsonSerializer.SerializeToElement(new { capability = "profiles" })));
@@ -27,7 +30,7 @@ public sealed class StudioEntityExecutor(IAIEntityInvoker invoker, IAIEntityInsp
             observer.Record(new("capability_unavailable", JsonSerializer.SerializeToElement(new { capability = "streaming" })));
         AIEntityInvocationResult result = await invoker.InvokeAsync(request.EntityId, request.Input,
             new AIExecutionContext(context.RunId, context.Caller, context.SessionId, request.ProfileId,
-                registration.SupportsStreaming ? observer : null), cancellationToken).ConfigureAwait(false);
+                options.EnableCapture ? observer : null), cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         return new(JsonSerializer.SerializeToElement(result.Output, AIJsonSerializerOptions.Default), result.Outcome switch
         {
@@ -36,11 +39,5 @@ public sealed class StudioEntityExecutor(IAIEntityInvoker invoker, IAIEntityInsp
             AIOutcomeClassification.Failed => StudioOutcomeClassification.Failed,
             _ => StudioOutcomeClassification.Unclassified,
         });
-    }
-
-    private sealed class Observer(IStudioEventSink sink, TimeProvider clock, string runId) : IAIExecutionObserver
-    {
-        public void Record(AIExecutionEvent item) => sink.Record(new(runId, 0, clock.GetUtcNow(), item.Kind,
-            item.ExecutorId, item.InvocationId, null, item.Data));
     }
 }

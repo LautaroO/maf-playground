@@ -33,9 +33,11 @@ internal static class GroundedAgentProfiles
             });
         RagContextProvider ragContext = new(search, options.Retrieval, accessor, services.GetRequiredService<ContentGuard>(),
             services.GetRequiredService<GuardProfileResolver>().Resolve(runtime.GuardProfile));
-        return new BasicRagAgent.BasicRagAgent(client, ragContext, accessor, services.GetRequiredService<CitationValidator>(),
+        AIAgent agent = new BasicRagAgent.BasicRagAgent(client, ragContext, accessor, services.GetRequiredService<CitationValidator>(),
             new ChatClientRagAnswerRepairService(client), services.GetRequiredService<AgentGuardPipeline>(), Options.Create(options),
             services.GetRequiredService<IOptions<AgentTelemetryOptions>>()).Agent;
+        if (agent is IDisposable disposable) context.Own(disposable);
+        return agent;
     }
 
     internal static AIAgent CreateHelp(IServiceProvider services, AIEntityConstructionContext context)
@@ -44,10 +46,12 @@ internal static class GroundedAgentProfiles
         HelpAgentOptions configured = services.GetRequiredService<IOptions<HelpAgentOptions>>().Value;
         HelpAgentOptions options = new() { KnowledgeBase = configured.KnowledgeBase, GuardProfile = runtime.GuardProfile, Retrieval = Copy(configured.Retrieval) };
         IChatClient client = context.Own(services.GetRequiredService<IAIChatClientFactory>().Create(runtime));
-        return new HelpAgentFactory(client, services.GetRequiredService<IKnowledgeSearchFactory>(), services.GetRequiredService<CitationValidator>(),
+        AIAgent agent = new HelpAgentFactory(client, services.GetRequiredService<IKnowledgeSearchFactory>(), services.GetRequiredService<CitationValidator>(),
             new ChatClientRagAnswerRepairService(client), services.GetRequiredService<AgentGuardPipeline>(), services.GetRequiredService<ContentGuard>(),
             services.GetRequiredService<GuardProfileResolver>(), services.GetRequiredService<HelpAgentDefinition>(), Options.Create(options),
             services.GetRequiredService<IHelpCapabilityCatalog>(), services.GetRequiredService<IOptions<AgentTelemetryOptions>>()).Create();
+        if (agent is IDisposable disposable) context.Own(disposable);
+        return agent;
     }
 
     private static RagRetrievalOptions Copy(RagRetrievalOptions source) => new()

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MafPlayground.AI.Runtime.Execution;
 using System.Text;
 using System.Text.Json;
 using MafPlayground.AI.Guards;
@@ -21,6 +22,7 @@ internal sealed class TranslationInputExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken = default)
     {
+        using var observation = AIExecutionObservation.BeginInvocation(Id, message);
         TranslationWorkflowRequest request = TranslationWorkflowHelpers.ValidateRequest(
             new TranslationWorkflowRequest(
                 message.Text,
@@ -30,9 +32,11 @@ internal sealed class TranslationInputExecutor(
             guardProfile,
             request.Text,
             cancellationToken);
-        return new GuardedTranslationRequest(
+        var result = new GuardedTranslationRequest(
             request with { Text = guarded.Content },
             guarded.ExecutionId);
+        observation.Output(result);
+        return result;
     }
 }
 
@@ -47,6 +51,7 @@ internal sealed class TranslationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
+        using var observation = AIExecutionObservation.BeginInvocation(Id, guardedRequest);
         TranslationWorkflowRequest request = guardedRequest.Request;
         Stopwatch elapsed = Stopwatch.StartNew();
         TranslationBranchState state = await translationService.TranslateAsync(
@@ -60,6 +65,8 @@ internal sealed class TranslationExecutor(
             "translation.translate",
             state,
             elapsed.Elapsed);
+        observation.Output(state);
+        observation.Send(state);
         await context.SendMessageAsync(state, cancellationToken);
     }
 
@@ -68,6 +75,7 @@ internal sealed class TranslationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
+        using var observation = AIExecutionObservation.BeginInvocation(Id, state);
         Stopwatch elapsed = Stopwatch.StartNew();
         TranslationBranchState translatedState = await translationService.TranslateAsync(
             state,
@@ -76,6 +84,8 @@ internal sealed class TranslationExecutor(
             "translation.translate",
             translatedState,
             elapsed.Elapsed);
+        observation.Output(translatedState);
+        observation.Send(translatedState);
         await context.SendMessageAsync(translatedState, cancellationToken);
     }
 
@@ -100,6 +110,7 @@ internal sealed class TranslationValidationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
+        using var observation = AIExecutionObservation.BeginInvocation(Id, state);
         bool skippedForUpstreamError = state.ErrorType is not null;
         Stopwatch elapsed = Stopwatch.StartNew();
         TranslationBranchState validatedState = await translationService.ValidateAsync(
@@ -110,8 +121,11 @@ internal sealed class TranslationValidationExecutor(
             validatedState,
             elapsed.Elapsed,
             skippedForUpstreamError);
+        observation.Output(validatedState);
+        AIExecutionObservation.Record("validation_feedback", validatedState);
         if (validatedState.ShouldRetry)
         {
+            observation.Send(validatedState, translatorId);
             await context.SendMessageAsync(
                 validatedState,
                 translatorId,
@@ -119,12 +133,13 @@ internal sealed class TranslationValidationExecutor(
             return;
         }
 
-        await context.SendMessageAsync(
-            new ValidatedTranslationMessage(
+        var completed = new ValidatedTranslationMessage(
                 validatedState.SourceText,
                 validatedState.RequestedTargetLanguages,
                 TranslationService.Complete(validatedState),
-                validatedState.GuardExecutionId),
+                validatedState.GuardExecutionId);
+        observation.Send(completed, TranslationAggregatorExecutor.ExecutorId);
+        await context.SendMessageAsync(completed,
             TranslationAggregatorExecutor.ExecutorId,
             cancellationToken);
     }
@@ -358,6 +373,7 @@ internal sealed class TranslationAggregatorExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken = default)
     {
+        using var observation = AIExecutionObservation.BeginInvocation(Id, message);
         if (!_translations.TryAdd(message.Translation.TargetLanguage, message))
         {
             throw new InvalidOperationException(
@@ -411,6 +427,7 @@ internal sealed class TranslationAggregatorExecutor(
             }
 
             TranslationWorkflowResult result = new(sourceText, orderedTranslations);
+            observation.Output(result);
             await context.YieldOutputAsync(result, cancellationToken);
 
             if (emitAgentResponse)

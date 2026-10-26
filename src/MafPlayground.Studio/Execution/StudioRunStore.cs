@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using MafPlayground.Studio.Capture;
 using System.Text;
 using System.Text.Json;
 using MafPlayground.AI.Abstractions;
@@ -8,6 +9,7 @@ namespace MafPlayground.Studio.Execution;
 
 internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
 {
+    private readonly StudioPayloadStore payloads = new(options);
     internal object Gate { get; } = new();
     internal string HostInstanceId { get; } = Guid.NewGuid().ToString("N");
     private readonly Dictionary<string, Tombstone> requests = new(StringComparer.Ordinal);
@@ -20,7 +22,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
 
     internal StudioRunReceipt? FindRetry(StudioRunRequest request, AICallerContext caller)
     {
-        if (!requests.TryGetValue(request.RequestId, out Tombstone? old)) return null;
+        if (!requests.TryGetValue(RequestKey(request.RequestId), out Tombstone? old)) return null;
         if (old.Fingerprint != Fingerprint(request, caller)) throw new StudioRequestConflictException();
         return old.Receipt;
     }
@@ -39,13 +41,23 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
         CheckSession(request.SessionId);
         int inputBytes = JsonBytes(request.Input);
         if (inputBytes > options.MaxPayloadBytes) throw new ArgumentException("The submitted input exceeds the payload limit.", nameof(request));
-        EvictForSpace(inputBytes);
-        if (captureBytes + inputBytes > options.MaxCaptureBytes) throw new StudioCapacityException("Active runs occupy the capture budget.");
         StudioRunReceipt receipt = new(HostInstanceId, Guid.NewGuid().ToString("N"));
         // The accepted job owns the JSON and validated caller, never a request scope.
         StudioRunRequest owned = request with { Input = request.Input.Clone() };
-        RunState state = new(receipt, owned, new AICallerContext(caller.SubjectId, caller.TenantId), clock.GetUtcNow(), options.MaxEventsPerRun, inputBytes);
-        requests.Add(request.RequestId, new(Fingerprint(request, caller), receipt));
+        StudioPayload safeInput = payloads.Capture(owned.Input, "application/json");
+        StudioRunRequest inspectable = owned with
+        {
+            Input = safeInput.Value,
+            RequestId = payloads.Redactor.RedactText(owned.RequestId),
+            EntityId = payloads.Redactor.RedactText(owned.EntityId),
+            ProfileId = payloads.Redactor.RedactText(owned.ProfileId),
+            SessionId = owned.SessionId is null ? null : payloads.Redactor.RedactText(owned.SessionId),
+        };
+        inputBytes = JsonBytes(safeInput.Value);
+        EvictForSpace(inputBytes);
+        if (captureBytes + inputBytes > options.MaxCaptureBytes) throw new StudioCapacityException("Active runs occupy the capture budget.");
+        RunState state = new(receipt, inspectable, new AICallerContext(caller.SubjectId, caller.TenantId), clock.GetUtcNow(), options.MaxEventsPerRun, inputBytes) { ExecutionRequest = owned, Incomplete = safeInput.State is StudioCaptureState.Truncated or StudioCaptureState.Unavailable };
+        requests.Add(RequestKey(request.RequestId), new(Fingerprint(request, caller), receipt));
         metadataBytes += metadata;
         runs.Add(receipt.RunId, state);
         if (request.SessionId is not null) sessions.Add(request.SessionId);
@@ -71,6 +83,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
 
     internal void SetProfile(RunState state, StudioExecutionProfileSnapshot profile)
     {
+        profile = profile with { Id = payloads.Redactor.RedactText(profile.Id), Model = profile.Model is null ? null : payloads.Redactor.RedactText(profile.Model), GuardProfile = profile.GuardProfile is null ? null : payloads.Redactor.RedactText(profile.GuardProfile) };
         int bytes = JsonSerializer.SerializeToUtf8Bytes(profile).Length;
         if (bytes > options.MaxPayloadBytes || !MakeSpace(state, bytes)) { state.Incomplete = true; return; }
         state.Profile = profile;
@@ -79,7 +92,10 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
 
     internal void SetTopology(RunState state, StudioTopology topology)
     {
-        int bytes = JsonSerializer.SerializeToUtf8Bytes(topology).Length;
+        StudioPayload captured = payloads.Capture(topology, "application/json");
+        if (captured.State is StudioCaptureState.Truncated or StudioCaptureState.Unavailable) { state.Incomplete = true; return; }
+        topology = captured.Value.Deserialize<StudioTopology>()!;
+        int bytes = JsonBytes(captured.Value);
         if (bytes > options.MaxPayloadBytes || !MakeSpace(state, bytes))
         {
             state.Incomplete = true;
@@ -99,6 +115,9 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
     {
         if (result is { } value)
         {
+            StudioPayload captured = payloads.Capture(value, "application/json");
+            value = captured.Value;
+            state.Incomplete |= captured.State is StudioCaptureState.Truncated or StudioCaptureState.Unavailable;
             int bytes = JsonBytes(value);
             if (bytes > options.MaxPayloadBytes || !MakeSpace(state, bytes))
             {
@@ -113,11 +132,12 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
             }
             else state.Incomplete = true;
         }
+        if (state.ExecutionRequest?.SessionId is { } sessionId) sessions.Remove(sessionId);
+        state.ExecutionRequest = null; // Release the raw execution envelope on every terminal path.
         state.Outcome = outcome;
         state.Status = status;
         state.ErrorCategory = error;
         state.CompletedAt = clock.GetUtcNow();
-        if (state.Request.SessionId is not null) sessions.Remove(state.Request.SessionId);
         Lifecycle(state, status.ToString());
         completed.AddLast(state.Receipt.RunId);
         while (completed.Count > options.MaxCompletedRuns) EvictOldest();
@@ -140,6 +160,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
     internal void Record(StudioEvent item)
     {
         if (!runs.TryGetValue(item.RunId, out RunState? state)) return;
+        state.Incomplete |= item.CaptureState is StudioCaptureState.Truncated or StudioCaptureState.Unavailable;
         long sequence = state.Journal.NextSequence();
         if (string.IsNullOrWhiteSpace(item.Kind) || item.Kind.Length > 256 ||
             item.ExecutorId?.Length > 256 || item.InvocationId?.Length > 256 || item.SpanId?.Length > 256 ||
@@ -148,13 +169,24 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
             state.Journal.Drop();
             return;
         }
-        JsonElement data = item.Data;
+        StudioPayload captured = payloads.Capture(item.Data, "application/json");
+        JsonElement data = captured.Value;
+        state.Incomplete |= captured.State is StudioCaptureState.Truncated or StudioCaptureState.Unavailable;
         if (JsonBytes(data) > options.MaxPayloadBytes)
         {
             data = Truncated;
             state.Incomplete = true;
         }
-        StudioEvent owned = item with { Sequence = sequence, Data = data };
+        StudioEvent owned = item with
+        {
+            Sequence = sequence,
+            Data = data,
+            CaptureState = (StudioCaptureState)Math.Max((int)item.CaptureState, (int)captured.State),
+            Kind = payloads.Redactor.RedactText(item.Kind),
+            ExecutorId = item.ExecutorId is null ? null : payloads.Redactor.RedactText(item.ExecutorId),
+            InvocationId = item.InvocationId is null ? null : payloads.Redactor.RedactText(item.InvocationId),
+            SpanId = item.SpanId is null ? null : payloads.Redactor.RedactText(item.SpanId)
+        };
         int bytes = JsonSerializer.SerializeToUtf8Bytes(owned).Length;
         if (!MakeSpace(state, bytes))
         {
@@ -204,6 +236,8 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
 
     private static int JsonBytes(JsonElement value) => Encoding.UTF8.GetByteCount(value.GetRawText());
 
+    private static string RequestKey(string id) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id)));
+
     private static string Fingerprint(StudioRunRequest request, AICallerContext caller)
     {
         byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new
@@ -215,6 +249,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
 
     internal sealed class RunState(StudioRunReceipt receipt, StudioRunRequest request, AICallerContext caller, DateTimeOffset submittedAt, int journalCapacity, int inputBytes)
     {
+        internal StudioRunRequest? ExecutionRequest { get; set; }
         internal StudioRunReceipt Receipt { get; } = receipt;
         internal StudioRunRequest Request { get; } = request;
         internal AICallerContext Caller { get; } = caller;

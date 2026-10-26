@@ -201,6 +201,48 @@ public sealed class StudioProfileIsolationTests
         Assert.Equal(2, clients.Clients["a"].Requests.Count);
     }
 
+    [Theory]
+    [InlineData("basic-rag-agent", false)]
+    [InlineData("basic-rag-agent", true)]
+    [InlineData("repository-help-agent", false)]
+    [InlineData("repository-help-agent", true)]
+    public async Task GroundedProfileScope_DisposesGeneratedTelemetryAgentAndClient(string entityId, bool fail)
+    {
+        ProfileProvider clients = new();
+        clients.Clients["a"].Reply = (_, _) => fail ? throw new InvalidOperationException("provider failed")
+            : Task.FromResult("""{"insufficientEvidence":true,"claims":[]}""");
+        await using StudioExecutionFixture fixture = Create(clients, new());
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "MafPlayground.Agents",
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) => System.Diagnostics.ActivitySamplingResult.AllData,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+        System.Diagnostics.ActivitySource generated;
+        await using (var scope = fixture.Provider.CreateAsyncScope())
+        {
+            scope.ServiceProvider.GetRequiredService<StudioExecutionProfileBinder>().Bind("a");
+            var inspection = scope.ServiceProvider.GetRequiredService<IAIEntityInspection>();
+            var source = inspection.GetAgentSource(entityId, new("a"))!;
+            Assert.Empty(clients.Created); // Resolving an unused source must stay lazy.
+            var agent = source.Agent;
+            var telemetry = (Microsoft.Extensions.AI.OpenTelemetryChatClient)typeof(Microsoft.Agents.AI.OpenTelemetryAgent)
+                .GetField("_otelClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(agent)!;
+            generated = (System.Diagnostics.ActivitySource)typeof(Microsoft.Extensions.AI.OpenTelemetryChatClient)
+                .GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .Single(field => field.FieldType == typeof(System.Diagnostics.ActivitySource)).GetValue(telemetry)!;
+            Assert.True(generated.HasListeners());
+            var request = new StudioRunRequest("owned", entityId, "a", JsonSerializer.SerializeToElement(new { message = "help" }), null);
+            var execute = () => scope.ServiceProvider.GetRequiredService<IStudioEntityExecutor>().ExecuteAsync(request,
+                new("owned", entityId, "a", null, new("local")), default).AsTask();
+            if (fail) await Assert.ThrowsAnyAsync<Exception>(execute);
+            else await execute();
+        }
+        Assert.False(generated.HasListeners());
+        Assert.True(clients.Clients["a"].DisposeCount > 0);
+        Assert.Equal(0, clients.Clients["b"].DisposeCount);
+    }
+
     private static StudioExecutionFixture Create(ProfileProvider clients, SearchFactory search, Action<IServiceCollection>? configure = null) => new(services =>
     {
         services.RemoveAll<IChatClientProvider>();

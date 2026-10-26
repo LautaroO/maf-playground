@@ -21,3 +21,11 @@ grounded repair, translation validation and partial outcomes, model-free native
 inspection, effective-profile snapshots, scope disposal, session continuity,
 reset, overlap, profile mismatch, and failure/cancellation rollback. No live model,
 HTTP, MCP, or browser is required.
+
+Capture tests cover admission/result/error redaction, Unicode/size/depth bounds,
+serialization failure containment, raw-envelope release, real model/tool exchanges,
+stream completion, external sensitive-telemetry isolation, native workflow payloads,
+parallel/repeated invocation identity and late spans. Profile scope tests verify
+RAG/Help generated telemetry resources are disposed after success and failure
+without constructing unused agents. The disposal assertion inspects the pinned
+MAF 1.16 telemetry resource, not a production reflection dependency.

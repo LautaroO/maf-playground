@@ -2,6 +2,8 @@ namespace MafPlayground.Studio.Execution;
 
 public sealed record StudioOptions
 {
+    public bool EnableCapture { get; init; } = true;
+    public IReadOnlyList<string> Secrets { get; init; } = [];
     public string DefaultProfileId { get; init; } = "cli-default";
     public int MaxConcurrentRuns { get; init; } = 4;
     public int QueueCapacity { get; init; } = 16;

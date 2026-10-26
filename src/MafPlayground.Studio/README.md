@@ -91,5 +91,45 @@ is independent of later configuration changes.
 The typed executor returns `StudioEntityExecutionResult(Output, Classification)`.
 Application classifiers alone determine domain status, independently of event
 capture or payload truncation. Neutral `text_delta`, `workflow_event` and
-`capability_unavailable` events are emitted from the same invocation. Detailed
-model/tool spans and payload capture are a separate integration.
+`capability_unavailable` events are emitted from the same invocation. Detailed local capture is installed by `AddStudioRuns`. `EnableCapture` controls
+model/tool/executor observation independently of existing telemetry export options.
+It does not enable sensitive OTLP data. `Secrets` supplies host-known literal
+credential values to redact in addition to credential field names and recognizable
+credential assignments/Bearer tokens. Never return these configured values through
+profile discovery.
+
+Capture uses the existing provider-neutral chat-client decorator boundary and a
+Runtime-only `AIExecutionObservation` seam for executor invocation/message sends.
+It never invokes models or tools twice. Model request/response/update/completion,
+tool argument/result exchanges, executor input/output, validation feedback and
+native workflow events are stored as bounded journal events. Tool records describe
+the exchanged content, including history; call IDs allow consumers to distinguish
+those observations from native tool-execution spans. No content enters metric labels.
+
+`StudioPayloadStore.Capture` creates sanitized `StudioPayload` values; it retains no
+separate dictionary. Payload records and `StudioSpan` records live in the existing
+bounded run journal and share its eviction, gap, byte and completeness accounting.
+Payload IDs are retrievable only while their enclosing event remains retained.
+Normal payload event data is a `StudioPayload`; `span` event data is a `StudioSpan`
+with bounded attributes/events/links. Native `workflow_event`/`text_delta` events
+retain their existing JSON shape. `StudioEvent.CaptureState` signals available,
+redacted, truncated or unavailable capture; loss never changes typed domain status.
+Serialization depth is limited to 32 and output to `MaxPayloadBytes`; oversize
+values become an explicit truncation marker without retaining an invalid Unicode
+or partial JSON prefix. Unsupported/throwing getters become unavailable with a
+stable reason. Input/result snapshots remain directly usable JSON after redaction.
+
+Submitted execution envelopes are private, admission-bounded and released after
+execution or queued cancellation. Snapshots contain sanitized copies from admission.
+Request-key and input/caller fingerprints retain hashes, not raw request bodies.
+Sanitized topology/profile/result/error data are stored under the same limits.
+
+The activity listener includes Runtime, repository, MAF and MEAI sources. It
+preserves trace/span/parent IDs and links, captures final spans even after scope
+exit, and isolates different hosts. Invocation IDs are explicit and independent
+for repeated/parallel executions. Matching native `executor.id` identifies the
+native executor activity; no display-name/timestamp matching is used. Native
+workflow events without invocation identity remain uncorrelated. Native edge
+activity attributes retain delivered/dropped evidence; Studio does not fabricate
+edge traversals from send intent. Missing usage/cost remains null. Detailed
+capture is local evidence, never an instruction source for an assistant.
