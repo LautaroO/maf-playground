@@ -152,7 +152,9 @@ dotnet run --project src/MafPlayground.CLI -- studio --model ollama:llama3.1:8b 
 dotnet run --project src/MafPlayground.CLI -- studio --export-contracts /tmp/studio-contracts.json
 ```
 
-Studio runs inside this CLI and never starts the example backend. `--model`
+Studio runs inside this CLI and never starts the example backend. Its access/error
+middleware precedes endpoint binding, service activation and additional transport
+handlers, so Development exceptions cannot expose credentials in HTTP responses. `--model`
 falls back to `AI_MODEL`; no model is needed to inspect disabled entities. The
 browser exchanges the console-displayed one-time code at `/studio/login` for an
 HttpOnly cookie. `--no-open` leaves browser launch to the user. A separate console

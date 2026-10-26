@@ -35,3 +35,10 @@ bootstrap, retained queries, SSE reconnect/gaps/disconnect, explicit cancellatio
 profile/session isolation and reset, bounded admission, capture lookups/redaction,
 input limits, disabled discovery and stable errors. Actual CLI process/loopback
 startup is isolated in `MafPlayground.Studio.IntegrationTests`.
+
+The HTTP fixture explicitly uses the Development environment. Focused access
+regressions cover missing/malformed query binding, invalid credentials, foreign
+Host/Origin, bearer/cookie authentication and a throwing endpoint dependency.
+They verify denial before activation and fixed ProblemDetails without credentials
+or development diagnostics. The process smoke test repeats the missing-query
+regression against the actual CLI with no credential, bearer and exchanged cookie.

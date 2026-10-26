@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using MafPlayground.AI.Abstractions;
 using MafPlayground.Studio.Catalog;
 using MafPlayground.Studio.Contracts;
 using MafPlayground.Studio.Execution;
@@ -10,6 +9,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using static MafPlayground.Studio.Http.StudioAccessMiddleware;
 
 namespace MafPlayground.Studio.Http;
 
@@ -20,8 +20,7 @@ public static class StudioEndpoints
 
     public static IEndpointRouteBuilder MapStudio(this IEndpointRouteBuilder endpoints)
     {
-        // Root group filter also protects the bootstrap page and later asset endpoints.
-        var root = endpoints.MapGroup("").AddEndpointFilter(GuardAsync);
+        var root = endpoints.MapGroup("");
         root.MapGet("/studio/login", () => Results.Content("""
             <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Studio access</title>
             <h1>Local Agent Studio</h1><p>Enter the one-time code printed in your terminal.</p>
@@ -142,35 +141,7 @@ public static class StudioEndpoints
         return await JsonSerializer.DeserializeAsync<T>(buffer, Json, context.RequestAborted) ?? throw new ArgumentException();
     }
 
-    private static async ValueTask<object?> GuardAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-    {
-        HttpContext http = context.HttpContext;
-        StudioAccessPolicy policy = http.RequestServices.GetRequiredService<StudioAccessPolicy>();
-        http.Response.Headers.CacheControl = "no-store";
-        http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-        http.Response.Headers.ContentSecurityPolicy = "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'";
-        if (!policy.IsLocalRequest(http)) return Problem(http, 403, "local_access_required");
-        if (http.Request.Path != "/studio/login" && !policy.IsAuthenticated(http)) return Problem(http, 401, "authentication_required");
-        try { return await next(context); }
-        catch (OperationCanceledException) when (http.RequestAborted.IsCancellationRequested) { return Results.Empty; }
-        catch (Exception exception) when (!http.Response.HasStarted)
-        {
-            (int status, string code) = exception switch
-            {
-                AIEntityNotFoundException or KeyNotFoundException => (404, "not_found_or_evicted"),
-                StudioCapacityException => (429, "capacity_exceeded"),
-                StudioSessionBusyException or StudioSessionConflictException or StudioRequestConflictException or AISessionConcurrencyException or StudioEntityUnavailableException or StudioResultPendingException => (409, "state_conflict"),
-                ArgumentException or JsonException or InvalidDataException or FormatException or OverflowException or BadHttpRequestException => (400, "invalid_request"),
-                _ => (500, "operation_failed"),
-            };
-            return Problem(http, status, code);
-        }
-    }
-
-    private static IResult Problem(HttpContext context, int status, string code) => Results.Problem(statusCode: status,
-        title: code, extensions: new Dictionary<string, object?>
-        { ["correlationId"] = context.TraceIdentifier, ["runId"] = context.Request.RouteValues["id"] is string id && StudioProfileCatalog.IsSafeId(id) ? id : null });
     private static async ValueTask<StudioRunSnapshot> RequiredAsync(IStudioRunService runs, string id, CancellationToken token) =>
         await runs.GetAsync(id, token) ?? throw new KeyNotFoundException();
-    private sealed class StudioResultPendingException : InvalidOperationException;
+    internal sealed class StudioResultPendingException : InvalidOperationException;
 }

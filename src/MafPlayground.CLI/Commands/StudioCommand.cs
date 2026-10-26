@@ -90,6 +90,7 @@ public sealed class StudioCommand : ICliCommand
             builder.Services.AddMafPlaygroundObservability(builder.Configuration);
             builder.Services.AddStudio(builder.Configuration);
             await using WebApplication app = builder.Build();
+            app.UseStudioAccess();
             app.MapStudio();
             await app.StartAsync(token);
             string login = access.Endpoint.GetLeftPart(UriPartial.Authority) + "/studio/login";

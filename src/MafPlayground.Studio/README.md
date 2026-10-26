@@ -158,7 +158,8 @@ JSON and prose remain unchanged.
 ## Local HTTP host
 
 The existing CLI composes one `WebApplication` with `AddStudio(configuration)`
-and `MapStudio()`. Studio adds an ASP.NET Core shared-framework reference; its
+then installs `UseStudioAccess()` before `MapStudio()` and any static-file or MCP
+middleware. Studio adds an ASP.NET Core shared-framework reference; its
 only project references remain Abstractions and Runtime. No provider SDK, sample
 registry, additional executable, or production OpenAPI package is introduced.
 
@@ -223,3 +224,16 @@ snapshots under the existing store lock.
 `AIJsonUtilities` without building/starting a host or registering providers. The
 current `/studio` page explicitly reports absent frontend assets; asset packaging
 and MCP mapping are separate delivery steps.
+
+Access and error protection is middleware, not an endpoint filter.
+`UseStudioAccess()` wraps all downstream routes before minimal API argument
+binding, service activation and result execution. Install it before static-file
+handlers or any additional transport middleware in the dedicated Studio host.
+The bootstrap form is the only credential-free route and still requires local
+Host/Origin/connection checks. Required-query binding failures use
+`RouteHandlerOptions.ThrowOnBadRequest` and become sanitized 400 ProblemDetails;
+authentication denial takes precedence. Unexpected activation/execution failures
+become sanitized 500 responses. If a response has already started, the connection
+is aborted rather than forwarding private diagnostics to a development error page.
+Development hosting and DI/options startup validation remain enabled. Do not add
+a developer exception page inside this protected pipeline.

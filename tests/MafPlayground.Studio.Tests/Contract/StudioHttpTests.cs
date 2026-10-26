@@ -259,6 +259,65 @@ public sealed class StudioHttpTests
         _ = await reader.ReadToEndAsync(timeout.Token);
     }
 
+    [Theory]
+    [InlineData("missing", 401, "authentication_required")]
+    [InlineData("invalid", 401, "authentication_required")]
+    [InlineData("foreign-host", 403, "local_access_required")]
+    [InlineData("foreign-origin", 403, "local_access_required")]
+    [InlineData("bearer", 400, "invalid_request")]
+    [InlineData("cookie", 400, "invalid_request")]
+    public async Task Development_access_boundary_precedes_missing_and_malformed_query_binding(string mode, int status, string title)
+    {
+        await using var host = await Fixture.Create();
+        host.Client.DefaultRequestHeaders.Authorization = null;
+        var secrets = new List<string> { host.Policy.BearerToken, "invalid-private-credential", "private-query-value" };
+        if (mode == "cookie")
+        {
+            var login = await host.Client.PostAsync("/studio/login", new FormUrlEncodedContent(new Dictionary<string, string> { ["code"] = host.Policy.BootstrapCode }));
+            string cookie = Assert.Single(login.Headers.GetValues("Set-Cookie")).Split(';')[0];
+            secrets.Add(cookie);
+            secrets.Add(cookie[(cookie.IndexOf('=') + 1)..]);
+            host.Client.DefaultRequestHeaders.Add("Cookie", cookie);
+        }
+        else if (mode != "missing") host.Client.DefaultRequestHeaders.Authorization = new("Bearer", mode == "invalid" ? "invalid-private-credential" : host.Policy.BearerToken);
+        if (mode == "foreign-host") host.Client.DefaultRequestHeaders.Host = "foreign.test:5051";
+        if (mode == "foreign-origin") host.Client.DefaultRequestHeaders.Add("Origin", "http://foreign.test:5051");
+        foreach (string path in new[] { Api + "/entities/review/topology", Api + "/binding-probe?count=private-query-value" })
+        {
+            using var response = await host.Client.GetAsync(path);
+            await AssertSafeProblem(response, status, title, secrets);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, 401)]
+    [InlineData(true, 500)]
+    public async Task Development_access_boundary_precedes_endpoint_service_activation(bool authenticated, int status)
+    {
+        await using var host = await Fixture.Create();
+        if (!authenticated) host.Client.DefaultRequestHeaders.Authorization = null;
+        using var response = await host.Client.GetAsync(Api + "/dependency-probe");
+        await AssertSafeProblem(response, status, authenticated ? "operation_failed" : "authentication_required", [host.Policy.BearerToken, "dependency-private-detail"]);
+        Assert.Equal(authenticated ? 1 : 0, host.App.Services.GetRequiredService<ActivationProbe>().Count);
+    }
+
+    private static async Task AssertSafeProblem(HttpResponseMessage response, int status, string title, IEnumerable<string> secrets)
+    {
+        Assert.Equal(status, (int)response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        string body = await response.Content.ReadAsStringAsync();
+        // Never include response content or credentials in assertion failure output.
+        Assert.True(secrets.All(secret => !body.Contains(secret, StringComparison.Ordinal)), "Problem response leaked a credential or private diagnostic.");
+        Assert.False(body.Contains("Exception", StringComparison.Ordinal) || body.Contains("StackTrace", StringComparison.Ordinal) || body.Contains("HEADERS", StringComparison.Ordinal) || body.Contains("Microsoft.AspNetCore", StringComparison.Ordinal));
+        using var problem = JsonDocument.Parse(body);
+        Assert.Equal(title, problem.RootElement.GetProperty("title").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("correlationId").GetString()));
+        Assert.False(problem.RootElement.TryGetProperty("detail", out _));
+    }
+
+    private sealed class ActivationProbe { public int Count; }
+    private sealed class FailingDependency;
+
     internal static StudioRunRequest Request(string entity = "review") => new(Guid.NewGuid().ToString("N"), entity, "cli-default", JsonSerializer.SerializeToElement(new { review_items = new[] { new { title = "one", priority = "Normal" } } }), null);
 
     private sealed class EmptyUser : IUserContextAccessor
@@ -272,7 +331,7 @@ public sealed class StudioHttpTests
         internal StudioAccessPolicy Policy => policy;
         internal static async Task<Fixture> Create(int maxEvents = 2048, bool samples = false, StudioOptions? limits = null, bool noModel = false, Dictionary<string, string?>? configuration = null)
         {
-            var builder = WebApplication.CreateBuilder();
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
             builder.WebHost.UseTestServer();
             if (configuration is not null) builder.Configuration.AddInMemoryCollection(configuration);
             var model = new StudioExecutionFixture.RecordingClient();
@@ -292,9 +351,18 @@ public sealed class StudioHttpTests
                 builder.Configuration["Studio:Limits:QueueCapacity"] = limits.QueueCapacity.ToString();
             }
             builder.Services.AddStudio(builder.Configuration);
+            builder.Services.AddSingleton<ActivationProbe>();
+            builder.Services.AddScoped<FailingDependency>(provider =>
+            {
+                Interlocked.Increment(ref provider.GetRequiredService<ActivationProbe>().Count);
+                throw new InvalidOperationException("dependency-private-detail");
+            });
             var app = builder.Build();
             app.Use(async (context, next) => { context.Connection.RemoteIpAddress = IPAddress.Loopback; await next(); });
+            app.UseStudioAccess();
             app.MapStudio();
+            app.MapGet(Api + "/binding-probe", (int count) => count);
+            app.MapGet(Api + "/dependency-probe", (FailingDependency dependency) => "unreachable");
             await app.StartAsync();
             var client = app.GetTestClient();
             client.BaseAddress = new("http://localhost:5051");

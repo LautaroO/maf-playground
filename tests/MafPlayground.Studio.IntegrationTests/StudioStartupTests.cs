@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Text.Json;
 using MafPlayground.CLI.Commands;
 using MafPlayground.Studio.Contracts;
 using Xunit;
@@ -30,18 +31,28 @@ public sealed class StudioStartupTests
         try
         {
             string? code = null;
-            while (code is null)
+            string? bearer = null;
+            while (code is null || bearer is null)
             {
                 string? line = await process.StandardOutput.ReadLineAsync(timeout.Token);
                 Assert.NotNull(line);
                 const string prefix = "One-time browser access code: ";
                 if (line.StartsWith(prefix, StringComparison.Ordinal)) code = line[prefix.Length..];
+                const string bearerPrefix = "Local API bearer token: ";
+                if (line.StartsWith(bearerPrefix, StringComparison.Ordinal)) bearer = line[bearerPrefix.Length..];
             }
             Task drain = process.StandardOutput.ReadToEndAsync(timeout.Token);
             using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true }) { BaseAddress = new($"http://127.0.0.1:{port}") };
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/studio/v1/entities", timeout.Token)).StatusCode);
+            const string malformed = "/api/studio/v1/entities/basic-agent/topology";
+            await AssertSafeBindingProblem(await client.GetAsync(malformed, timeout.Token), HttpStatusCode.Unauthorized, "authentication_required", bearer, null);
+            client.DefaultRequestHeaders.Authorization = new("Bearer", bearer);
+            await AssertSafeBindingProblem(await client.GetAsync(malformed, timeout.Token), HttpStatusCode.BadRequest, "invalid_request", bearer, null);
+            client.DefaultRequestHeaders.Authorization = null;
             var login = await client.PostAsync("/studio/login", new FormUrlEncodedContent(new Dictionary<string, string> { ["code"] = code }), timeout.Token);
             Assert.Equal(HttpStatusCode.SeeOther, login.StatusCode);
+            string cookie = Assert.Single(login.Headers.GetValues("Set-Cookie")).Split(';')[0];
+            await AssertSafeBindingProblem(await client.GetAsync(malformed, timeout.Token), HttpStatusCode.BadRequest, "invalid_request", bearer, cookie[(cookie.IndexOf('=') + 1)..]);
             var entities = (await client.GetFromJsonAsync<StudioEntityDescriptor[]>("/api/studio/v1/entities", timeout.Token))!;
             Assert.Equal(4, entities.Length);
             Assert.All(entities, entity => Assert.False(entity.IsAvailable));
@@ -63,4 +74,20 @@ public sealed class StudioStartupTests
             await errors;
         }
     }
+    private static async Task AssertSafeBindingProblem(HttpResponseMessage response, HttpStatusCode status, string title, string bearer, string? cookie)
+    {
+        using (response)
+        {
+            Assert.Equal(status, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            string body = await response.Content.ReadAsStringAsync();
+            Assert.False(body.Contains(bearer, StringComparison.Ordinal) || cookie is not null && body.Contains(cookie, StringComparison.Ordinal), "Development response leaked an access credential.");
+            Assert.False(body.Contains("Exception", StringComparison.Ordinal) || body.Contains("Microsoft.AspNetCore", StringComparison.Ordinal) || body.Contains("HEADERS", StringComparison.Ordinal));
+            using var problem = JsonDocument.Parse(body);
+            Assert.Equal(title, problem.RootElement.GetProperty("title").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("correlationId").GetString()));
+            Assert.False(problem.RootElement.TryGetProperty("detail", out _));
+        }
+    }
+
 }

@@ -11,6 +11,8 @@ public static class StudioServiceExtensions
     public static IServiceCollection AddStudio(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        // Binding failures must reach the pre-endpoint sanitizing middleware in every environment.
+        services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
         foreach (IConfigurationSection section in configuration.GetSection("AI:Entities").GetChildren().Prepend(configuration.GetSection("AI:Defaults")))
             if (!string.IsNullOrWhiteSpace(section["Model"])) _ = StudioProfileCatalog.ParseModel(section["Model"]);
         StudioOptions configured = configuration.GetSection("Studio:Limits").Get<StudioOptions>() ?? new();
