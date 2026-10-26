@@ -146,3 +146,6 @@ docker-compose.override.yml
 .codex/history.json
 .codex/sessions/
 .codex/cache/
+
+# Local visual design sessions and implementation ledgers
+.superpowers/
