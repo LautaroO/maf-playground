@@ -319,3 +319,46 @@ it('reruns require reviewed input, use a new request ID, and default to a fresh 
   await store.bootstrap();
   expect(store.rerunDraft()).toBeNull();
 });
+
+it.each([
+  ['snapshot', false],
+  ['availability', false],
+  ['snapshot', true],
+  ['availability', true],
+] as const)(
+  'rejects stale rerun preparation during %s, even after returning to its run=%s',
+  async (phase, returnToSource) => {
+    const { store, api } = setup();
+    await store.bootstrap();
+    await store.selectRun('run-a');
+    const source = snapshot('run-a', {
+      request: { ...snapshot().request, profileId: phase === 'availability' ? 'fast' : 'balanced' },
+    });
+    const response = deferred<typeof source>();
+    const catalog = deferred<(typeof novel)[]>();
+    const requested = deferred<void>();
+    api.run = async (id: string) => {
+      if (id !== 'run-a') return snapshot(id);
+      if (phase === 'snapshot') {
+        requested.resolve();
+        return response.promise;
+      }
+      return source;
+    };
+    api.entities = async () => {
+      requested.resolve();
+      return catalog.promise;
+    };
+    const pending = store.prepareRerun('run-a');
+    await requested.promise;
+    await store.selectRun('run-b');
+    const reselect = returnToSource ? store.selectRun('run-a') : Promise.resolve();
+    response.resolve(source);
+    catalog.resolve([novel]);
+    expect(await pending).toBe(false);
+    await reselect;
+    expect(store.selectedRunId()).toBe(returnToSource ? 'run-a' : 'run-b');
+    expect(store.rerunDraft()).toBeNull();
+    expect(store.error()).toBe('');
+  },
+);

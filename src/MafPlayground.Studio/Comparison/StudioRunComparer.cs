@@ -36,7 +36,7 @@ public sealed class StudioRunComparer
             "Usage and cost aggregate only unique Studio model spans; missing/partial coverage is unknown. Native and agent spans are excluded."];
         if (!a.CaptureComplete || !b.CaptureComplete || a.JournalHasGap || b.JournalHasGap || a.HasRedactions || b.HasRedactions)
             limitations.Add("Capture is incomplete or redacted, or retained journal history has gaps. Metrics and differences describe only available evidence.");
-        if (diff.PreviewTruncated) limitations.Add("Value/path previews are capped at 160 characters; text previews begin at the first changed UTF-16 character (textOffset). Full retained values remain in run inspection.");
+        if (diff.PreviewTruncated) limitations.Add("Value/path previews are capped at 160 characters; textOffset is the UTF-16 offset of the first changed Unicode scalar; preview start/end preserve scalar boundaries. Full retained values remain in run inspection.");
         var allMatches = Match(aEvents, bEvents).ToArray();
         bool eventLimit = baselineEvents.Count > MaxEvents || candidateEvents.Count > MaxEvents ||
             (aEvents.Length == MaxEvents && aEvents[^1].Sequence < baseline.LatestSequence) ||
@@ -188,6 +188,9 @@ public sealed class StudioRunComparer
                     if (first % 4096 == 0) token.ThrowIfCancellationRequested();
                     first++;
                 }
+                // Shared high surrogates can precede different supplementary scalars.
+                // Keep the UTF-16 offset, but start the window before the complete scalar.
+                if (InsideSurrogatePair(av, first) || InsideSurrogatePair(bv, first)) first--;
                 offset = first;
                 left = av[first..]; right = bv[first..];
             }
@@ -199,7 +202,10 @@ public sealed class StudioRunComparer
         {
             if (text.Length <= MaxPreview) return text;
             PreviewTruncated = true;
-            return text[..MaxPreview] + "…";
+            int end = InsideSurrogatePair(text, MaxPreview) ? MaxPreview - 1 : MaxPreview;
+            return text[..end] + "…";
         }
+        private static bool InsideSurrogatePair(string text, int index) => index > 0 && index < text.Length &&
+            char.IsHighSurrogate(text[index - 1]) && char.IsLowSurrogate(text[index]);
     }
 }

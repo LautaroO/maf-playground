@@ -33,6 +33,7 @@ export class StudioRunStore {
   private watcher?: AbortController;
   private epoch = 0;
   private selectionRevision = 0;
+  private runSelectionRevision = 0;
   private catalogRevision = 0;
   private cursors: Record<string, number> = {};
   readonly hostInstanceId = signal<string | null>(null);
@@ -219,34 +220,46 @@ export class StudioRunStore {
       if (revision === this.selectionRevision) this.selectSession(replacement.id);
     });
   }
-  async prepareRerun(id: string): Promise<boolean> {
-    let ready = false;
+  async prepareRerun(id: string, signal?: AbortSignal): Promise<boolean> {
+    let prepared: { runId: string; input: unknown } | null = null;
+    const generation = this.runSelectionRevision;
+    const hostEpoch = this.epoch;
+    const current = () =>
+      !signal?.aborted && generation === this.runSelectionRevision && hostEpoch === this.epoch;
     await this.action(async (epoch) => {
-      const revision = this.selectionRevision;
-      const run = await this.api.run(id);
-      if (
-        epoch !== this.epoch ||
-        revision !== this.selectionRevision ||
-        this.acceptInstance(run.hostInstanceId)
-      )
-        return;
-      if (!this.profiles().includes(run.request.profileId))
-        throw new Error('The captured profile is unavailable.');
-      const profileReady = this.selectProfile(run.request.profileId);
-      const preparedRevision = this.selectionRevision;
-      await profileReady;
-      if (epoch !== this.epoch || preparedRevision !== this.selectionRevision) return;
-      if (!this.entities().some((entity) => entity.id === run.request.entityId))
-        throw new Error('The captured entity is unavailable.');
-      this.selectEntity(run.request.entityId);
-      this.selectSession(null);
-      this.rerunDraft.set({
-        runId: run.runId,
-        input: run.request.input,
-      });
-      ready = true;
+      if (!current()) return;
+      try {
+        const revision = this.selectionRevision;
+        const run = await this.api.run(id, signal);
+        if (
+          !current() ||
+          epoch !== this.epoch ||
+          revision !== this.selectionRevision ||
+          this.acceptInstance(run.hostInstanceId)
+        )
+          return;
+        if (!this.profiles().includes(run.request.profileId))
+          throw new Error('The captured profile is unavailable.');
+        const profileReady = this.selectProfile(run.request.profileId);
+        const preparedRevision = this.selectionRevision;
+        await profileReady;
+        if (!current() || preparedRevision !== this.selectionRevision) return;
+        if (!this.entities().some((entity) => entity.id === run.request.entityId))
+          throw new Error('The captured entity is unavailable.');
+        this.selectEntity(run.request.entityId);
+        this.selectSession(null);
+        prepared = { runId: run.runId, input: run.request.input };
+        this.rerunDraft.set(prepared);
+      } catch (error) {
+        // An abandoned inspection must not publish its fetch failure on the new view.
+        if (current()) throw error;
+      }
     });
-    return ready;
+    if (!current()) {
+      if (prepared && this.rerunDraft() === prepared) this.rerunDraft.set(null);
+      return false;
+    }
+    return prepared !== null;
   }
   async submit(input: unknown, reviewedRerun = false) {
     await this.action(async (epoch) => {
@@ -276,12 +289,15 @@ export class StudioRunStore {
     });
   }
   async selectRun(id: string) {
+    this.runSelectionRevision++;
     this.watcher?.abort();
     const controller = new AbortController();
     this.watcher = controller;
     const epoch = this.epoch;
-    if (id !== this.selectedRunId())
+    if (id !== this.selectedRunId()) {
+      this.rerunDraft.set(null);
       this.inspectionSelection.set({ executorId: null, invocationId: null, spanId: null });
+    }
     this.selectedRunId.set(id);
     try {
       const run = await this.api.run(id, controller.signal);

@@ -86,6 +86,33 @@ public sealed class StudioRunComparerTests
         Assert.Contains("old", change.Baseline);
         Assert.Contains("new", change.Candidate);
     }
+    [Theory]
+    [InlineData("😀", "😁", 0)]
+    [InlineData("same😀", "same😁", 4)]
+    public void Supplementary_text_differences_keep_complete_scalars_after_serialization(string baseline, string candidate, int offset)
+    {
+        var result = Compare(Snapshot("a", JsonSerializer.Serialize(baseline)), Snapshot("b", JsonSerializer.Serialize(candidate)));
+        var change = Assert.Single(result.Changes);
+        var roundTrip = JsonSerializer.Deserialize<StudioComparison>(JsonSerializer.SerializeToUtf8Bytes(result))!;
+        var received = Assert.Single(roundTrip.Changes);
+        Assert.Equal(offset, received.TextOffset);
+        Assert.Equal("😀", received.Baseline);
+        Assert.Equal("😁", received.Candidate);
+        Assert.Equal(change.Baseline, received.Baseline);
+        Assert.Equal(change.Candidate, received.Candidate);
+    }
+    [Fact]
+    public void Preview_limit_does_not_split_a_supplementary_scalar()
+    {
+        var result = Compare(Snapshot("a", JsonSerializer.Serialize(new string('x', 159) + "😀tail")),
+            Snapshot("b", JsonSerializer.Serialize(new string('y', 159) + "😁tail")));
+        var received = JsonSerializer.Deserialize<StudioComparison>(JsonSerializer.SerializeToUtf8Bytes(result))!;
+        var change = Assert.Single(received.Changes);
+        Assert.Equal(new string('x', 159) + "…", change.Baseline);
+        Assert.Equal(new string('y', 159) + "…", change.Candidate);
+        Assert.True(change.PreviewTruncated);
+        Assert.Equal(0, change.TextOffset);
+    }
     [Fact]
     public void Zero_usage_is_known_but_missing_usage_and_currency_changes_are_not_comparable()
     {

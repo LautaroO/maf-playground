@@ -1,7 +1,16 @@
 import { WorkflowGraph } from '../graph/workflow-graph.component';
 import { TraceTimeline } from '../traces/trace-timeline.component';
 import { SpanInspector } from '../traces/span-inspector.component';
-import { Component, computed, inject, signal, effect, viewChild, ElementRef } from '@angular/core';
+import {
+  Component,
+  computed,
+  inject,
+  signal,
+  effect,
+  viewChild,
+  ElementRef,
+  DestroyRef,
+} from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
@@ -344,9 +353,33 @@ import { StatusBadge } from '../shared/ui/status-badge';
 export class RunWorkspace {
   readonly store = inject(StudioRunStore);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+  private rerunController?: AbortController;
   async rerun() {
     const run = this.store.selectedRun();
-    if (run && (await this.store.prepareRerun(run.runId))) await this.router.navigate(['/input']);
+    if (!run || this.store.busy() || this.destroyRef.destroyed) return;
+    this.rerunController?.abort();
+    const controller = new AbortController();
+    this.rerunController = controller;
+    try {
+      const ready = await this.store.prepareRerun(run.runId, controller.signal);
+      if (!ready) return;
+      if (
+        controller.signal.aborted ||
+        this.destroyRef.destroyed ||
+        this.store.selectedRunId() !== run.runId
+      ) {
+        if (this.store.rerunDraft()?.runId === run.runId) this.store.rerunDraft.set(null);
+        return;
+      }
+      if (this.rerunController !== controller || this.store.rerunDraft()?.runId !== run.runId)
+        return;
+      // Hand off the reviewed draft before this component is destroyed by navigation.
+      this.rerunController = undefined;
+      await this.router.navigate(['/input']);
+    } finally {
+      if (this.rerunController === controller) this.rerunController = undefined;
+    }
   }
   readonly workflow = computed(
     () =>
@@ -371,6 +404,7 @@ export class RunWorkspace {
     return `${((Date.parse(run.completedAt) - Date.parse(run.startedAt)) / 1000).toFixed(2)} s`;
   });
   constructor() {
+    this.destroyRef.onDestroy(() => this.rerunController?.abort());
     effect((cleanup) => {
       const host = this.investigation()?.nativeElement;
       if (!host || typeof ResizeObserver === 'undefined') return;

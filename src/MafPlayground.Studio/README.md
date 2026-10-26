@@ -377,8 +377,11 @@ comparison can include late spans. JSON object order is ignored; arrays retain
 order. Differences cover input/result, requested profile and captured effective
 profile. Typed status/outcome and nullable duration/usage/cost are returned
 explicitly. Removed/added structure differs from unavailable result capture.
-Text uses a linear first-changed-character window (`textOffset`, UTF-16), without
-an edit-distance matrix; empty text windows remain empty strings.
+Text uses a linear first-changed-scalar window. `textOffset` is a UTF-16 code-unit
+offset to the start of that Unicode scalar. Preview start/end never split a surrogate
+pair; the window contains at most 160 UTF-16 units plus an ellipsis when clipped.
+This does not promise grapheme-cluster boundaries or use an edit-distance matrix;
+empty text windows remain empty strings.
 
 Limits are 48 changes, 64 invocation rows, 8192 visited JSON nodes, 2048 properties
 per object, depth 32, 2048 journal events per run, 160-character path/value previews

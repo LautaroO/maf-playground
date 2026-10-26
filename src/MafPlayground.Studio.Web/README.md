@@ -175,7 +175,9 @@ requires explicit review of input, profile and session; editing any of them clea
 that confirmation. Redacted/missing values cannot be recovered. Submission uses a
 new request ID and exactly the reviewed JSON. A fresh conversation is the default;
 continuation requires explicitly choosing an existing compatible session. Host
-restart clears the draft, and async selection guards reject stale preparation.
+restart clears the draft. Inspected-run generations reject stale preparation even
+after A→B→A selection, and leaving the run component aborts its preparation and
+prevents a late redirect. Successful navigation hands the reviewed draft to input.
 
 The translation investigation journey covers partial baseline, reviewed rerun,
 completed candidate and comparison with the real test-only provider fixture.
