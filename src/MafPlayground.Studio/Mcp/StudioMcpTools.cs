@@ -69,7 +69,14 @@ public sealed class StudioMcpTools(IServiceScopeFactory scopes)
             return new StudioMcpSpanPage([span], 0, 0, false);
         }
         var page = await provider.GetRequiredService<IStudioRunService>().ReadEventsAsync(runId, after, limit, token);
-        return new StudioMcpSpanPage(page.Events.Where(item => item.Kind == "span").Select(item => item.Data.Deserialize<StudioSpan>() ?? throw new JsonException()).ToArray(), page.NextCursor, page.EarliestRetainedSequence, page.HasGap);
+        List<StudioSpan> spans = [];
+        bool hasGap = page.HasGap;
+        foreach (StudioEvent item in page.Events.Where(item => item.Kind == "span"))
+        {
+            if (ReadCapturedSpan(item) is { } span) spans.Add(span);
+            else hasGap = true;
+        }
+        return new StudioMcpSpanPage(spans, page.NextCursor, page.EarliestRetainedSequence, hasGap);
     }, cancellationToken);
 
     [McpServerTool(Name = "studio_get_payload", ReadOnly = true, OpenWorld = false), Description("Read one sanitized retained payload by runId and payloadId. Oversized results return result_too_large; evicted capture is unavailable." + Evidence)]
@@ -80,9 +87,9 @@ public sealed class StudioMcpTools(IServiceScopeFactory scopes)
     public Task<string> CancelRun(string runId, CancellationToken cancellationToken) => Invoke(async (provider, token) =>
     {
         var runs = provider.GetRequiredService<IStudioRunService>();
-        _ = await runs.GetAsync(runId, token) ?? throw new KeyNotFoundException();
+        var snapshot = await runs.GetAsync(runId, token) ?? throw new KeyNotFoundException();
         if (!await runs.CancelAsync(runId, token)) throw new StudioEndpoints.StudioResultPendingException();
-        return new StudioRunReceipt((await runs.GetAsync(runId, token))!.HostInstanceId, runId);
+        return new StudioRunReceipt(snapshot.HostInstanceId, snapshot.RunId);
     }, cancellationToken);
 
     [McpServerTool(Name = "studio_reset_session", ReadOnly = false, Destructive = true, OpenWorld = false), Description("Reset an idle explicit session and return a new session ID with the same entity/profile. Busy sessions return state_conflict.")]
@@ -118,6 +125,25 @@ public sealed class StudioMcpTools(IServiceScopeFactory scopes)
             throw new McpException(category);
         }
     }
+    private static StudioSpan? ReadCapturedSpan(StudioEvent item)
+    {
+        if (item.CaptureState is not (StudioCaptureState.Available or StudioCaptureState.Redacted) || item.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        try
+        {
+            var span = item.Data.Deserialize<StudioSpan>();
+            // Capture markers deserialize successfully with default fields; they are not spans.
+            return span is not null && !string.IsNullOrWhiteSpace(span.TraceId) && !string.IsNullOrWhiteSpace(span.SpanId) &&
+                span.ParentSpanId is not null && span.Source is not null && span.Name is not null && span.Status is not null &&
+                IsCapturedPayload(span.Attributes) && IsCapturedPayload(span.Events) && IsCapturedPayload(span.Links) ? span : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static bool IsCapturedPayload(StudioPayload? payload) => payload is not null &&
+        !string.IsNullOrWhiteSpace(payload.Id) && !string.IsNullOrWhiteSpace(payload.ContentType) &&
+        payload.Value.ValueKind != JsonValueKind.Undefined && Enum.IsDefined(payload.State);
+
     private static StudioMcpPage<T> Page<T>(IReadOnlyList<T> items, int after, int limit)
     {
         if (after < 0 || limit is < 1 or > 100) throw new ArgumentException();

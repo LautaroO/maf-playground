@@ -279,6 +279,56 @@ public sealed class StudioMcpContractTests
         Assert.Contains(host.Model.Requests.Last(), message => message.Text == "remember this turn");
         Assert.Equal(1000, (await sessions.ListAsync(default)).Count);
     }
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public async Task Paged_spans_preserve_capture_loss_and_cursor_metadata(bool includeValidSpan, bool oversized)
+    {
+        await using var host = await StudioTransportHost.Create(maxPayload: 4096);
+        await using var mcp = await host.Connect();
+        var request = new StudioRunRequest("span-loss", "novel-review", "cli-default", JsonSerializer.SerializeToElement(new { review_items = new[] { new { title = "One", priority = "Normal" } } }), null);
+        var receipt = await Call<StudioRunReceipt>(mcp, "studio_start_run", new() { ["request"] = request });
+        await host.Terminal(receipt.RunId);
+        var runs = host.App.Services.GetRequiredService<IStudioRunService>();
+        long after = (await runs.ReadEventsAsync(receipt.RunId, 0, 1000, default)).NextCursor;
+        var sink = host.App.Services.GetRequiredService<IStudioEventSink>();
+        var payload = new StudioPayload("attributes", "application/json", JsonSerializer.SerializeToElement(new { }), StudioCaptureState.Available, null);
+        var span = new StudioSpan("trace", "retained-span", "", "test", "call", DateTimeOffset.UtcNow, TimeSpan.Zero, "Ok", null, null, "executor_identity_unavailable", null, null, null, null, payload, payload with { Id = "events" }, payload with { Id = "links" });
+        if (includeValidSpan)
+            sink.Record(new(receipt.RunId, 0, DateTimeOffset.UtcNow, "span", null, null, span.SpanId, JsonSerializer.SerializeToElement(span)));
+        var lost = span with { SpanId = "lost-span", Name = oversized ? new string('x', 9000) : "unavailable" };
+        sink.Record(new(receipt.RunId, 0, DateTimeOffset.UtcNow, "span", null, null, lost.SpanId, JsonSerializer.SerializeToElement(lost), oversized ? StudioCaptureState.Available : StudioCaptureState.Unavailable));
+        var journal = await runs.ReadEventsAsync(receipt.RunId, after, 100, default);
+        Assert.Contains(journal.Events, item => item.SpanId == "lost-span" && item.CaptureState == (oversized ? StudioCaptureState.Truncated : StudioCaptureState.Unavailable));
+        var page = await Call<StudioMcpSpanPage>(mcp, "studio_get_spans", new() { ["runId"] = receipt.RunId, ["after"] = after });
+        Assert.Equal(includeValidSpan ? new[] { "retained-span" } : [], page.Spans.Select(item => item.SpanId));
+        Assert.True(page.HasGap);
+        Assert.Equal(journal.NextCursor, page.NextCursor);
+        Assert.Equal(journal.EarliestRetainedSequence, page.EarliestRetainedSequence);
+    }
+    [Theory]
+    [InlineData("null")]
+    [InlineData("\"not a span\"")]
+    [InlineData("{\"SpanId\":\"incomplete\"}")]
+    [InlineData("{\"TraceId\":\"trace\",\"SpanId\":\"span\",\"ParentSpanId\":\"\",\"Source\":\"test\",\"Name\":\"call\",\"Status\":\"Ok\",\"Attributes\":{},\"Events\":{},\"Links\":{}}")]
+    public async Task Paged_spans_report_invalid_retained_dtos_as_unavailable(string json)
+    {
+        await using var host = await StudioTransportHost.Create();
+        await using var mcp = await host.Connect();
+        var request = new StudioRunRequest("invalid-span", "novel-review", "cli-default", JsonSerializer.SerializeToElement(new { review_items = new[] { new { title = "One", priority = "Normal" } } }), null);
+        var receipt = await Call<StudioRunReceipt>(mcp, "studio_start_run", new() { ["request"] = request });
+        await host.Terminal(receipt.RunId);
+        var runs = host.App.Services.GetRequiredService<IStudioRunService>();
+        long after = (await runs.ReadEventsAsync(receipt.RunId, 0, 1000, default)).NextCursor;
+        using var document = JsonDocument.Parse(json);
+        host.App.Services.GetRequiredService<IStudioEventSink>().Record(new(receipt.RunId, 0, DateTimeOffset.UtcNow, "span", null, null, "incomplete", document.RootElement.Clone()));
+        var page = await Call<StudioMcpSpanPage>(mcp, "studio_get_spans", new() { ["runId"] = receipt.RunId, ["after"] = after });
+        Assert.Empty(page.Spans);
+        Assert.True(page.HasGap);
+        Assert.True(page.NextCursor > after);
+    }
     internal static async Task<T> Call<T>(McpClient mcp, string name, Dictionary<string, object?>? arguments = null)
     {
         CallToolResult result = await mcp.CallToolAsync(name, arguments);

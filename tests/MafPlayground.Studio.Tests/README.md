@@ -49,3 +49,8 @@ dynamic unknown entity contracts/native topology, profile scope isolation, bound
 list/event/span/payload pages, redaction/result limits, cross-transport request
 idempotency (including eviction), cancellation and shared session reset/history.
 No external model is called.
+
+Span-page contracts cover oversized/unavailable capture, mixed pages and malformed
+DTOs without fabricating spans. `Unit/StudioMcpToolsTests.cs` deterministically
+checks cancellation receipts after snapshot eviction and preservation of existing
+journal gaps/cursors.

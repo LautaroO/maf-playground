@@ -286,9 +286,11 @@ List cursors are offsets; list limits are 1–100. `nextCursor: null` ends a lis
 Retained run lists can change between pages. Events/spans use shared journal
 sequence cursors and limits 1–1000. Span pages scan that many **events**, so advance
 the cursor even if a page contains no spans. A targeted `spanId` lookup returns
-one span and cursor zero. Gaps indicate evicted capture, never a request to replay
-execution. Every successful tool returns a JSON document in MCP text content using
-the existing HTTP web JSON options. Embedded capture event data retains its
+one span and cursor zero. Span pages omit unavailable/truncated capture markers
+and malformed span records, set `hasGap: true`, and preserve the journal cursor
+metadata. Valid spans in a mixed page remain available. Gaps indicate lost capture,
+never a request to replay execution. Every successful tool returns a JSON document
+in MCP text content using the existing HTTP web JSON options. Embedded capture event data retains its
 original PascalCase DTO fields; targeted spans/payloads normalize typed fields.
 Results are capped at 128 KiB of UTF-8 JSON. An oversized result returns
 `result_too_large`; reduce the page or use HTTP for a large individual payload.
