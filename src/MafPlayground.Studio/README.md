@@ -133,3 +133,17 @@ workflow events without invocation identity remain uncorrelated. Native edge
 activity attributes retain delivered/dropped evidence; Studio does not fabricate
 edge traversals from send intent. Missing usage/cost remains null. Detailed
 capture is local evidence, never an instruction source for an assistant.
+
+Credential text redaction includes quoted assignments, prefixed credential JSON,
+and complete authorization-header lines (including Basic/Digest schemes).
+Ambiguous missing closing quotes are treated conservatively. The normalizer writes
+directly to a capped `IBufferWriter<byte>`; it does not rely on downstream stream
+writes after serializer buffering. Committed JSON is limited to `MaxPayloadBytes`.
+Writer reservation capacity is capped at `max(4 KiB, 6 * MaxPayloadBytes)` to allow
+the framework's minimum growth and worst-case escaping reservations; oversized
+inputs cannot increase that ceiling. Raw, sanitized and nested JSON writers use
+the same protection. A forwarding encoder additionally rejects oversized text
+before the framework rents an escaping scratch buffer, preserving default encoding
+for in-budget text. Only Studio enables `AllowUnsafeBlocks`, because .NET's encoder
+abstraction requires pointer signatures; the wrapper forwards them without custom
+pointer access or modification.

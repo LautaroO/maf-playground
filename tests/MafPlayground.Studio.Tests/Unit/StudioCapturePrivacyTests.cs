@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MafPlayground.Studio.Contracts;
+using MafPlayground.Studio.Capture;
 using MafPlayground.Studio.Execution;
 using MafPlayground.Studio.Tests.Component;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,35 @@ namespace MafPlayground.Studio.Tests.Unit;
 
 public sealed class StudioCapturePrivacyTests
 {
+    [Theory]
+    [InlineData("password=\"quoted-secret\"", "quoted-secret")]
+    [InlineData("Failure details: {\"password\":\"prefixed-secret\"}", "prefixed-secret")]
+    [InlineData("Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz")]
+    [InlineData("password=unquoted-secret", "unquoted-secret")]
+    [InlineData("password='single-quoted secret'", "single-quoted secret")]
+    [InlineData("Failure details: {\"api_key\":\"unfinished-secret", "unfinished-secret")]
+    [InlineData("password=\"unterminated-secret\\", "unterminated-secret")]
+    [InlineData("password='unterminated-single\\", "unterminated-single")]
+    public async Task CredentialText_IsRedactedAtPayloadAndStoredErrorJournalBoundaries(string original, string secret)
+    {
+        var payload = new StudioPayloadStore(new()).Capture(new { message = original }, "application/json");
+        foreach (string fragment in secret.Split(' ')) Assert.DoesNotContain(fragment, payload.Value.ToString());
+        Assert.Equal(StudioCaptureState.Redacted, payload.State);
+        await using RunHarness harness = await RunHarness.CreateAsync();
+        var receipt = await harness.Service.StartAsync(RunHarness.Request("credential-text") with
+        { Input = JsonSerializer.SerializeToElement(new { message = original }) }, RunHarness.Caller, default);
+        var execution = await harness.NextAsync();
+        Assert.Equal(original, execution.Request.Input.GetProperty("message").GetString());
+        Assert.DoesNotContain(secret, JsonSerializer.Serialize(await harness.Service.GetAsync(receipt.RunId, default)));
+        harness.Record(receipt.RunId, new { message = original });
+        execution.Completion.TrySetException(new InvalidOperationException(original));
+        var snapshot = await harness.TerminalAsync(receipt.RunId);
+        var events = await harness.Service.ReadEventsAsync(receipt.RunId, 0, 100, default);
+        Assert.Equal(StudioRunStatus.Failed, snapshot.Status);
+        foreach (string fragment in secret.Split(' ')) Assert.DoesNotContain(fragment, JsonSerializer.Serialize(new { snapshot, events }));
+        Assert.Contains(events.Events, item => item.Kind == "execution_error" && item.CaptureState == StudioCaptureState.Redacted);
+    }
+
     [Fact]
     public async Task SubmittedInputAndResult_AreRedactedBeforeInspection_ExecutionReceivesOriginal()
     {

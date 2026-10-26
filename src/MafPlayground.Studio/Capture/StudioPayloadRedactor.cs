@@ -6,11 +6,14 @@ namespace MafPlayground.Studio.Capture;
 /// <summary>Credential redaction is applied before any inspectable journal or snapshot write.</summary>
 internal sealed partial class StudioPayloadRedactor(IEnumerable<string> secrets, int maxBytes)
 {
+    private readonly JsonWriterOptions writerOptions = new() { Encoder = new StudioBoundedEncoder(maxBytes) };
     private readonly string[] secrets = secrets.Where(value => !string.IsNullOrEmpty(value)).Distinct().OrderByDescending(value => value.Length).ToArray();
     public string RedactText(string value)
     {
         foreach (string secret in secrets) value = value.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
-        return Credentials().Replace(value, "$1[REDACTED]");
+        value = Authorization().Replace(value, "${prefix}[REDACTED]");
+        value = Credentials().Replace(value, "${prefix}[REDACTED]");
+        return Bearer().Replace(value, "${prefix}[REDACTED]");
     }
 
     internal void Write(Utf8JsonWriter writer, JsonElement value, int depth = 0)
@@ -41,9 +44,9 @@ internal sealed partial class StudioPayloadRedactor(IEnumerable<string> secrets,
                     try
                     {
                         using JsonDocument document = JsonDocument.Parse(text, new() { MaxDepth = 32 });
-                        using StudioPayloadStore.BoundedStream buffer = new(maxBytes);
-                        using (Utf8JsonWriter nested = new(buffer)) Write(nested, document.RootElement, depth + 1);
-                        text = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+                        StudioPayloadStore.BoundedBuffer buffer = new(maxBytes);
+                        using (Utf8JsonWriter nested = new(buffer, writerOptions)) Write(nested, document.RootElement, depth + 1);
+                        text = System.Text.Encoding.UTF8.GetString(buffer.WrittenMemory.Span);
                     }
                     catch (JsonException) { text = "[REDACTED]"; }
                 }
@@ -62,6 +65,16 @@ internal sealed partial class StudioPayloadRedactor(IEnumerable<string> secrets,
                 "privatekey" or "connectionstring" or "configuration";
     }
 
-    [GeneratedRegex("((?:Bearer\\s+)|(?:api[_-]?key|password|secret|access[_-]?token|AccountKey|SharedAccessSignature)\\s*[=:]\\s*)[^\\s;,\\\"}]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    // Consume quoted values (including escaped quotes) as a unit. A missing closing
+    // quote consumes the unsafe remainder instead of exposing a partial credential.
+    [GeneratedRegex("""(?<prefix>\b(?:api[_-]?key|password|secret|access[_-]?token|AccountKey|SharedAccessSignature)\b["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?$)|'(?:\\.|[^'\\])*(?:'|\\?$)|[^\s;,"'}]+)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
     private static partial Regex Credentials();
+
+    // Authorization scheme parameters can contain spaces, quotes and commas (e.g.
+    // Digest). Redact the remainder of that header line conservatively.
+    [GeneratedRegex("""(?<prefix>\b(?:proxy[-_])?authorization["']?\s*[=:]\s*)[^\r\n]+""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
+    private static partial Regex Authorization();
+
+    [GeneratedRegex("""(?<prefix>\bBearer\s+)[^\s;,"'}]+""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
+    private static partial Regex Bearer();
 }
