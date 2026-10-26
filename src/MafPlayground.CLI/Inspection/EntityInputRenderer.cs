@@ -1,12 +1,13 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using MafPlayground.AI.Runtime.Registry;
 
 namespace MafPlayground.CLI.Inspection;
 
 internal sealed class EntityInputRenderer(TextWriter output)
 {
     private static readonly JsonSerializerOptions SerializerOptions =
-        new(JsonSerializerDefaults.Web)
+        new(AIJsonSerializerOptions.Default)
         {
             WriteIndented = true,
         };

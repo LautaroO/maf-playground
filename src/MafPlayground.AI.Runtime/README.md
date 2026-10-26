@@ -19,3 +19,20 @@ capacity and retention, enforces caller ownership and optimistic concurrency,
 and loses all data on process restart. A production host should implement
 `IAgentSessionStore` with encryption, retention, migrations, and durable atomic
 compare-and-swap semantics appropriate to its persistence technology.
+
+Normal `AIBuilder` registrations can include a typed input example,
+configuration-only availability check, and optional `IMafAgentSource` or
+`IMafWorkflowSource` factory. `IAIEntityInspection` is implemented by the same
+scoped registry as `IAIEntityRegistry`; it does not maintain a second entity list.
+Metadata inspection never resolves those factories. `AIBuilder.Registrations`
+exposes the same duplicate-validated registration metadata to host composition
+before DI is built, without constructing another service provider.
+
+Native-source factories receive `(IServiceProvider, AIEntityInspectionContext)`;
+`AIEntityInspectionContext.ProfileId` is opaque to Runtime. The supplied provider
+is the current scope, and the host owns immutable profile binding and source
+lifetimes. The parameterless generic `WithMafAgentSource<TSource>()` and
+`WithMafWorkflowSource<TSource>()` bind an existing DI registration. Factories used
+for topology inspection must construct metadata without invoking a model/tool or
+eagerly creating a model client. Availability callbacks inspect configuration;
+they do not replace hosted startup validation or execution validation.

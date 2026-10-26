@@ -4,12 +4,14 @@ using System.Text.Json;
 using MafPlayground.AI.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using MafPlayground.AI.Observability;
+using MafPlayground.AI.Runtime.Agents;
+using MafPlayground.AI.Runtime.Workflows;
 
 namespace MafPlayground.AI.Runtime.Registry;
 
 internal sealed class AIEntityRegistry(
     IEnumerable<AIEntityRegistration> registrations,
-    IServiceProvider services) : IAIEntityRegistry
+    IServiceProvider services) : IAIEntityRegistry, IAIEntityInspection
 {
     private readonly IReadOnlyDictionary<string, AIEntityRegistration> _registrations =
         BuildMap(registrations);
@@ -42,12 +44,38 @@ internal sealed class AIEntityRegistry(
             registration.ImplementationType);
     }
 
-    internal AIEntityRegistration GetRequired(string entityId) =>
-        _registrations.TryGetValue(entityId, out AIEntityRegistration? registration)
+    public AIEntityRegistrationInfo GetRegistration(string entityId) => GetRequired(entityId).Info;
+
+    public AIEntityAvailability GetAvailability(string entityId) =>
+        GetRequired(entityId).Availability?.Invoke(services) ?? AIEntityAvailability.Available;
+
+    public IMafAgentSource? GetAgentSource(string entityId, AIEntityInspectionContext context)
+    {
+        ValidateContext(context);
+        return GetRequired(entityId).AgentSourceFactory?.Invoke(services, context);
+    }
+
+    public IMafWorkflowSource? GetWorkflowSource(string entityId, AIEntityInspectionContext context)
+    {
+        ValidateContext(context);
+        return GetRequired(entityId).WorkflowSourceFactory?.Invoke(services, context);
+    }
+
+    private static void ValidateContext(AIEntityInspectionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(context.ProfileId);
+    }
+
+    internal AIEntityRegistration GetRequired(string entityId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entityId);
+        return _registrations.TryGetValue(entityId, out AIEntityRegistration? registration)
             ? registration
             : throw new AIEntityNotFoundException(entityId);
+    }
 
-    private static IReadOnlyDictionary<string, AIEntityRegistration> BuildMap(
+    internal static IReadOnlyDictionary<string, AIEntityRegistration> BuildMap(
         IEnumerable<AIEntityRegistration> registrations)
     {
         Dictionary<string, AIEntityRegistration> result =

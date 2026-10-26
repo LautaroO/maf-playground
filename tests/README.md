@@ -4,6 +4,8 @@ Project documentation:
 
 - [`MafPlayground.Tests`](MafPlayground.Tests/README.md): deterministic unit and
   component tests.
+- [`MafPlayground.Studio.Tests`](MafPlayground.Studio.Tests/README.md): deterministic
+  Studio catalog/schema/native-topology tests, including novel test-assembly entities.
 - [`MafPlayground.IntegrationTests`](MafPlayground.IntegrationTests/README.md):
   opt-in external-infrastructure tests.
 - [`MafPlayground.Evals`](MafPlayground.Evals/README.md): versioned datasets,
@@ -11,7 +13,7 @@ Project documentation:
 
 `MafPlayground.Tests` contains deterministic tests that do not require a model,
 network access, containers, or another external service. Its folders mirror the
-logical production areas while keeping one lightweight unit-test project:
+logical production areas:
 
 ```text
 MafPlayground.Tests/

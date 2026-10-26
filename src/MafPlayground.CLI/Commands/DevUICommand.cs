@@ -116,7 +116,7 @@ public sealed class DevUICommand : ICliCommand
             builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
         builder.Services.Configure<TranslationWorkflowOptions>(
             builder.Configuration.GetSection("AI:Workflows:Translation"));
-        builder.Services.ConfigureAIEntities().AddMafPlaygroundSampleEntities();
+        AIBuilder entities = builder.Services.ConfigureAIEntities().AddMafPlaygroundSampleEntities();
         builder.Services.AddInMemoryAgentSessions();
         builder.Services.AddConfiguredAIProviders(builder.Configuration);
         try
@@ -130,15 +130,15 @@ public sealed class DevUICommand : ICliCommand
         }
         builder.Services.AddMafPlaygroundObservability(builder.Configuration);
         builder.Services.AddDevUITracing();
-        foreach (LocalEntityDescriptor descriptor in LocalEntityCatalog.All)
+        foreach (LocalEntityDescriptor descriptor in LocalEntityCatalog.Create(entities.Registrations))
         {
-            if (descriptor.Kind == LocalEntityKind.Agent)
+            if (descriptor.Kind == LocalEntityKind.Agent && descriptor.CreateAgent is not null)
             {
                 builder.AddAIAgent(
                     descriptor.Id,
                     (services, _) => descriptor.CreateAgent!(services));
             }
-            else
+            else if (descriptor.CreateHostedWorkflow is not null)
             {
                 builder.AddWorkflow(
                     descriptor.Id,

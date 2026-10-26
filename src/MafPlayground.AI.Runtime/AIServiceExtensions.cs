@@ -96,6 +96,8 @@ public static class AIServiceExtensions
         services.TryAddScoped<AIEntityRegistry>();
         services.TryAddScoped<IAIEntityRegistry>(provider =>
             provider.GetRequiredService<AIEntityRegistry>());
+        services.TryAddScoped<IAIEntityInspection>(provider =>
+            provider.GetRequiredService<AIEntityRegistry>());
         services.TryAddScoped<IAIEntityInvoker, AIEntityInvoker>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, AIEntityStartupValidator>());

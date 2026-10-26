@@ -13,6 +13,8 @@ public static class SampleAIServiceExtensions
             "basic-agent",
             entity => entity
                 .WithDescription("General conversational agent.")
+                .WithInputExample(new BasicAgentRequest("What time is it for me?"))
+                .WithMafAgentSource<IBasicAgentSource>()
                 .BindRuntimeOptions("AI:Entities:basic-agent")
                 .EnableSessions()
                 .RequireAuthorization("AI.Basic"));
@@ -24,6 +26,8 @@ public static class SampleAIServiceExtensions
             "translation-workflow",
             entity => entity
                 .WithDescription("Parallel validated translation.")
+                .WithInputExample(new TranslationWorkflowRequest("Hello, how are you?", ["es", "fr"]))
+                .WithMafWorkflowSource<ITranslationWorkflowSource>()
                 .BindRuntimeOptions("AI:Entities:translation-workflow")
                 .RequireAuthorization("AI.Translation"));
 

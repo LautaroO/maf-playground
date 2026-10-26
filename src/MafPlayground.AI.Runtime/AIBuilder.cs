@@ -15,6 +15,13 @@ public sealed class AIBuilder
 
     public IServiceCollection Services { get; }
 
+    /// <summary>Metadata from normal registrations, available to host composition before building DI.</summary>
+    public IReadOnlyList<AIEntityRegistrationInfo> Registrations => AIEntityRegistry.BuildMap(Services
+            .Select(service => service.ImplementationInstance)
+            .OfType<AIEntityRegistration>())
+        .Values.Select(registration => registration.Info)
+        .ToArray();
+
     public AIBuilder AddAgent<TEntity, TInput, TOutput>(
         string id,
         Action<AIEntityRegistrationBuilder> configure)
@@ -75,6 +82,16 @@ public sealed class AIBuilder
                 $"AI entity '{id}' runtime options must bind to 'AI:Entities:{id}'.");
         }
 
+        if (builder.InputExampleType is not null && builder.InputExampleType != typeof(TInput))
+        {
+            throw new InvalidOperationException($"AI entity '{id}' example must use its registered input contract.");
+        }
+        if ((kind != AIEntityKind.Agent && builder.AgentSourceFactory is not null) ||
+            (kind != AIEntityKind.Workflow && builder.WorkflowSourceFactory is not null))
+        {
+            throw new InvalidOperationException($"AI entity '{id}' native source must match its registered kind.");
+        }
+
         AIEntityDescriptor descriptor = new(
             id,
             kind,
@@ -87,7 +104,11 @@ public sealed class AIBuilder
         Services.AddScoped<TEntity>();
         Services.AddSingleton(new AIEntityRegistration(
             descriptor,
-            typeof(TEntity)));
+            typeof(TEntity),
+            builder.InputExample,
+            builder.Availability,
+            builder.AgentSourceFactory,
+            builder.WorkflowSourceFactory));
         return this;
     }
 }

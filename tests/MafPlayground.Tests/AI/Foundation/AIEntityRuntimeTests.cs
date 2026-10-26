@@ -17,6 +17,19 @@ namespace MafPlayground.Tests.AI.Foundation;
 public sealed class AIEntityRuntimeTests
 {
     [Fact]
+    public void RegistrationMetadata_RejectsDuplicatesAcrossBuilders()
+    {
+        ServiceCollection services = new();
+        AIBuilder first = services.AddAIRuntime(CreateConfiguration());
+        first.AddAgent<EchoEntity, EchoInput, EchoOutput>("echo", entity => entity
+            .WithDescription("Echo").AllowAnonymousAccess());
+        services.ConfigureAIEntities().AddAgent<EchoEntity, EchoInput, EchoOutput>("ECHO", entity => entity
+            .WithDescription("Duplicate").AllowAnonymousAccess());
+
+        Assert.Throws<InvalidOperationException>(() => first.Registrations);
+    }
+
+    [Fact]
     public void Registration_RejectsCaseInsensitiveDuplicateIds()
     {
         ServiceCollection services = new();

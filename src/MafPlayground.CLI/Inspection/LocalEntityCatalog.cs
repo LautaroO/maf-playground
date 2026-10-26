@@ -1,16 +1,10 @@
-using MafPlayground.AI;
-using MafPlayground.AI.Agents.BasicAgent;
+using MafPlayground.AI.Abstractions;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Agents.HelpAgent;
-using MafPlayground.AI.Guards;
-using MafPlayground.AI.Observability;
-using MafPlayground.AI.Guards.Content;
-using MafPlayground.AI.Workflows.Translation;
+using MafPlayground.AI.Runtime.Registry;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace MafPlayground.CLI.Inspection;
 
@@ -25,22 +19,47 @@ internal sealed record LocalEntityDescriptor(
     LocalEntityKind Kind,
     string Description,
     Type InputType,
-    object InputExample,
+    object? InputExample,
     Func<IServiceProvider, AIAgent>? CreateAgent = null,
-    Func<IConfiguration, Workflow>? CreateWorkflowDiagram = null,
+    Func<IServiceProvider, Workflow>? CreateWorkflowDiagram = null,
     Func<IServiceProvider, string, Workflow>? CreateHostedWorkflow = null);
 
 internal static class LocalEntityCatalog
 {
-    public static IReadOnlyList<LocalEntityDescriptor> All { get; } =
+    public static IReadOnlyList<LocalEntityDescriptor> Create(IReadOnlyList<AIEntityRegistrationInfo> registrations)
+    {
+        AIEntityInspectionContext context = new("cli-default");
+        IEnumerable<LocalEntityDescriptor> registered = registrations.Select(registration => new LocalEntityDescriptor(
+            registration.Descriptor.Id,
+            registration.Descriptor.Kind == AIEntityKind.Agent ? LocalEntityKind.Agent : LocalEntityKind.Workflow,
+            registration.Descriptor.Description,
+            registration.Descriptor.InputType,
+            registration.InputExample,
+            CreateAgent: registration.AgentSourceFactory is null ? null : services =>
+                registration.AgentSourceFactory(services, context).Agent,
+            CreateWorkflowDiagram: registration.WorkflowSourceFactory is null ? null : services =>
+                registration.WorkflowSourceFactory(services, context).CreateWorkflow(),
+            CreateHostedWorkflow: registration.WorkflowSourceFactory is null ? null : (services, name) =>
+                registration.WorkflowSourceFactory(services, context).CreateWorkflowForDevUI(name)));
+
+        // These CLI-only legacy surfaces remain until their normal typed registrations exist.
+        // A future normal registration takes precedence, without duplicating its logical ID.
+        HashSet<string> registeredIds = registrations.Select(registration => registration.Descriptor.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return registered.Concat(LegacyEntities.Where(entity => !registeredIds.Contains(entity.Id)))
+            .OrderBy(entity => entity.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public static LocalEntityDescriptor? Find(
+        IReadOnlyList<LocalEntityDescriptor> entities,
+        LocalEntityKind kind,
+        string id) =>
+        entities.FirstOrDefault(entity =>
+            entity.Kind == kind && entity.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    private static IReadOnlyList<LocalEntityDescriptor> LegacyEntities { get; } =
     [
-        new(
-            "basic-agent",
-            LocalEntityKind.Agent,
-            "General conversational agent.",
-            typeof(BasicAgentRequest),
-            new BasicAgentRequest("What time is it for me?"),
-            CreateAgent: services => services.GetRequiredService<IBasicAgentSource>().Agent),
         new(
             "basic-rag-agent",
             LocalEntityKind.Agent,
@@ -55,62 +74,5 @@ internal static class LocalEntityCatalog
             typeof(string),
             "How do I run the repository help agent from the CLI?",
             CreateAgent: services => services.GetRequiredService<HelpAgent>().Agent),
-        new(
-            "translation-workflow",
-            LocalEntityKind.Workflow,
-            "Parallel validated translation.",
-            typeof(TranslationWorkflowRequest),
-            new TranslationWorkflowRequest("Hello, how are you?", ["es", "fr"]),
-            CreateWorkflowDiagram: CreateTranslationWorkflowDiagram,
-            CreateHostedWorkflow: (services, name) => services
-                .GetRequiredService<ITranslationWorkflowSource>()
-                .CreateWorkflowForDevUI(name)),
     ];
-
-    public static LocalEntityDescriptor? Find(
-        LocalEntityKind kind,
-        string id) =>
-        All.FirstOrDefault(entity =>
-            entity.Kind == kind &&
-            entity.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-
-    private static Workflow CreateTranslationWorkflowDiagram(IConfiguration configuration)
-    {
-        TranslationWorkflowOptions options = configuration
-            .GetSection("AI:Workflows:Translation")
-            .Get<TranslationWorkflowOptions>() ?? new TranslationWorkflowOptions();
-        IOptions<TranslationWorkflowOptions> workflowOptions = Options.Create(options);
-        AIGuardOptions guardOptions = configuration
-            .GetSection(AIGuardOptions.ConfigurationSectionName)
-            .Get<AIGuardOptions>() ?? new AIGuardOptions();
-        GuardProfileResolver profiles = new(Options.Create(guardOptions));
-        GuardExecutionContextAccessor contextAccessor = new();
-        WorkflowGuardCoordinator guards = new(
-            profiles,
-            contextAccessor,
-            new ContentGuard(new RegexPiiContentInspector()));
-        TranslationService service = new(
-            new DiagramOnlyTranslationModel(),
-            workflowOptions,
-            guards);
-        TranslationWorkflowFactory factory = new(
-            service,
-            workflowOptions,
-            Options.Create(new AgentTelemetryOptions()),
-            guards);
-        return factory.Create();
-    }
-
-    private sealed class DiagramOnlyTranslationModel : ITranslationModel
-    {
-        public Task<string> TranslateAsync(
-            TranslationDraftRequest request,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException("Diagram inspection does not execute workflows.");
-
-        public Task<TranslationValidation> ValidateAsync(
-            TranslationValidationRequest request,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException("Diagram inspection does not execute workflows.");
-    }
 }

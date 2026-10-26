@@ -11,10 +11,12 @@
     <Project Path="src/MafPlayground.Providers.Ollama/MafPlayground.Providers.Ollama.csproj" />
     <Project Path="src/MafPlayground.Retrieval/MafPlayground.Retrieval.csproj" />
     <Project Path="src/MafPlayground.Retrieval.Postgres/MafPlayground.Retrieval.Postgres.csproj" />
+    <Project Path="src/MafPlayground.Studio/MafPlayground.Studio.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MafPlayground.Evals/MafPlayground.Evals.csproj" />
     <Project Path="tests/MafPlayground.IntegrationTests/MafPlayground.IntegrationTests.csproj" />
+    <Project Path="tests/MafPlayground.Studio.Tests/MafPlayground.Studio.Tests.csproj" />
     <Project Path="tests/MafPlayground.Tests/MafPlayground.Tests.csproj" />
   </Folder>
 </Solution>
