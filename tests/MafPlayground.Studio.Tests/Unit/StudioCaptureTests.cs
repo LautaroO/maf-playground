@@ -103,6 +103,28 @@ public sealed class StudioCaptureTests
         Assert.DoesNotContain("opaque-token", payload.Value.ToString());
         Assert.Contains("contains", payload.Value.ToString());
     }
+    [Theory]
+    [InlineData("Failure details: {\"status\":\"pending\",\"tokenCount\":123} suffix")]
+    [InlineData("Normal text: key=value; description=public-data. Nothing private here.")]
+    [InlineData("Error: operation failed with status=503")]
+    public void NonSensitivePrefixedText_IsPreservedExactly(string text)
+    {
+        var captured = new StudioPayloadStore(new()).Capture(new { message = text }, "application/json");
+        Assert.Equal(StudioCaptureState.Available, captured.State);
+        Assert.Equal(text, captured.Value.GetProperty("message").GetString());
+    }
+
+    [Theory]
+    [InlineData("Failure: {\"configuration\":{\"mode\":\"nested-private-value\"}} tail")]
+    [InlineData("Failure: {\"configuration\":[\"nested-private-value\",{\"x\":1}")]
+    [InlineData("Failure: {\"private\\u004bey\":\"nested-private-value\"}")]
+    public void PrefixedSensitiveValues_HandleContainersEscapedNamesAndAmbiguousEnd(string text)
+    {
+        var captured = new StudioPayloadStore(new()).Capture(new { message = text }, "application/json");
+        Assert.Equal(StudioCaptureState.Redacted, captured.State);
+        Assert.DoesNotContain("nested-private-value", captured.Value.ToString());
+    }
+
     [Fact]
     public void MalformedEmbeddedJson_DoesNotBypassCredentialRedaction()
     {

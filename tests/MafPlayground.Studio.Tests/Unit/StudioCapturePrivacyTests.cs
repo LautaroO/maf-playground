@@ -15,12 +15,18 @@ public sealed class StudioCapturePrivacyTests
     [InlineData("password=\"quoted-secret\"", "quoted-secret")]
     [InlineData("Failure details: {\"password\":\"prefixed-secret\"}", "prefixed-secret")]
     [InlineData("Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz")]
+    [InlineData("Failure details: {\"token\":\"prefixed-token-secret\"}", "prefixed-token-secret")]
+    [InlineData("Failure details: {\"privateKey\":\"prefixed-private-key-secret\"}", "prefixed-private-key-secret")]
+    [InlineData("Failure details: {\"connectionString\":\"prefixed-connection-secret\"}", "prefixed-connection-secret")]
     [InlineData("password=unquoted-secret", "unquoted-secret")]
     [InlineData("password='single-quoted secret'", "single-quoted secret")]
     [InlineData("Failure details: {\"api_key\":\"unfinished-secret", "unfinished-secret")]
     [InlineData("password=\"unterminated-secret\\", "unterminated-secret")]
     [InlineData("password='unterminated-single\\", "unterminated-single")]
-    public async Task CredentialText_IsRedactedAtPayloadAndStoredErrorJournalBoundaries(string original, string secret)
+    [InlineData("Failure details: privateKey=first-secret second-secret", "first-secret second-secret")]
+    public Task CredentialText_IsRedactedAtPayloadAndStoredErrorJournalBoundaries(string original, string secret) => AssertCredentialTextAsync(original, secret);
+
+    private static async Task AssertCredentialTextAsync(string original, string secret)
     {
         var payload = new StudioPayloadStore(new()).Capture(new { message = original }, "application/json");
         foreach (string fragment in secret.Split(' ')) Assert.DoesNotContain(fragment, payload.Value.ToString());
@@ -38,6 +44,26 @@ public sealed class StudioCapturePrivacyTests
         Assert.Equal(StudioRunStatus.Failed, snapshot.Status);
         foreach (string fragment in secret.Split(' ')) Assert.DoesNotContain(fragment, JsonSerializer.Serialize(new { snapshot, events }));
         Assert.Contains(events.Events, item => item.Kind == "execution_error" && item.CaptureState == StudioCaptureState.Redacted);
+    }
+
+    public static IEnumerable<object[]> CredentialFieldNames => new[]
+    {
+        "apiKey", "provider.api_key", "databasePassword", "clientSecret", "credentialBundle",
+        "token", "access_token", "refresh-token", "Authorization", "Proxy-Authorization",
+        "Cookie", "Set-Cookie", "privateKey", "connectionString", "configuration", "AccountKey", "SharedAccessSignature",
+    }.Select(name => new object[] { name });
+
+    [Theory]
+    [MemberData(nameof(CredentialFieldNames))]
+    public async Task PrefixedCredentialFields_UseTheSamePolicyAsStructuredFields(string field)
+    {
+        const string secret = "policy-value-must-disappear";
+        var store = new StudioPayloadStore(new());
+        var structured = store.Capture(new Dictionary<string, object?> { [field] = secret }, "application/json");
+        string fragment = JsonSerializer.Serialize(new Dictionary<string, object?> { [field] = secret });
+        await AssertCredentialTextAsync("Failure details: " + fragment, secret);
+        Assert.DoesNotContain(secret, structured.Value.ToString());
+        Assert.Equal(StudioCaptureState.Redacted, structured.State);
     }
 
     [Fact]

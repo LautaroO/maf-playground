@@ -147,3 +147,10 @@ before the framework rents an escaping scratch buffer, preserving default encodi
 for in-budget text. Only Studio enables `AllowUnsafeBlocks`, because .NET's encoder
 abstraction requires pointer signatures; the wrapper forwards them without custom
 pointer access or modification.
+
+Structured fields and prefixed JSON/free-text assignments now share one credential
+name policy. Assignment matching recognizes names rather than enumerating a second
+credential list; escaped JSON names are decoded before classification. Sensitive
+quoted/container values are removed as a unit. Malformed or unquoted sensitive
+values conservatively remove the ambiguous remainder, while non-sensitive prefixed
+JSON and prose remain unchanged.
