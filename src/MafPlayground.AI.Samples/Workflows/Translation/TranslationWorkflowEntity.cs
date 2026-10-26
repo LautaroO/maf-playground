@@ -8,9 +8,13 @@ namespace MafPlayground.AI.Workflows.Translation;
 public sealed class TranslationWorkflowEntity(
     ITranslationWorkflowSource source,
     IMafWorkflowRunner runner,
-    IAIEntityRuntimeOptionsResolver runtimeOptions) :
-    IAIEntity<TranslationWorkflowRequest, TranslationWorkflowResult>
+    IAIEntityRuntimeOptionsResolver runtimeOptions,
+    ResolvedAIEntityRuntimeOptions? profileOptions = null) :
+    IAIEntity<TranslationWorkflowRequest, TranslationWorkflowResult>, IMafWorkflowSource
 {
+    public Workflow CreateWorkflow() => source.CreateWorkflow();
+    public Workflow CreateWorkflowForDevUI(string workflowName) => source.CreateWorkflowForDevUI(workflowName);
+
     public async ValueTask<TranslationWorkflowResult> ExecuteAsync(
         TranslationWorkflowRequest input,
         AIExecutionContext context,
@@ -19,9 +23,9 @@ public sealed class TranslationWorkflowEntity(
         TranslationWorkflowRequest validated = source.Validate(input);
         return await runner.RunAsync<TranslationWorkflowInput, TranslationWorkflowResult>(
             source.CreateWorkflowForRuntime(
-                runtimeOptions.Resolve("translation-workflow").GuardProfile),
+                (profileOptions ?? runtimeOptions.Resolve("translation-workflow")).GuardProfile),
             new TranslationWorkflowInput(validated.Text, validated.TargetLanguages),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken, context.Observer).ConfigureAwait(false);
     }
 }
 

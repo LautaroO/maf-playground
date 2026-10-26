@@ -2,13 +2,14 @@ using MafPlayground.AI.Abstractions;
 using MafPlayground.AI.Runtime.Registry;
 using MafPlayground.AI.Runtime.Workflows;
 using MafPlayground.Studio.Contracts;
+using MafPlayground.Studio.Execution;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace MafPlayground.Studio.Catalog;
 
-public sealed class StudioCatalog(IAIEntityRegistry registry, IAIEntityInspection inspection) : IStudioCatalog
+public sealed class StudioCatalog(IAIEntityRegistry registry, IAIEntityInspection inspection, StudioExecutionProfileBinder? profiles = null) : IStudioCatalog
 {
     public ValueTask<IReadOnlyList<StudioEntityDescriptor>> ListAsync(CancellationToken cancellationToken)
     {
@@ -32,7 +33,8 @@ public sealed class StudioCatalog(IAIEntityRegistry registry, IAIEntityInspectio
                 registration.HasAgentSource,
                 registration.HasWorkflowSource,
                 availability.IsAvailable,
-                availability.IsAvailable ? null : availability.Reason ?? "The entity is unavailable."));
+                availability.IsAvailable ? null : availability.Reason ?? "The entity is unavailable.",
+                registration.SupportsProfiles, registration.SupportsStreaming, registration.SupportsOutcomeClassification));
         }
         return ValueTask.FromResult<IReadOnlyList<StudioEntityDescriptor>>(entities.AsReadOnly());
     }
@@ -42,6 +44,7 @@ public sealed class StudioCatalog(IAIEntityRegistry registry, IAIEntityInspectio
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrWhiteSpace(entityId);
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        profiles?.Bind(profileId);
         AIEntityRegistrationInfo registration = inspection.GetRegistration(entityId);
         AIEntityAvailability availability = inspection.GetAvailability(entityId);
         if (!availability.IsAvailable)

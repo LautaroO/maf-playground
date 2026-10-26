@@ -5,5 +5,7 @@ namespace MafPlayground.Studio.Execution;
 
 public interface IStudioEntityExecutor
 {
-    ValueTask<JsonElement> ExecuteAsync(StudioRunRequest request, StudioExecutionContext context, CancellationToken cancellationToken);
+    ValueTask<StudioEntityExecutionResult> ExecuteAsync(StudioRunRequest request, StudioExecutionContext context, CancellationToken cancellationToken);
 }
+
+public sealed record StudioEntityExecutionResult(JsonElement Output, StudioOutcomeClassification Classification = StudioOutcomeClassification.Unclassified);

@@ -22,7 +22,7 @@ public sealed class StudioDiscoveryTests
 
         var entities = await scope.ServiceProvider.GetRequiredService<IStudioCatalog>().ListAsync(CancellationToken.None);
 
-        Assert.Equal(["basic-agent", "translation-workflow"], entities.Select(entity => entity.Id));
+        Assert.Equal(["basic-agent", "basic-rag-agent", "repository-help-agent", "translation-workflow"], entities.Select(entity => entity.Id));
         Assert.All(entities, entity => Assert.NotNull(entity.InputExample));
         Assert.True(Assert.Single(entities, entity => entity.Id == "basic-agent").SupportsNativeAgent);
         Assert.True(Assert.Single(entities, entity => entity.Id == "translation-workflow").SupportsNativeWorkflow);

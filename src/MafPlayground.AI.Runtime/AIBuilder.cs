@@ -92,6 +92,11 @@ public sealed class AIBuilder
             throw new InvalidOperationException($"AI entity '{id}' native source must match its registered kind.");
         }
 
+        if (builder.ProfileType is not null && builder.ProfileType != typeof(TEntity))
+            throw new InvalidOperationException("The profile factory must construct the registered entity type.");
+        if (builder.ClassifierOutputType is not null && builder.ClassifierOutputType != typeof(TOutput))
+            throw new InvalidOperationException("The classifier must consume the registered output type.");
+
         AIEntityDescriptor descriptor = new(
             id,
             kind,
@@ -108,7 +113,7 @@ public sealed class AIBuilder
             builder.InputExample,
             builder.Availability,
             builder.AgentSourceFactory,
-            builder.WorkflowSourceFactory));
+            builder.WorkflowSourceFactory, builder.ProfileFactory, builder.OutcomeClassifier, builder.SupportsStreaming));
         return this;
     }
 }

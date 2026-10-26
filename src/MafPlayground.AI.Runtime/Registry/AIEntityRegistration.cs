@@ -12,10 +12,13 @@ internal sealed record AIEntityRegistration(
     JsonElement? InputExample,
     Func<IServiceProvider, AIEntityAvailability>? Availability,
     Func<IServiceProvider, AIEntityInspectionContext, IMafAgentSource>? AgentSourceFactory,
-    Func<IServiceProvider, AIEntityInspectionContext, IMafWorkflowSource>? WorkflowSourceFactory)
+    Func<IServiceProvider, AIEntityInspectionContext, IMafWorkflowSource>? WorkflowSourceFactory,
+    Func<IServiceProvider, AIEntityConstructionContext, object>? ProfileFactory,
+    Func<object?, AIOutcomeClassification>? OutcomeClassifier,
+    bool SupportsStreaming)
 {
     public AIEntityRegistrationInfo Info => new(
-        Descriptor, InputExample, AgentSourceFactory, WorkflowSourceFactory);
+        Descriptor, InputExample, AgentSourceFactory, WorkflowSourceFactory, ProfileFactory is not null, OutcomeClassifier is not null, SupportsStreaming);
 }
 
 public sealed class AIEntityRegistrationBuilder
@@ -43,6 +46,31 @@ public sealed class AIEntityRegistrationBuilder
     internal Func<IServiceProvider, AIEntityInspectionContext, IMafAgentSource>? AgentSourceFactory { get; private set; }
 
     internal Func<IServiceProvider, AIEntityInspectionContext, IMafWorkflowSource>? WorkflowSourceFactory { get; private set; }
+
+    internal Func<IServiceProvider, AIEntityConstructionContext, object>? ProfileFactory { get; private set; }
+    internal Type? ProfileType { get; private set; }
+    internal Func<object?, AIOutcomeClassification>? OutcomeClassifier { get; private set; }
+    internal Type? ClassifierOutputType { get; private set; }
+    internal bool SupportsStreaming { get; private set; }
+
+    public AIEntityRegistrationBuilder WithProfileFactory<TEntity>(Func<IServiceProvider, AIEntityConstructionContext, TEntity> factory) where TEntity : class
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        ProfileType = typeof(TEntity);
+        ProfileFactory = (services, context) => factory(services, context);
+        return this;
+    }
+
+    public AIEntityRegistrationBuilder WithOutcomeClassifier<TOutput>(Func<TOutput, AIOutcomeClassification> classifier)
+    {
+        ArgumentNullException.ThrowIfNull(classifier);
+        ClassifierOutputType = typeof(TOutput);
+        OutcomeClassifier = output => classifier((TOutput)output!);
+        return this;
+    }
+
+    /// <summary>The typed entity emits events through AIExecutionContext.Observer during its normal execution.</summary>
+    public AIEntityRegistrationBuilder WithStreamingEvents() { SupportsStreaming = true; return this; }
 
     public AIEntityRegistrationBuilder WithInputExample<TInput>(TInput example)
     {

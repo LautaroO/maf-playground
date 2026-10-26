@@ -36,3 +36,31 @@ lifetimes. The parameterless generic `WithMafAgentSource<TSource>()` and
 for topology inspection must construct metadata without invoking a model/tool or
 eagerly creating a model client. Availability callbacks inspect configuration;
 they do not replace hosted startup validation or execution validation.
+
+`WithProfileFactory<TEntity>` registers application-owned construction for a bound
+execution profile. A host binds `AIEntityExecutionScope` once before native
+inspection or typed invocation. The scope caches immutable effective options and
+one entity instance; its profile factory supplies both the typed entity and its
+optional native-source interfaces. The factory owns new clients through
+`AIEntityConstructionContext.Own`/`RegisterResource`, which release them when the
+scope ends. Default unbound invocation retains existing DI lifetimes. No second
+service provider or mutation of global options is involved.
+
+`AIExecutionContext.Observer` carries optional neutral execution events through
+the same typed invocation. `WithStreamingEvents` advertises that capability;
+streaming does not bypass entity input validation, guards, or session storage.
+`WithOutcomeClassifier<TOutput>` is application-owned and returns a neutral
+`AIOutcomeClassification`; otherwise the domain outcome remains unclassified.
+The framework never infers domain status from arbitrary output property names.
+
+Session keys optionally bind a profile ID. `IAgentSessionStore.Acquire` rejects
+overlapping turns, `ResetAsync` clears an idle caller-owned conversation, and
+successful execution alone commits the serialized MAF session. Failed or cancelled
+streaming turns cannot replace committed history. Profile changes require a new
+session or an explicit reset using the existing owner/profile key.
+
+Native agent updates pass through the existing guard pipeline. Profiles with
+content filtering enabled buffer until output transformation completes, preventing
+sensitive values split across chunks from leaking. Other profiles preserve native
+incremental updates while retaining input-length, tool and budget checks. Structured
+RAG/Help output remains buffered until its domain validation and repair complete.

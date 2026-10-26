@@ -60,7 +60,7 @@ public sealed class EntityInputRendererTests
     }
 
     [Fact]
-    public async Task RenderAsync_AgentDeclaresConversationalStringInput()
+    public async Task RenderAsync_AgentUsesRegisteredMessageContract()
     {
         LocalEntityDescriptor descriptor = Assert.Single(
             LocalEntityCatalog.Create(new ServiceCollection().ConfigureAIEntities().AddMafPlaygroundSampleEntities().Registrations),
@@ -70,9 +70,10 @@ public sealed class EntityInputRendererTests
         await new EntityInputRenderer(output).RenderAsync(descriptor);
 
         using JsonDocument document = JsonDocument.Parse(output.ToString());
-        Assert.Equal(
-            "string",
-            document.RootElement.GetProperty("schema").GetProperty("type").GetString());
+        JsonElement root = document.RootElement;
+        Assert.Equal("object", root.GetProperty("schema").GetProperty("type").GetString());
+        Assert.Equal("string", root.GetProperty("schema").GetProperty("properties").GetProperty("message").GetProperty("type").GetString());
+        Assert.Equal("How long does a password-reset link remain valid?", root.GetProperty("example").GetProperty("message").GetString());
     }
 
     public sealed record NovelInspectionInput(string[] Labels);

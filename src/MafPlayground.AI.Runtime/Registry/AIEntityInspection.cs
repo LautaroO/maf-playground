@@ -23,7 +23,10 @@ public sealed record AIEntityRegistrationInfo(
     AIEntityDescriptor Descriptor,
     JsonElement? InputExample,
     Func<IServiceProvider, AIEntityInspectionContext, IMafAgentSource>? AgentSourceFactory,
-    Func<IServiceProvider, AIEntityInspectionContext, IMafWorkflowSource>? WorkflowSourceFactory)
+    Func<IServiceProvider, AIEntityInspectionContext, IMafWorkflowSource>? WorkflowSourceFactory,
+    bool SupportsProfiles = false,
+    bool SupportsOutcomeClassification = false,
+    bool SupportsStreaming = false)
 {
     public bool HasAgentSource => AgentSourceFactory is not null;
 

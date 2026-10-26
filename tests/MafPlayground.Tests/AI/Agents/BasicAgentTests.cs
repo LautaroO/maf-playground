@@ -62,8 +62,10 @@ public sealed class BasicAgentTests
         Assert.DoesNotContain("customer@example.com", chatClient.Requests[0][0].Text);
     }
 
-    [Fact]
-    public async Task Agent_GuardsCountToolCallsAndBlockBeforeSecondInvocation()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Agent_GuardsCountToolCallsAndBlockBeforeSecondInvocation(bool streaming)
     {
         using TwoToolCallsChatClient chatClient = new();
         CountingTimeProvider timeProvider = new();
@@ -94,10 +96,16 @@ public sealed class BasicAgentTests
         using ServiceProvider provider = services.BuildServiceProvider();
 
         Exception? exception = await Record.ExceptionAsync(async () =>
-            await provider.GetRequiredService<BasicAgent>().Agent.RunAsync(
-                "Run both time lookups."));
+        {
+            var agent = provider.GetRequiredService<BasicAgent>().Agent;
+            if (streaming)
+            {
+                await foreach (var update in agent.RunStreamingAsync("Run both time lookups.")) { }
+            }
+            else await agent.RunAsync("Run both time lookups.");
+        });
 
-        Assert.NotNull(exception);
+        Assert.True(exception is not null, $"Expected budget failure; model calls={chatClient.ModelCalls}, tool calls={timeProvider.Calls}");
         Assert.Contains("tool_calls", exception.ToString(), StringComparison.Ordinal);
         Assert.Equal(1, timeProvider.Calls);
         Assert.InRange(chatClient.ModelCalls, 1, 4);
@@ -374,9 +382,8 @@ public sealed class BasicAgentTests
             ChatOptions? options = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            await Task.Yield();
-            cancellationToken.ThrowIfCancellationRequested();
-            yield break;
+            ChatResponse response = await GetResponseAsync(messages, options, cancellationToken);
+            yield return new ChatResponseUpdate { Role = ChatRole.Assistant, Contents = response.Messages.SelectMany(message => message.Contents).ToList() };
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null) =>

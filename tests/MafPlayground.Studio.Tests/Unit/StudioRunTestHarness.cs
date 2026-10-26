@@ -55,7 +55,7 @@ internal sealed class RunHarness(ServiceProvider provider, StudioRunService serv
     private sealed class ScopedExecutor(ControlledExecutor executor) : IStudioEntityExecutor, IAsyncDisposable
     {
         private readonly string id = Guid.NewGuid().ToString();
-        public ValueTask<JsonElement> ExecuteAsync(StudioRunRequest request, StudioExecutionContext context, CancellationToken cancellationToken) => executor.Execute(request, context, id, cancellationToken);
+        public ValueTask<StudioEntityExecutionResult> ExecuteAsync(StudioRunRequest request, StudioExecutionContext context, CancellationToken cancellationToken) => executor.Execute(request, context, id, cancellationToken);
         public async ValueTask DisposeAsync()
         {
             executor.DisposingScopes.Add(id);
@@ -78,7 +78,7 @@ internal sealed class ControlledExecutor
     internal ConcurrentBag<string> DisposedScopes { get; } = [];
     internal ConcurrentBag<string> DisposingScopes { get; } = [];
     internal int Count => Volatile.Read(ref count);
-    internal async ValueTask<JsonElement> Execute(StudioRunRequest request, StudioExecutionContext context, string scope, CancellationToken token)
+    internal async ValueTask<StudioEntityExecutionResult> Execute(StudioRunRequest request, StudioExecutionContext context, string scope, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         TestExecution job = new(request, context, scope, token);
@@ -88,7 +88,7 @@ internal sealed class ControlledExecutor
         started.Writer.TryWrite(job);
         JsonElement result = await job.Completion.Task.ConfigureAwait(false);
         job.BeforeReturn?.Invoke();
-        return result;
+        return new(result);
     }
     internal async Task<TestExecution> NextAsync() => await started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
     internal void Release()

@@ -2,6 +2,7 @@ namespace MafPlayground.Studio.Execution;
 
 public sealed record StudioOptions
 {
+    public string DefaultProfileId { get; init; } = "cli-default";
     public int MaxConcurrentRuns { get; init; } = 4;
     public int QueueCapacity { get; init; } = 16;
     public int MaxCompletedRuns { get; init; } = 100;

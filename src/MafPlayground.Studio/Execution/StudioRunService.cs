@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
 using MafPlayground.AI.Abstractions;
+using MafPlayground.AI.Runtime.Registry;
 using MafPlayground.Studio.Catalog;
 using MafPlayground.Studio.Contracts;
 using Microsoft.Extensions.DependencyInjection;
@@ -155,6 +156,7 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
         {
             StudioRunStatus status = StudioRunStatus.Completed;
             JsonElement? result = null;
+            StudioOutcomeClassification outcome = StudioOutcomeClassification.Unclassified;
             string? error = null;
             using ITimer timeout = clock.CreateTimer(_ =>
             {
@@ -168,14 +170,29 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
                 executionToken.ThrowIfCancellationRequested();
                 lock (store.Gate) store.Running(run);
                 scope = scopes.CreateAsyncScope();
+                StudioExecutionProfileBinder? binding = scope.Value.ServiceProvider.GetService<IAIEntityInspection>() is null
+                    ? null : scope.Value.ServiceProvider.GetRequiredService<StudioExecutionProfileBinder>();
+                if (binding is not null)
+                {
+                    StudioExecutionProfileSnapshot profile = binding.BindForEntity(run.Request.EntityId, run.Request.ProfileId);
+                    lock (store.Gate) store.SetProfile(run, profile);
+                }
                 IStudioCatalog catalog = scope.Value.ServiceProvider.GetRequiredService<IStudioCatalog>();
                 StudioTopology topology = await catalog.GetTopologyAsync(run.Request.EntityId, run.Request.ProfileId, executionToken).ConfigureAwait(false);
                 lock (store.Gate) store.SetTopology(run, topology);
                 IStudioEntityExecutor executor = scope.Value.ServiceProvider.GetRequiredService<IStudioEntityExecutor>();
-                JsonElement output = await executor.ExecuteAsync(run.Request,
+                StudioEntityExecutionResult execution = await executor.ExecuteAsync(run.Request,
                     new(run.Receipt.RunId, run.Request.EntityId, run.Request.ProfileId, run.Request.SessionId, run.Caller), executionToken).ConfigureAwait(false);
+                JsonElement output = execution.Output;
                 if (output.ValueKind == JsonValueKind.Undefined) throw new InvalidDataException("Executor returned no JSON value.");
                 result = output.Clone();
+                outcome = execution.Classification;
+                status = outcome switch
+                {
+                    StudioOutcomeClassification.PartiallyFailed => StudioRunStatus.PartiallyFailed,
+                    StudioOutcomeClassification.Failed => StudioRunStatus.Failed,
+                    _ => StudioRunStatus.Completed,
+                };
             }
             catch (OperationCanceledException) when (executionToken.IsCancellationRequested)
             {
@@ -212,7 +229,7 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
                 status = StudioRunStatus.Failed;
                 error = "execution_failed";
             }
-            lock (store.Gate) store.Finish(run, status, result, error);
+            lock (store.Gate) store.Finish(run, status, result, error, outcome);
         }
     }
 
@@ -264,6 +281,8 @@ public static class StudioRunServiceExtensions
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(options ?? new StudioOptions());
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<StudioExecutionProfileBinder>();
+        services.TryAddScoped<IStudioEntityExecutor, StudioEntityExecutor>();
         services.TryAddSingleton<StudioRunService>();
         services.TryAddSingleton<IStudioRunService>(sp => sp.GetRequiredService<StudioRunService>());
         services.TryAddSingleton<IStudioEventSink>(sp => sp.GetRequiredService<StudioRunService>());

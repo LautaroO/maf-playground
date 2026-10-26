@@ -12,3 +12,12 @@ Run `dotnet test tests/MafPlayground.Studio.Tests` from the repository root.
 External transport checks belong in the separate Studio integration project when
 HTTP/MCP transport is introduced. Existing runtime and CLI regressions stay in
 `MafPlayground.Tests`.
+
+
+Component tests exercise the generic typed executor with unknown agent/workflow
+contracts and actual MAF sample behavior under controlled clients. They cover real
+date/help tool invocation, one-invocation streaming, concurrent chat profiles,
+grounded repair, translation validation and partial outcomes, model-free native
+inspection, effective-profile snapshots, scope disposal, session continuity,
+reset, overlap, profile mismatch, and failure/cancellation rollback. No live model,
+HTTP, MCP, or browser is required.

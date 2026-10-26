@@ -26,9 +26,11 @@ unavailable. The native Mermaid export retains available labels as an opaque
 export; Studio does not parse it or reflect private framework fields.
 
 
-Run supervision is deterministic infrastructure. Register `AddStudioRuns()` and a
-scoped `IStudioEntityExecutor` in the same host; the executor owns the profile and
-MAF invocation adapter. The hosted singleton implements `IStudioRunService` and
+Run supervision is deterministic infrastructure. Register `AddStudioCatalog()`
+and `AddStudioRuns()` in the same host. `AddStudioRuns` installs the generic scoped
+`StudioEntityExecutor` unless the host already registered its own executor.
+It delegates to `IAIEntityInvoker` and normal application registration capabilities;
+Studio contains no sample adapters or switches on entity IDs. The hosted singleton implements `IStudioRunService` and
 `IStudioEventSink`. Accepted jobs copy caller/input state and use fresh async DI
 scopes. Submission cancellation only governs admission. Explicit cancellation,
 timeout and shutdown converge on a job-owned cancellation source; cancellation
@@ -58,7 +60,7 @@ Completed runs are evicted oldest first. Active input/control state is never
 evicted: capture pressure drops journal data or replaces oversized result/event
 JSON with an explicit truncation marker. Input exceeding its payload limit is
 rejected before acceptance. Event metadata is bounded too. Capture byte totals
-include submitted input, topology, result and retained event envelopes.
+include submitted input, effective profile metadata, topology, result and retained event envelopes.
 
 Event sequences are assigned by the host. Bounded pages expose earliest retained
 sequence, next cursor and explicit gaps. Watchers read one retained event at a
@@ -69,3 +71,25 @@ capture has lost/truncated data so far; it does not promise that correlated span
 have all arrived. Missing run snapshots return null, while event-page retrieval
 for unknown/evicted runs throws `KeyNotFoundException`. Transport adapters should
 map these outcomes without resubmitting work.
+
+
+Register immutable `StudioExecutionProfile` instances with DI to select chat models,
+guard profiles or model-call timeouts. `StudioOptions.DefaultProfileId` names the
+host's unchanged configured defaults (the CLI uses `cli-default`). Profile IDs are
+opaque to Runtime; they never select sample implementations. Unknown profiles fail
+explicitly. Entities lacking profile factories still execute with default settings
+and expose unavailable profile/streaming capabilities; explicit configuration
+overrides require a registered profile factory.
+
+Before topology construction the supervisor binds the requested profile and saves
+`StudioExecutionProfileSnapshot` with effective model selector, guard and timeout.
+The Runtime scope caches those same options for execution. Null fields mean
+unavailable/not applicable; credentials and provider configuration are excluded.
+Failed runs retain the bound snapshot within the same capture limits. The snapshot
+is independent of later configuration changes.
+
+The typed executor returns `StudioEntityExecutionResult(Output, Classification)`.
+Application classifiers alone determine domain status, independently of event
+capture or payload truncation. Neutral `text_delta`, `workflow_event` and
+`capability_unavailable` events are emitted from the same invocation. Detailed
+model/tool spans and payload capture are a separate integration.

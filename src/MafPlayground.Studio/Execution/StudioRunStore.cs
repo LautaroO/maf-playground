@@ -58,15 +58,23 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
 
     internal StudioRunSnapshot Snapshot(RunState state) => new(
         HostInstanceId, state.Receipt.RunId, state.Request, state.Status, state.CancellationRequested,
-        state.SubmittedAt, state.StartedAt, state.CompletedAt, state.Result, StudioOutcomeClassification.Unclassified,
+        state.SubmittedAt, state.StartedAt, state.CompletedAt, state.Result, state.Outcome,
         state.Topology, state.ErrorCategory, state.Journal.LatestSequence, state.CapturedBytes,
-        !state.Incomplete && !state.Journal.HasLostEvents, state.Journal.EarliestSequence, state.Journal.LatestSequence);
+        !state.Incomplete && !state.Journal.HasLostEvents, state.Journal.EarliestSequence, state.Journal.LatestSequence, state.Profile);
 
     internal void Running(RunState state)
     {
         state.Status = StudioRunStatus.Running;
         state.StartedAt = clock.GetUtcNow();
         Lifecycle(state, "running");
+    }
+
+    internal void SetProfile(RunState state, StudioExecutionProfileSnapshot profile)
+    {
+        int bytes = JsonSerializer.SerializeToUtf8Bytes(profile).Length;
+        if (bytes > options.MaxPayloadBytes || !MakeSpace(state, bytes)) { state.Incomplete = true; return; }
+        state.Profile = profile;
+        AddBytes(state, bytes);
     }
 
     internal void SetTopology(RunState state, StudioTopology topology)
@@ -87,7 +95,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
         AddBytes(state, bytes);
     }
 
-    internal void Finish(RunState state, StudioRunStatus status, JsonElement? result, string? error)
+    internal void Finish(RunState state, StudioRunStatus status, JsonElement? result, string? error, StudioOutcomeClassification outcome)
     {
         if (result is { } value)
         {
@@ -105,6 +113,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
             }
             else state.Incomplete = true;
         }
+        state.Outcome = outcome;
         state.Status = status;
         state.ErrorCategory = error;
         state.CompletedAt = clock.GetUtcNow();
@@ -217,6 +226,8 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
         internal DateTimeOffset SubmittedAt { get; } = submittedAt;
         internal DateTimeOffset? StartedAt { get; set; }
         internal DateTimeOffset? CompletedAt { get; set; }
+        internal StudioExecutionProfileSnapshot? Profile { get; set; }
+        internal StudioOutcomeClassification Outcome { get; set; }
         internal StudioRunStatus Status { get; set; } = StudioRunStatus.Queued;
         internal bool IsTerminal => Status is not (StudioRunStatus.Queued or StudioRunStatus.Running);
         internal bool CancellationRequested { get; set; }

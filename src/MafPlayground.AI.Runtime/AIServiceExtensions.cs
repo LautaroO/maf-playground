@@ -93,6 +93,7 @@ public static class AIServiceExtensions
         services.TryAddSingleton<IMafAgentPipeline, MafAgentPipeline>();
         services.TryAddSingleton<IMafAgentFactory, MafAgentFactory>();
         services.TryAddSingleton<IMafWorkflowRunner, MafWorkflowRunner>();
+        services.TryAddScoped<AIEntityExecutionScope>();
         services.TryAddScoped<AIEntityRegistry>();
         services.TryAddScoped<IAIEntityRegistry>(provider =>
             provider.GetRequiredService<AIEntityRegistry>());

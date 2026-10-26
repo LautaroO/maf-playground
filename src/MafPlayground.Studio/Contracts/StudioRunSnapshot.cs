@@ -9,7 +9,10 @@ public sealed record StudioRunSnapshot(
     bool CancellationRequested, DateTimeOffset SubmittedAt, DateTimeOffset? StartedAt,
     DateTimeOffset? CompletedAt, JsonElement? Result, StudioOutcomeClassification Outcome,
     StudioTopology? Topology, string? ErrorCategory, long TotalEvents, long CapturedBytes,
-    bool CaptureComplete, long EarliestSequence, long LatestSequence)
+    bool CaptureComplete, long EarliestSequence, long LatestSequence, StudioExecutionProfileSnapshot? Profile = null)
 {
     public bool IsTerminal => Status is not (StudioRunStatus.Queued or StudioRunStatus.Running);
 }
+
+/// <summary>Effective chat settings captured before source construction. Null fields mean not applicable or unavailable.</summary>
+public sealed record StudioExecutionProfileSnapshot(string Id, string? Model, string? GuardProfile, TimeSpan? ModelCallTimeout);

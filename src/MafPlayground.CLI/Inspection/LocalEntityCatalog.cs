@@ -1,10 +1,7 @@
 using MafPlayground.AI.Abstractions;
-using MafPlayground.AI.Agents.BasicRagAgent;
-using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.AI.Runtime.Registry;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace MafPlayground.CLI.Inspection;
 
@@ -42,13 +39,7 @@ internal static class LocalEntityCatalog
             CreateHostedWorkflow: registration.WorkflowSourceFactory is null ? null : (services, name) =>
                 registration.WorkflowSourceFactory(services, context).CreateWorkflowForDevUI(name)));
 
-        // These CLI-only legacy surfaces remain until their normal typed registrations exist.
-        // A future normal registration takes precedence, without duplicating its logical ID.
-        HashSet<string> registeredIds = registrations.Select(registration => registration.Descriptor.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return registered.Concat(LegacyEntities.Where(entity => !registeredIds.Contains(entity.Id)))
-            .OrderBy(entity => entity.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return registered.OrderBy(entity => entity.Id, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     public static LocalEntityDescriptor? Find(
@@ -57,22 +48,4 @@ internal static class LocalEntityCatalog
         string id) =>
         entities.FirstOrDefault(entity =>
             entity.Kind == kind && entity.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-
-    private static IReadOnlyList<LocalEntityDescriptor> LegacyEntities { get; } =
-    [
-        new(
-            "basic-rag-agent",
-            LocalEntityKind.Agent,
-            "A grounded help assistant that answers from an ingested document knowledge base with citations.",
-            typeof(string),
-            "How long does a password-reset link remain valid?",
-            CreateAgent: services => services.GetRequiredService<BasicRagAgent>().Agent),
-        new(
-            "repository-help-agent",
-            LocalEntityKind.Agent,
-            "A grounded assistant for understanding the MafPlayground repository and its CLI.",
-            typeof(string),
-            "How do I run the repository help agent from the CLI?",
-            CreateAgent: services => services.GetRequiredService<HelpAgent>().Agent),
-    ];
 }

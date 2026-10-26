@@ -14,6 +14,11 @@ public static class HelpAgentServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(definition);
 
         services.AddSingleton(definition);
+        return AddHelpAgentServices(services);
+    }
+
+    internal static IServiceCollection AddHelpAgentServices(this IServiceCollection services)
+    {
         services.AddOptions<HelpAgentOptions>()
             .Validate(
                 options => !string.IsNullOrWhiteSpace(options.KnowledgeBase),

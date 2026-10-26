@@ -16,4 +16,7 @@ public sealed record StudioEntityDescriptor(
     bool SupportsNativeAgent,
     bool SupportsNativeWorkflow,
     bool IsAvailable,
-    string? UnavailableReason);
+    string? UnavailableReason,
+    bool SupportsProfiles = false,
+    bool SupportsStreaming = false,
+    bool SupportsOutcomeClassification = false);
