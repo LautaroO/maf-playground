@@ -4,6 +4,7 @@ Project documentation:
 
 - [`MafPlayground.Tests`](MafPlayground.Tests/README.md): deterministic unit and
   component tests.
+- [`MafPlayground.Studio.IntegrationTests`](MafPlayground.Studio.IntegrationTests/README.md): real CLI process/loopback Studio smoke checks without live models.
 - [`MafPlayground.Studio.Tests`](MafPlayground.Studio.Tests/README.md): deterministic
   Studio catalog/schema/native-topology tests, including novel test-assembly entities.
 - [`MafPlayground.IntegrationTests`](MafPlayground.IntegrationTests/README.md):

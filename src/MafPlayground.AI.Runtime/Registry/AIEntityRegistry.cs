@@ -6,6 +6,9 @@ using Microsoft.Extensions.DependencyInjection;
 using MafPlayground.AI.Observability;
 using MafPlayground.AI.Runtime.Agents;
 using MafPlayground.AI.Runtime.Workflows;
+using MafPlayground.AI.Runtime.Configuration;
+using MafPlayground.AI.Runtime.Sessions;
+using MafPlayground.AI.Guards;
 
 namespace MafPlayground.AI.Runtime.Registry;
 
@@ -51,8 +54,29 @@ internal sealed class AIEntityRegistry(
 
     public AIEntityRegistrationInfo GetRegistration(string entityId) => GetRequired(entityId).Info;
 
-    public AIEntityAvailability GetAvailability(string entityId) =>
-        GetRequired(entityId).Availability?.Invoke(services) ?? AIEntityAvailability.Available;
+    public AIEntityAvailability GetAvailability(string entityId)
+    {
+        AIEntityRegistration registration = GetRequired(entityId);
+        AIEntityAvailability availability = registration.Availability?.Invoke(services) ?? AIEntityAvailability.Available;
+        if (!availability.IsAvailable || registration.ProfileFactory is null ||
+            services.GetService<AIStartupValidationOptions>()?.Mode != AIStartupValidationMode.LocalInspection) return availability;
+        try
+        {
+            var options = executionScope.ProfileId is null
+                ? services.GetRequiredService<IAIEntityRuntimeOptionsResolver>().Resolve(entityId)
+                : executionScope.GetRuntimeOptions(entityId);
+            if (!services.GetRequiredService<AIProviderRegistry>().ProviderNames.Contains(options.Model.Provider, StringComparer.OrdinalIgnoreCase))
+                return AIEntityAvailability.Unavailable("The configured model provider is unavailable.");
+            _ = services.GetRequiredService<GuardProfileResolver>().Resolve(options.GuardProfile);
+            if (registration.Descriptor.SupportsSessions && services.GetService<IAgentSessionStore>() is null)
+                return AIEntityAvailability.Unavailable("Session storage is not configured.");
+            return availability;
+        }
+        catch (InvalidOperationException)
+        {
+            return AIEntityAvailability.Unavailable("Model, guard, or timeout configuration is unavailable.");
+        }
+    }
 
     public IMafAgentSource? GetAgentSource(string entityId, AIEntityInspectionContext context)
     {

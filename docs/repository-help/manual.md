@@ -363,3 +363,16 @@ manual document. Content hashes make repeated ingestion safe.
 - Regenerate the CLI reference whenever the command tree changes.
 - If evidence is missing or contradictory, the agent must say so instead of
   inventing a command or implementation detail.
+
+## Local Agent Studio
+
+Run `dotnet run --project src/MafPlayground.CLI -- studio --no-open`. Studio
+uses `http://localhost:5051` by default and prints a one-time access code for
+`/studio/login`. `--model` falls back to `AI_MODEL`; disabled entities can be
+inspected without a model. `STUDIO__ENABLERETRIEVAL=true` opts into configured
+retrieval for grounded entities. The initial build provides authenticated HTTP/SSE
+contracts and an explicit missing-assets page.
+
+Export schemas offline with `studio --export-contracts /tmp/studio-contracts.json`.
+See the [Studio service documentation](../../src/MafPlayground.Studio/README.md#local-http-host)
+for authentication, routes, profiles and retention limits.

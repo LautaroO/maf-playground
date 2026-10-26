@@ -6,6 +6,7 @@ namespace MafPlayground.Studio.Execution;
 public interface IStudioRunService
 {
     ValueTask<StudioRunReceipt> StartAsync(StudioRunRequest request, AICallerContext caller, CancellationToken cancellationToken);
+    ValueTask<IReadOnlyList<StudioRunSnapshot>> ListAsync(CancellationToken cancellationToken);
     ValueTask<StudioRunSnapshot?> GetAsync(string runId, CancellationToken cancellationToken);
     ValueTask<bool> CancelAsync(string runId, CancellationToken cancellationToken);
     ValueTask<StudioEventPage> ReadEventsAsync(string runId, long after, int limit, CancellationToken cancellationToken);

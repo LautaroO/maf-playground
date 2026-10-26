@@ -30,9 +30,12 @@ public static class AIServiceExtensions
 
     public static AIBuilder AddAIRuntime(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        AIStartupValidationMode validationMode = AIStartupValidationMode.Strict)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        if (!Enum.IsDefined(validationMode)) throw new ArgumentOutOfRangeException(nameof(validationMode));
+        services.AddSingleton(new AIStartupValidationOptions(validationMode));
         services.AddOptions<AIRuntimeOptions>()
             .Bind(configuration.GetSection(AIRuntimeOptions.ConfigurationSectionName))
             .Validate(

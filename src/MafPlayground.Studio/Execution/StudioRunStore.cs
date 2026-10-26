@@ -66,6 +66,8 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
         return state;
     }
 
+    internal IReadOnlyList<StudioRunSnapshot> List() => runs.Values.OrderByDescending(run => run.SubmittedAt).Select(Snapshot).ToArray();
+
     internal RunState? Find(string id) => runs.GetValueOrDefault(id);
 
     internal StudioRunSnapshot Snapshot(RunState state) => new(

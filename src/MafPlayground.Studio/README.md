@@ -154,3 +154,72 @@ credential list; escaped JSON names are decoded before classification. Sensitive
 quoted/container values are removed as a unit. Malformed or unquoted sensitive
 values conservatively remove the ambiguous remainder, while non-sensitive prefixed
 JSON and prose remain unchanged.
+
+## Local HTTP host
+
+The existing CLI composes one `WebApplication` with `AddStudio(configuration)`
+and `MapStudio()`. Studio adds an ASP.NET Core shared-framework reference; its
+only project references remain Abstractions and Runtime. No provider SDK, sample
+registry, additional executable, or production OpenAPI package is introduced.
+
+The CLI defaults to `http://localhost:5051`. It prints a single-use browser code
+and a separate API bearer token on the local console. Open `/studio/login` and
+submit the code as a form POST to obtain an HttpOnly, SameSite=Strict cookie.
+URLs, query strings, browser storage and JSON responses never carry access
+credentials. Host, Origin, scheme and remote-loopback checks apply to every
+Studio endpoint. This is one trusted local caller (`studio-local`), not a
+multi-user server. Restart the host to replace credentials and clear history.
+
+Routes under `/api/studio/v1`:
+
+| Method and route | Result |
+| --- | --- |
+| `GET /entities` | Dynamic catalog and typed schemas, including unavailable entities |
+| `GET /entities/{id}/topology?profileId=cli-default` | Native topology or explicit unavailable state |
+| `GET /profiles` | Allowed host-configured profile IDs |
+| `GET /sessions` / `POST /sessions` | List/create bounded session handles (`entityId`, `profileId`) |
+| `POST /sessions/{id}/reset` | Reset native history; queued and active turns return conflict |
+| `GET /runs` / `POST /runs` | Retained run snapshots / accepted receipt (202) |
+| `GET /runs/{id}` / `GET /runs/{id}/result` | Snapshot / terminal snapshot; pending result returns conflict |
+| `POST /runs/{id}/cancel` | Request job cancellation (202); terminal/finalizing run returns conflict |
+| `GET /runs/{id}/event-page?after=0&limit=100` | Bounded retained journal page (limit 1–1000) |
+| `GET /runs/{id}/events` | Ordered SSE; `after` or `Last-Event-ID` resumes after that sequence |
+| `GET /runs/{id}/payloads/{payloadId}` | Sanitized retained payload, including span attributes/events/links |
+| `GET /runs/{id}/spans/{spanId}` | Sanitized retained span |
+
+SSE frames use `id` = sequence, `event` = capture/lifecycle kind and `data` = the
+web-serialized `StudioEvent`. A `journal_gap` event identifies missed retention;
+fetch a snapshot when this occurs. There is no subscriber queue: events are read
+incrementally and flushed with backpressure. Disconnect cancels only the watcher.
+The stream stays open for late spans until disconnect, run eviction or host stop.
+Embedded `JsonElement` capture DTOs retain their existing PascalCase property names;
+outer transport DTOs use web camelCase. Enums use the existing numeric JSON format.
+
+Errors return fixed-category ProblemDetails with correlation ID and a safe run ID
+when present: 400 invalid request/limit/profile, 401 missing credential or invalid
+bootstrap code, 403 nonlocal Host/Origin/connection, 404 unknown/evicted capture,
+409 incompatible state/unavailable entity, 429 bounded capacity, 500 unexpected
+failure. Raw exception messages and submitted input are never included in problems.
+Payload/span lookup never re-executes or reconstructs evicted data.
+
+`Studio:Profiles` is an array of `{ Id, Model?, GuardProfile?, ModelCallTimeout? }`.
+Model values use `provider:model`; credentials, URLs, query strings and whitespace
+are rejected. Profile IDs are allowlisted and immutable during a session. The
+`cli-default` profile inherits configured entity/default settings. Limits bind
+from `Studio:Limits`. Configured credential values and host access credentials
+are added to local capture redaction before any run executes.
+
+`StudioSessionService` and `StudioInspectionService` live in `Execution` and are
+shared transport adapters. Run submission must use inspection preflight followed
+by `StudioSessionService.StartAsync`; session creation similarly validates the
+entity/profile/session capability before `CreateAsync`. All transports sharing
+sessions must use this adapter's admission/reset gate. The run service continues
+to own execution, cancellation, idempotency and retention. Session handles are
+limited to 1,000 per host lifetime; reset clears native history but keeps the
+handle's entity/profile identity. `IStudioRunService.ListAsync` reads only retained
+snapshots under the existing store lock.
+
+`studio --export-contracts <path>` writes transport and entity JSON schemas using
+`AIJsonUtilities` without building/starting a host or registering providers. The
+current `/studio` page explicitly reports absent frontend assets; asset packaging
+and MCP mapping are separate delivery steps.

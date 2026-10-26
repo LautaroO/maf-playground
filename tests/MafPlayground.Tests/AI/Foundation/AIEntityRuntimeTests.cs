@@ -17,6 +17,26 @@ namespace MafPlayground.Tests.AI.Foundation;
 public sealed class AIEntityRuntimeTests
 {
     [Fact]
+    public async Task Default_startup_still_rejects_an_unconfigured_model()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddAIRuntime(new ConfigurationBuilder().Build()).AddAgent<EchoEntity, EchoInput, EchoOutput>("echo", entity => entity.WithDescription("Echo").AllowAnonymousAccess());
+        using var host = builder.Build();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => host.StartAsync());
+    }
+
+    [Fact]
+    public async Task Local_inspection_does_not_suppress_invalid_option_validation()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["AI:Resilience:ModelCallTimeout"] = "00:00:00" }).Build();
+        builder.Services.AddAIRuntime(config, AIStartupValidationMode.LocalInspection);
+        builder.Services.Configure<MafPlayground.AI.Resilience.AIResilienceOptions>(config.GetSection("AI:Resilience"));
+        using var host = builder.Build();
+        await Assert.ThrowsAsync<Microsoft.Extensions.Options.OptionsValidationException>(() => host.StartAsync());
+    }
+
+    [Fact]
     public void RegistrationMetadata_RejectsDuplicatesAcrossBuilders()
     {
         ServiceCollection services = new();

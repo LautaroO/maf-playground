@@ -64,3 +64,11 @@ content filtering enabled buffer until output transformation completes, preventi
 sensitive values split across chunks from leaking. Other profiles preserve native
 incremental updates while retaining input-length, tool and budget checks. Structured
 RAG/Help output remains buffered until its domain validation and repair complete.
+
+Local inspection hosts may explicitly pass `AIStartupValidationMode.LocalInspection`
+to `AddAIRuntime`. It defers default model/provider/session readiness checks so
+registered entities remain discoverable without infrastructure. Profile-capable
+entities expose unavailable reasons for missing runtime configuration/provider,
+invalid guards/timeouts or absent session storage. Bound profile settings are
+checked on execution. This does not disable DI graph or registered options
+validation. `Strict` remains the default for every existing caller.

@@ -76,6 +76,12 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
         }
     }
 
+    public ValueTask<IReadOnlyList<StudioRunSnapshot>> ListAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (store.Gate) return ValueTask.FromResult(store.List());
+    }
+
     public ValueTask<StudioRunSnapshot?> GetAsync(string runId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
