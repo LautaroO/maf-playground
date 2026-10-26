@@ -44,6 +44,7 @@ public static class StudioEndpoints
             <p>API: <a href="/api/studio/v1/entities">registered entities</a></p></html>
             """, "text/html"));
         var api = root.MapGroup(Prefix);
+        api.MapGet("/instance", (StudioRunService runs) => Results.Ok(new StudioInstance(runs.HostInstanceId)));
         api.MapGet("/entities", async (IStudioCatalog catalog, CancellationToken token) => Results.Ok(await catalog.ListAsync(token)));
         api.MapGet("/entities/{id}/topology", async (string id, string profileId, StudioInspectionService inspection, IStudioCatalog catalog, CancellationToken token) =>
         {

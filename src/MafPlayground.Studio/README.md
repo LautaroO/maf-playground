@@ -175,6 +175,7 @@ Routes under `/api/studio/v1`:
 
 | Method and route | Result |
 | --- | --- |
+| `GET /instance` | Stable host lifetime ID, including an empty host; changes on restart |
 | `GET /entities` | Dynamic catalog and typed schemas, including unavailable entities |
 | `GET /entities/{id}/topology?profileId=cli-default` | Native topology or explicit unavailable state |
 | `GET /profiles` | Allowed host-configured profile IDs |
@@ -223,7 +224,7 @@ snapshots under the existing store lock.
 `studio --export-contracts <path>` writes transport and entity JSON schemas using
 `AIJsonUtilities` without building/starting a host or registering providers. The
 current `/studio` page explicitly reports absent frontend assets; asset packaging
-is a separate delivery step; MCP is mapped with the HTTP API.
+is a separate delivery step; MCP is mapped with the HTTP API. The [Angular workspace](../MafPlayground.Studio.Web/README.md) provides the development UI via a strict loopback proxy. Transport export also includes backend-derived numeric enum schemas for frontend generation.
 
 Access and error protection is middleware, not an endpoint filter.
 `UseStudioAccess()` wraps all downstream routes before minimal API argument

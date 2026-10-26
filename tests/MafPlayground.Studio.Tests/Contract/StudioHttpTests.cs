@@ -23,6 +23,34 @@ public sealed class StudioHttpTests
     private const string Api = "/api/studio/v1";
 
     [Fact]
+    public void Export_preserves_numeric_enum_names_and_values_for_transport_generation()
+    {
+        var schema = StudioContractSchema.Create([]).GetProperty("transport").GetProperty("StudioRunStatus");
+        Assert.Equal(Enum.GetValues<StudioRunStatus>().Select(value => (int)value), schema.GetProperty("enum").EnumerateArray().Select(value => value.GetInt32()));
+        Assert.Equal(Enum.GetNames<StudioRunStatus>(), schema.GetProperty("tsEnumNames").EnumerateArray().Select(value => value.GetString()));
+        Assert.True(StudioContractSchema.Create([]).GetProperty("transport").TryGetProperty("StudioInstance", out _));
+    }
+
+    [Fact]
+    public async Task Instance_is_authenticated_stable_and_changes_after_host_restart_without_runs()
+    {
+        await using var first = await Fixture.Create();
+        using var response = await first.Client.GetAsync(Api + "/instance");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var identity = await response.Content.ReadFromJsonAsync<JsonElement>();
+        string? id = identity.GetProperty("hostInstanceId").GetString();
+        Assert.False(string.IsNullOrEmpty(id));
+        var again = await first.Client.GetFromJsonAsync<JsonElement>(Api + "/instance");
+        Assert.Equal(id, again.GetProperty("hostInstanceId").GetString());
+        Assert.Empty((await first.Client.GetFromJsonAsync<StudioRunSnapshot[]>(Api + "/runs"))!);
+        await using var second = await Fixture.Create();
+        var restarted = await second.Client.GetFromJsonAsync<JsonElement>(Api + "/instance");
+        Assert.NotEqual(id, restarted.GetProperty("hostInstanceId").GetString());
+        first.Client.DefaultRequestHeaders.Authorization = null;
+        Assert.Equal(HttpStatusCode.Unauthorized, (await first.Client.GetAsync(Api + "/instance")).StatusCode);
+    }
+
+    [Fact]
     public async Task Bootstrap_requires_same_origin_single_use_form_and_sets_httponly_cookie()
     {
         await using var host = await Fixture.Create();

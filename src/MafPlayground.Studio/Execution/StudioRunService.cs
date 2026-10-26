@@ -19,6 +19,7 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
     private readonly StudioOptions options;
     private readonly TimeProvider clock;
     private readonly StudioRunStore store;
+    internal string HostInstanceId => store.HostInstanceId;
     private readonly StudioPayloadStore payloads;
     private readonly Channel<StudioRunStore.RunState> queue;
     private Task workers = Task.CompletedTask;

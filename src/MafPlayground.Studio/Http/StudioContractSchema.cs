@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MafPlayground.AI.Runtime.Registry;
+using MafPlayground.AI.Abstractions;
 using MafPlayground.Studio.Contracts;
 using MafPlayground.Studio.Execution;
 using Microsoft.Extensions.AI;
@@ -10,15 +11,19 @@ public static class StudioContractSchema
 {
     public static JsonElement Create(IEnumerable<AIEntityRegistrationInfo> registrations)
     {
-        Type[] types = [typeof(StudioRunRequest), typeof(StudioRunReceipt), typeof(StudioRunSnapshot),
+        Type[] types = [typeof(StudioInstance), typeof(StudioRunRequest), typeof(StudioRunReceipt), typeof(StudioRunSnapshot),
             typeof(StudioEntityDescriptor), typeof(StudioTopology), typeof(StudioEvent), typeof(StudioEventPage),
             typeof(StudioPayload), typeof(StudioSpan), typeof(StudioSessionRequest), typeof(StudioSession),
             typeof(StudioExecutionProfileSnapshot), typeof(StudioMcpSpanPage),
             typeof(StudioMcpPage<StudioEntityDescriptor>), typeof(StudioMcpPage<StudioRunSnapshot>), typeof(StudioMcpPage<string>), typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)];
+        var transport = types.ToDictionary(type => type.IsGenericType ? $"StudioMcpPageOf{type.GenericTypeArguments[0].Name}" : type.Name, type => AIJsonUtilities.CreateJsonSchema(type, serializerOptions: AIJsonSerializerOptions.Default));
+        Type[] enums = [typeof(StudioRunStatus), typeof(StudioOutcomeClassification), typeof(StudioCaptureState), typeof(StudioTopologyStatus), typeof(AIEntityKind)];
+        foreach (Type type in enums)
+            transport.Add(type.Name, JsonSerializer.SerializeToElement(new { type = "integer", @enum = Enum.GetValues(type).Cast<object>().Select(Convert.ToInt32), tsEnumNames = Enum.GetNames(type) }));
         return JsonSerializer.SerializeToElement(new
         {
             version = "1",
-            transport = types.ToDictionary(type => type.IsGenericType ? $"StudioMcpPageOf{type.GenericTypeArguments[0].Name}" : type.Name, type => AIJsonUtilities.CreateJsonSchema(type, serializerOptions: AIJsonSerializerOptions.Default)),
+            transport,
             entities = registrations.Select(registration => new
             {
                 registration.Descriptor.Id,

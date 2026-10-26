@@ -1,0 +1,23 @@
+:root {
+  color-scheme: dark;
+  --base: #11141a;
+  --surface: #171b23;
+  --elevated: #1c222d;
+  --hover: #242c3a;
+  --border: #2b3341;
+  --text: #e1e7f0;
+  --muted: #98a4b6;
+  --accent: #a7afff;
+  --accent-surface: #252b47;
+  --success: #86d9b5;
+  --warning: #edbf7b;
+  --error: #f5a3a7;
+  --radius: 6px;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'DM Sans Variable', system-ui, sans-serif;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+}
