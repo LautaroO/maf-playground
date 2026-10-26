@@ -21,6 +21,137 @@ export enum StudioCaptureState {
   Unavailable = 3
 }
 
+export type Profile = {
+  id: string;
+  model: string | null;
+  guardProfile: string | null;
+  modelCallTimeout: string | null;
+} | null;
+
+export interface StudioComparison {
+  hostInstanceId: string;
+  baseline: {
+    runId: string;
+    entityId: string;
+    profileId: string;
+    status: number;
+    outcome: number;
+    profile: Profile;
+    captureComplete: boolean;
+    journalHasGap: boolean;
+    hasRedactions: boolean;
+    metrics: Metrics;
+  };
+  candidate: {
+    runId: string;
+    entityId: string;
+    profileId: string;
+    status: number;
+    outcome: number;
+    profile: Profile;
+    captureComplete: boolean;
+    journalHasGap: boolean;
+    hasRedactions: boolean;
+    metrics: Metrics;
+  };
+  changes: {
+    path: string;
+    kind: string;
+    baseline: string | null;
+    candidate: string | null;
+    previewTruncated: boolean;
+    textOffset?: number | null;
+  }[];
+  duration: {
+    baseline: number | null;
+    candidate: number | null;
+    delta: number | null;
+  };
+  modelAttempts: {
+    baseline: number | null;
+    candidate: number | null;
+    delta: number | null;
+  };
+  inputTokens: {
+    baseline: number | null;
+    candidate: number | null;
+    delta: number | null;
+  };
+  outputTokens: {
+    baseline: number | null;
+    candidate: number | null;
+    delta: number | null;
+  };
+  cost: {
+    baseline: number | null;
+    candidate: number | null;
+    delta: number | null;
+  };
+  invocationMatchingRule: string;
+  invocations: {
+    executorId: string | null;
+    occurrence: number;
+    baselineInvocationId: string | null;
+    candidateInvocationId: string | null;
+  }[];
+  truncated: boolean;
+  limitations: string[];
+}
+export interface Metrics {
+  observedModelAttempts: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cost: number | null;
+  currency: string | null;
+  inputTokenCoverage: number;
+  outputTokenCoverage: number;
+  costCoverage: number;
+}
+
+export interface StudioComparisonMetrics {
+  observedModelAttempts: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cost: number | null;
+  currency: string | null;
+  inputTokenCoverage: number;
+  outputTokenCoverage: number;
+  costCoverage: number;
+}
+
+export interface StudioComparisonRequest {
+  hostInstanceId: string;
+  baselineRunId: string;
+  candidateRunId: string;
+}
+
+export interface StudioComparisonRun {
+  runId: string;
+  entityId: string;
+  profileId: string;
+  status: number;
+  outcome: number;
+  profile: {
+    id: string;
+    model: string | null;
+    guardProfile: string | null;
+    modelCallTimeout: string | null;
+  } | null;
+  captureComplete: boolean;
+  journalHasGap: boolean;
+  hasRedactions: boolean;
+  metrics: {
+    observedModelAttempts: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    cost: number | null;
+    currency: string | null;
+    inputTokenCoverage: number;
+    outputTokenCoverage: number;
+    costCoverage: number;
+  };
+}
+
 export interface StudioEntityDescriptor {
   id: string;
   kind: number;
@@ -78,6 +209,13 @@ export interface StudioExecutionProfileSnapshot {
 
 export interface StudioInstance {
   hostInstanceId: string;
+}
+
+export interface StudioInvocationMatch {
+  executorId: string | null;
+  occurrence: number;
+  baselineInvocationId: string | null;
+  candidateInvocationId: string | null;
 }
 
 export interface StudioMcpPageOfString {
@@ -206,6 +344,12 @@ export interface StudioMcpSpanPage {
   nextCursor: number;
   earliestRetainedSequence: number;
   hasGap: boolean;
+}
+
+export interface StudioMetricDelta {
+  baseline: number | null;
+  candidate: number | null;
+  delta: number | null;
 }
 
 export enum StudioOutcomeClassification {
@@ -377,4 +521,13 @@ export interface StudioTopology {
 export enum StudioTopologyStatus {
   Available = 0,
   Unavailable = 1
+}
+
+export interface StudioValueChange {
+  path: string;
+  kind: string;
+  baseline: string | null;
+  candidate: string | null;
+  previewTruncated: boolean;
+  textOffset?: number | null;
 }

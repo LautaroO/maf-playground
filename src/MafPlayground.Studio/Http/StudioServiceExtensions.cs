@@ -26,6 +26,8 @@ public static class StudioServiceExtensions
         services.TryAddSingleton(_ => new StudioAccessPolicy(configuration["Studio:Url"] ?? "http://localhost:5051"));
         services.TryAddSingleton<StudioSessionService>();
         services.TryAddScoped<StudioInspectionService>();
+        services.TryAddSingleton<Comparison.StudioRunComparer>();
+        services.TryAddScoped<Comparison.StudioComparisonService>();
         services.TryAddSingleton<StudioProfileCatalog>();
         foreach (IConfigurationSection section in configuration.GetSection("Studio:Profiles").GetChildren())
         {

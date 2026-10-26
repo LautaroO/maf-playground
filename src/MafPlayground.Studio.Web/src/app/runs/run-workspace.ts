@@ -2,7 +2,7 @@ import { WorkflowGraph } from '../graph/workflow-graph.component';
 import { TraceTimeline } from '../traces/trace-timeline.component';
 import { SpanInspector } from '../traces/span-inspector.component';
 import { Component, computed, inject, signal, effect, viewChild, ElementRef } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { StudioRunStore } from '../core/studio-run.store';
@@ -35,6 +35,12 @@ import { StatusBadge } from '../shared/ui/status-badge';
           </div>
         </div>
         <div class="row">
+          <a class="button" routerLink="/compare" [queryParams]="{ baseline: run.runId }"
+            >⇄ Compare</a
+          >
+          <button class="button primary" (click)="rerun()" [disabled]="store.busy()">
+            ↻ Run again
+          </button>
           <button class="button" (click)="store.reconnect()">↻ Refresh</button
           ><button
             class="button danger"
@@ -337,6 +343,11 @@ import { StatusBadge } from '../shared/ui/status-badge';
 })
 export class RunWorkspace {
   readonly store = inject(StudioRunStore);
+  private readonly router = inject(Router);
+  async rerun() {
+    const run = this.store.selectedRun();
+    if (run && (await this.store.prepareRerun(run.runId))) await this.router.navigate(['/input']);
+  }
   readonly workflow = computed(
     () =>
       this.store.selectedRun()?.topology?.status === 0 ||

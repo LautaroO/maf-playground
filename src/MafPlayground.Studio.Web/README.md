@@ -160,7 +160,27 @@ truncation, eviction, missing metrics and incomplete history stay explicit.
 Captured model attempts count only `MafPlayground.Studio.Model` spans. These may include
 attempts rejected by guards before provider execution. Token/cost totals stay unknown
 if any selected boundary observation lacks the metric or currencies cannot be combined.
-No billing count or edge traversal is inferred. Task 9 adds comparison and rerun.
+No billing count or edge traversal is inferred.
+
+`/compare` selects terminal baseline/candidate runs and renders the shared bounded
+HTTP comparison result: aligned requested/effective profiles, typed outcomes,
+metric deltas and coverage, safe structural/text previews and disclosed invocation
+matching. Host changes clear comparison identity and reject stale completion;
+changing selection aborts the previous comparison. Missing/evicted history stays
+an explicit error. Comparison never loads full span payload bodies.
+
+Run investigation's **Run again** action refetches the retained sanitized input,
+selects its entity/profile and clears the session. The editable prefill always
+requires explicit review of input, profile and session; editing any of them clears
+that confirmation. Redacted/missing values cannot be recovered. Submission uses a
+new request ID and exactly the reviewed JSON. A fresh conversation is the default;
+continuation requires explicitly choosing an existing compatible session. Host
+restart clears the draft, and async selection guards reject stale preparation.
+
+The translation investigation journey covers partial baseline, reviewed rerun,
+completed candidate and comparison with the real test-only provider fixture.
+There remain exactly three browser journeys; HTTP/MCP parity and retention/error
+matrices remain in the fast backend contract suite.
 
 Pinned transitive patches resolve the install audit: DOMPurify 3.4.17 fixes
 GHSA-cg2g-xh64-v4q7 / GHSA-mrv2-3pqr-j5jr, Vite 8.3.5 fixes the 8.3.0–8.3.2

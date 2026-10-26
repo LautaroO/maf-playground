@@ -69,6 +69,8 @@ public static class StudioEndpoints
             StudioRunReceipt receipt = await sessions.StartAsync(request, policy.Caller, context.RequestAborted);
             return Results.Accepted($"{Prefix}/runs/{receipt.RunId}", receipt);
         });
+        api.MapPost("/comparisons", async (HttpContext context, Comparison.StudioComparisonService comparisons) =>
+            Results.Ok(await comparisons.CompareAsync(await ReadAsync<StudioComparisonRequest>(context), context.RequestAborted)));
         api.MapGet("/runs", async (IStudioRunService runs, CancellationToken token) => Results.Ok(await runs.ListAsync(token)));
         api.MapGet("/runs/{id}", async (string id, IStudioRunService runs, CancellationToken token) => Results.Ok(await RequiredAsync(runs, id, token)));
         api.MapGet("/runs/{id}/result", async (string id, IStudioRunService runs, CancellationToken token) =>

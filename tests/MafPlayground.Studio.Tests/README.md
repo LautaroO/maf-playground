@@ -54,3 +54,13 @@ Span-page contracts cover oversized/unavailable capture, mixed pages and malform
 DTOs without fabricating spans. `Unit/StudioMcpToolsTests.cs` deterministically
 checks cancellation receipts after snapshot eviction and preservation of existing
 journal gaps/cursors.
+
+Comparison coverage includes object-order normalization, ordered arrays, linear
+long-text windows, added/removed/missing values, effective/requested profiles,
+nullable usage/currency deltas, repeated/unmatched invocations, bounded evidence,
+real journal gaps, pending and cross-host rejection. The official MCP SDK contract
+suite checks HTTP parity, missing/evicted baselines and access without model calls.
+
+Privacy regressions also distinguish benign DateTimeOffset escaping and embedded
+JSON formatting from real redaction while preserving nested credential removal
+and the existing allocation/depth/payload bounds.

@@ -11,6 +11,28 @@ namespace MafPlayground.Studio.Tests.Unit;
 
 public sealed class StudioCapturePrivacyTests
 {
+    [Fact]
+    public void Benign_timestamps_are_available_even_when_json_writer_escapes_the_offset()
+    {
+        var value = new { StartedAt = DateTimeOffset.Parse("2026-10-25T12:30:00+00:00"), note = "C++ and <text>" };
+        var payload = new StudioPayloadStore(new()).Capture(value, "application/json");
+        Assert.Equal(StudioCaptureState.Available, payload.State);
+        Assert.Null(payload.Reason);
+        Assert.Equal(value.StartedAt, payload.Value.GetProperty("StartedAt").GetDateTimeOffset());
+        Assert.Equal(value.note, payload.Value.GetProperty("note").GetString());
+    }
+    [Fact]
+    public void Benign_embedded_json_preserves_text_formatting_while_nested_credentials_are_still_redacted()
+    {
+        const string benign = "  { \"count\": 2, \"text\": \"a+b\" }  ";
+        var store = new StudioPayloadStore(new());
+        var payload = store.Capture(new { data = benign }, "application/json");
+        Assert.Equal(StudioCaptureState.Available, payload.State);
+        Assert.Equal(benign, payload.Value.GetProperty("data").GetString());
+        var sensitive = store.Capture(new { data = "  { \"password\": \"private-fixture-value\" } " }, "application/json");
+        Assert.Equal(StudioCaptureState.Redacted, sensitive.State);
+        Assert.DoesNotContain("private-fixture-value", sensitive.Value.ToString());
+    }
     [Theory]
     [InlineData("password=\"quoted-secret\"", "quoted-secret")]
     [InlineData("Failure details: {\"password\":\"prefixed-secret\"}", "prefixed-secret")]

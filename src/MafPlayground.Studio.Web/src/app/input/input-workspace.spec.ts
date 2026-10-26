@@ -3,7 +3,7 @@ import { provideRouter } from '@angular/router';
 import { InputWorkspace } from './input-workspace';
 import { StudioRunStore } from '../core/studio-run.store';
 import { STUDIO_FETCH } from '../core/studio-api.service';
-import { novel } from '../core/testing.fixture';
+import { novel, snapshot } from '../core/testing.fixture';
 it('blocks submission while nested JSON is invalid and exposes only returned profiles', async () => {
   TestBed.configureTestingModule({
     providers: [
@@ -83,4 +83,40 @@ it('keeps the displayed session selection in sync when new options arrive with t
   expect((fixture.nativeElement.querySelector('#session') as HTMLSelectElement).value).toBe(
     'replacement',
   );
+});
+
+it('prefills sanitized rerun input and requires explicit review after edits', async () => {
+  TestBed.configureTestingModule({
+    providers: [
+      provideRouter([]),
+      {
+        provide: STUDIO_FETCH,
+        useValue: async (url: string) =>
+          Response.json(url.includes('/entities') ? [novel] : snapshot('old')),
+      },
+    ],
+  });
+  const store = TestBed.inject(StudioRunStore);
+  store.hostInstanceId.set('host-a');
+  store.entities.set([novel]);
+  store.profiles.set(['balanced']);
+  store.selectedProfileId.set('balanced');
+  await store.prepareRerun('old');
+  const fixture = TestBed.createComponent(InputWorkspace);
+  fixture.detectChanges();
+  await fixture.whenStable();
+  fixture.detectChanges();
+  expect(fixture.componentInstance.text()).toContain('32.5');
+  const button = fixture.nativeElement.querySelector('button[type=submit]') as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  const review = fixture.nativeElement.querySelector('[data-rerun-review]') as HTMLInputElement;
+  review.click();
+  fixture.detectChanges();
+  expect(button.disabled).toBe(false);
+  fixture.componentInstance.text.set('{}');
+  fixture.detectChanges();
+  await fixture.whenStable();
+  fixture.detectChanges();
+  expect(button.disabled).toBe(true);
+  expect(fixture.nativeElement.textContent).toContain('sanitized');
 });

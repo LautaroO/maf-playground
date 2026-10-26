@@ -22,9 +22,9 @@ public sealed class StudioPayloadStore(StudioOptions options)
             using (Utf8JsonWriter writer = new(raw, writerOptions)) JsonSerializer.Serialize(writer, value, Serializer);
             using JsonDocument document = JsonDocument.Parse(raw.WrittenMemory, new() { MaxDepth = 32 });
             BoundedBuffer sanitized = new(options.MaxPayloadBytes);
-            using (Utf8JsonWriter writer = new(sanitized, writerOptions)) Redactor.Write(writer, document.RootElement);
+            bool changed;
+            using (Utf8JsonWriter writer = new(sanitized, writerOptions)) changed = Redactor.Write(writer, document.RootElement);
             using JsonDocument result = JsonDocument.Parse(sanitized.WrittenMemory);
-            bool changed = !raw.WrittenMemory.Span.SequenceEqual(sanitized.WrittenMemory.Span);
             return new(id, contentType, result.RootElement.Clone(), changed ? StudioCaptureState.Redacted : StudioCaptureState.Available, changed ? "credentials_redacted" : null);
         }
         catch (PayloadLimitException)

@@ -15,6 +15,8 @@ public static class StudioContractSchema
             typeof(StudioEntityDescriptor), typeof(StudioTopology), typeof(StudioEvent), typeof(StudioEventPage),
             typeof(StudioPayload), typeof(StudioSpan), typeof(StudioSessionRequest), typeof(StudioSession),
             typeof(StudioExecutionProfileSnapshot), typeof(StudioMcpSpanPage),
+            typeof(StudioComparisonRequest), typeof(StudioComparison), typeof(StudioComparisonRun), typeof(StudioComparisonMetrics),
+            typeof(StudioMetricDelta), typeof(StudioValueChange), typeof(StudioInvocationMatch),
             typeof(StudioMcpPage<StudioEntityDescriptor>), typeof(StudioMcpPage<StudioRunSnapshot>), typeof(StudioMcpPage<string>), typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)];
         var transport = types.ToDictionary(type => type.IsGenericType ? $"StudioMcpPageOf{type.GenericTypeArguments[0].Name}" : type.Name, type => AIJsonUtilities.CreateJsonSchema(type, serializerOptions: AIJsonSerializerOptions.Default));
         Type[] enums = [typeof(StudioRunStatus), typeof(StudioOutcomeClassification), typeof(StudioCaptureState), typeof(StudioTopologyStatus), typeof(AIEntityKind)];

@@ -258,7 +258,7 @@ state or legacy SSE transport. Sampling, elicitation and roots are disabled by
 SDK stateless mode. Accepted Studio jobs and explicit agent sessions still belong
 to the shared run/session services. Each profile-sensitive tool operation creates
 a fresh async service scope. Disconnecting an MCP client never cancels an accepted
-job; use `studio_cancel_run` explicitly. No comparison placeholder, shell, file,
+job; use `studio_cancel_run` explicitly. No shell, file,
 ambient service client or assistant-session takeover tools are registered.
 
 Install `UseStudioAccess` before endpoint binding. `/mcp` requires the ephemeral
@@ -282,6 +282,7 @@ use the same trusted `studio-local` caller as HTTP.
 | `studio_get_payload` | `runId`, `payloadId`: existing sanitized `StudioPayload` |
 | `studio_cancel_run` | `runId`: accepted `StudioRunReceipt`; terminal/finalizing jobs conflict |
 | `studio_reset_session` | `sessionId`: new explicit `StudioSession`, matching HTTP reset |
+| `studio_compare_runs` | `request: StudioComparisonRequest`: bounded `StudioComparison` shared with HTTP |
 
 List cursors are offsets; list limits are 1–100. `nextCursor: null` ends a list.
 Retained run lists can change between pages. Events/spans use shared journal
@@ -359,3 +360,48 @@ no manual URI decoding or old-route compatibility shim is applied. The runtime
 builder still limits registered IDs to letters, digits, hyphens, underscores and
 periods. Opaque slash/percent transport fixtures test query binding only; they do
 not broaden the runtime registration contract.
+
+## Deterministic retained-run comparison
+
+`POST /api/studio/v1/comparisons` and MCP `studio_compare_runs` accept the same
+`StudioComparisonRequest`: `hostInstanceId`, `baselineRunId`, `candidateRunId`.
+The host ID comes from `/instance` or a retained snapshot. Both adapters use
+`StudioComparisonService`, existing access/caller policy and bounded request
+handling. Missing/evicted runs return `not_found_or_evicted`, a mismatched host
+returns `invalid_request`, and nonterminal runs return `state_conflict`.
+Comparison never submits work, invokes a model or recovers evicted capture.
+
+The comparer reads the retained journal separately from snapshots, freezes each
+read at its snapshot sequence and rechecks retention before returning. A later
+comparison can include late spans. JSON object order is ignored; arrays retain
+order. Differences cover input/result, requested profile and captured effective
+profile. Typed status/outcome and nullable duration/usage/cost are returned
+explicitly. Removed/added structure differs from unavailable result capture.
+Text uses a linear first-changed-character window (`textOffset`, UTF-16), without
+an edit-distance matrix; empty text windows remain empty strings.
+
+Limits are 48 changes, 64 invocation rows, 8192 visited JSON nodes, 2048 properties
+per object, depth 32, 2048 journal events per run, 160-character path/value previews
+and a 96 KiB serialized response. Truncation and incomplete/gapped evidence are
+explicit. `hasRedactions` is independent of `captureComplete` and `journalHasGap`;
+redaction alone does not claim lost history. Duplicate JSON properties are
+ambiguous and mark the diff truncated.
+Property previews may be shortened; original retained values remain inspectable.
+
+Invocations group by recorded invocation ID and match exact executor ID plus
+occurrence in journal sequence order. Missing/conflicting executor correlation
+stays unmatched; original IDs are preserved. This is not causal equivalence.
+Metrics use unique `(traceId, spanId)` observations only from
+`MafPlayground.Studio.Model`, excluding native/agent duplicates. These are observed
+attempts, including guard-rejected attempts, not billed-call counts. Token and
+cost coverage counts are exposed; missing, partial, redacted or gapped totals
+remain unknown.
+Cost deltas require known values in the same reported currency. Differences do
+not judge semantic correctness or quality. No persistence or migration is added.
+
+Capture state is based on actual credential-policy mutations, not raw JSON byte
+changes caused by timestamp or string escaping. Benign JSON embedded in activity
+strings keeps its original text formatting; embedded credentials still pass through
+the same bounded redactor. The existing payload/depth/allocation limits remain.
+`hasRedactions` reports retained event flags; snapshots themselves remain sanitized
+JSON and do not expose original private execution input or infer secret markers.

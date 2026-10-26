@@ -90,6 +90,28 @@ import { Chat } from '../chat/chat';
                   ><span class="meta">Reset starts a fresh conversation.</span>
                 </div>
               }
+              @if (store.rerunDraft(); as draft) {
+                <div class="notice warning">
+                  <strong>Review captured input before rerunning</strong>
+                  <p>
+                    This editable prefill is sanitized capture from {{ draft.runId }}. Redacted or
+                    missing values cannot be recovered. Replace placeholders with your intended
+                    input; confirming submits exactly the edited JSON.
+                  </p>
+                  <p>
+                    A fresh conversation is used by default. Choose an existing session above only
+                    to explicitly continue it.
+                  </p>
+                  <label class="row"
+                    ><input
+                      type="checkbox"
+                      data-rerun-review
+                      [checked]="reviewed()"
+                      (change)="reviewed.set($any($event.target).checked)"
+                    />I reviewed the input, profile and session for this rerun</label
+                  >
+                </div>
+              }
               <studio-json-editor
                 [(value)]="text"
                 [schema]="entity.inputSchema"
@@ -106,6 +128,7 @@ import { Chat } from '../chat/chat';
                   class="button primary"
                   [disabled]="
                     !valid() ||
+                    (!!store.rerunDraft() && !reviewed()) ||
                     store.busy() ||
                     store.availabilityLoading() ||
                     !entity.isAvailable ||
@@ -262,18 +285,26 @@ export class InputWorkspace {
   private readonly router = inject(Router);
   readonly text = signal('{}');
   readonly valid = signal(false);
+  readonly reviewed = signal(false);
   constructor() {
     effect(() => {
       this.store.selectedEntityId();
+      const draft = this.store.rerunDraft();
       const entity = untracked(() => this.store.entity());
-      this.text.set(JSON.stringify(entity?.inputExample ?? {}, null, 2));
+      this.text.set(JSON.stringify(draft ? draft.input : (entity?.inputExample ?? {}), null, 2));
       this.valid.set(false);
+    });
+    effect(() => {
+      this.text();
+      this.store.selectedProfileId();
+      this.store.selectedSessionId();
+      this.reviewed.set(false);
     });
   }
   async submit(event: Event) {
     event.preventDefault();
-    if (!this.valid()) return;
-    await this.store.submit(JSON.parse(this.text()));
+    if (!this.valid() || (this.store.rerunDraft() && !this.reviewed())) return;
+    await this.store.submit(JSON.parse(this.text()), this.reviewed());
     if (!this.store.error() && !this.store.selectedSessionId() && this.store.selectedRunId())
       await this.router.navigate(['/runs', this.store.selectedRunId()]);
   }

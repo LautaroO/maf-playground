@@ -1,6 +1,11 @@
 import { Routes } from '@angular/router';
 export const routes: Routes = [
   {
+    path: 'compare',
+    loadComponent: () =>
+      import('./comparison/run-comparison.component').then((module) => module.RunComparison),
+  },
+  {
     path: 'catalog',
     loadComponent: () => import('./catalog/catalog').then((module) => module.Catalog),
   },

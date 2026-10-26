@@ -17,7 +17,8 @@ import { StatusBadge } from './shared/ui/status-badge';
       <nav aria-label="Primary">
         <a routerLink="/catalog" routerLinkActive="active">Catalog</a
         ><a routerLink="/input" routerLinkActive="active">Workspace</a
-        ><a routerLink="/runs" routerLinkActive="active">Executions</a>
+        ><a routerLink="/runs" routerLinkActive="active">Executions</a
+        ><a routerLink="/compare" routerLinkActive="active">Compare</a>
       </nav>
       <div class="connection">
         <span class="connection-dot" [class.connected]="store.connection() === 'connected'"></span

@@ -95,6 +95,7 @@ export class StudioRunStore {
   }
   readonly historyGaps = signal<Record<string, boolean>>({});
   readonly resetNotice = signal('');
+  readonly rerunDraft = signal<{ runId: string; input: unknown } | null>(null);
   readonly error = signal('');
   readonly loading = signal(false);
   readonly availabilityLoading = signal(false);
@@ -140,6 +141,7 @@ export class StudioRunStore {
   selectEntity(id: string) {
     if (!this.entities().some((item) => item.id === id)) return;
     if (id !== this.selectedEntityId()) {
+      this.rerunDraft.set(null);
       this.selectionRevision++;
       this.selectedSessionId.set(null);
     }
@@ -217,8 +219,39 @@ export class StudioRunStore {
       if (revision === this.selectionRevision) this.selectSession(replacement.id);
     });
   }
-  async submit(input: unknown) {
+  async prepareRerun(id: string): Promise<boolean> {
+    let ready = false;
     await this.action(async (epoch) => {
+      const revision = this.selectionRevision;
+      const run = await this.api.run(id);
+      if (
+        epoch !== this.epoch ||
+        revision !== this.selectionRevision ||
+        this.acceptInstance(run.hostInstanceId)
+      )
+        return;
+      if (!this.profiles().includes(run.request.profileId))
+        throw new Error('The captured profile is unavailable.');
+      const profileReady = this.selectProfile(run.request.profileId);
+      const preparedRevision = this.selectionRevision;
+      await profileReady;
+      if (epoch !== this.epoch || preparedRevision !== this.selectionRevision) return;
+      if (!this.entities().some((entity) => entity.id === run.request.entityId))
+        throw new Error('The captured entity is unavailable.');
+      this.selectEntity(run.request.entityId);
+      this.selectSession(null);
+      this.rerunDraft.set({
+        runId: run.runId,
+        input: run.request.input,
+      });
+      ready = true;
+    });
+    return ready;
+  }
+  async submit(input: unknown, reviewedRerun = false) {
+    await this.action(async (epoch) => {
+      if (this.rerunDraft() && !reviewedRerun)
+        throw new Error('Review and confirm the sanitized input before rerunning.');
       const entity = this.entity();
       const profileId = this.selectedProfileId();
       const sessionId = this.selectedSessionId();
@@ -238,6 +271,7 @@ export class StudioRunStore {
         sessionId,
       });
       if (epoch !== this.epoch || this.acceptInstance(receipt.hostInstanceId)) return;
+      this.rerunDraft.set(null);
       await this.selectRun(receipt.runId);
     });
   }
@@ -358,6 +392,7 @@ export class StudioRunStore {
       this.cursors = {};
       this.runs.set([]);
       this.sessions.set([]);
+      this.rerunDraft.set(null);
       this.eventHistory.set({});
       this.historyGaps.set({});
       this.selectedRunId.set(null);

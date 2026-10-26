@@ -99,6 +99,10 @@ public sealed class StudioMcpTools(IServiceScopeFactory scopes)
         return await sessions.ResetAndCreateAsync(sessionId, provider.GetRequiredService<StudioAccessPolicy>().Caller, token);
     }, cancellationToken);
 
+    [McpServerTool(Name = "studio_compare_runs", ReadOnly = true, OpenWorld = false), Description("Compare two terminal retained runs in one host lifetime. Bounded structural/text differences and observed metrics; no semantic quality judgment." + Evidence)]
+    public Task<string> CompareRuns(StudioComparisonRequest request, CancellationToken cancellationToken) => Invoke((provider, token) =>
+        provider.GetRequiredService<Comparison.StudioComparisonService>().CompareAsync(request, token), cancellationToken);
+
     private async Task<string> Invoke<T>(Func<IServiceProvider, CancellationToken, ValueTask<T>> operation, CancellationToken token)
     {
         // MCP connection/request lifetime must never retain a profile-bound scope.

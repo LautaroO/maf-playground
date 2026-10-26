@@ -75,6 +75,9 @@ export class StudioApiService {
   start(request: D.StudioRunRequest) {
     return this.request<D.StudioRunReceipt>('/runs', request);
   }
+  compare(request: D.StudioComparisonRequest, signal?: AbortSignal) {
+    return this.request<D.StudioComparison>('/comparisons', request, signal);
+  }
   cancel(id: string) {
     return this.request<void>(`/runs/${encodeURIComponent(id)}/cancel`, {});
   }

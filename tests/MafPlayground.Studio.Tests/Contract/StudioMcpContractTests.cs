@@ -21,7 +21,7 @@ public sealed class StudioMcpContractTests
         await using var host = await StudioTransportHost.Create();
         await using var mcp = await host.Connect();
         var tools = await mcp.ListToolsAsync();
-        Assert.Equal(new[] { "studio_cancel_run", "studio_get_events", "studio_get_payload", "studio_get_run", "studio_get_spans", "studio_get_topology", "studio_list_entities", "studio_list_profiles", "studio_list_runs", "studio_reset_session", "studio_start_run" }, tools.Select(t => t.Name).Order());
+        Assert.Equal(new[] { "studio_cancel_run", "studio_compare_runs", "studio_get_events", "studio_get_payload", "studio_get_run", "studio_get_spans", "studio_get_topology", "studio_list_entities", "studio_list_profiles", "studio_list_runs", "studio_reset_session", "studio_start_run" }, tools.Select(t => t.Name).Order());
         Assert.All(tools, t => Assert.NotNull(t.ProtocolTool.Annotations?.ReadOnlyHint));
         var entities = (await Call<StudioMcpPage<StudioEntityDescriptor>>(mcp, "studio_list_entities")).Items;
         var http = (await host.Http.GetFromJsonAsync<StudioEntityDescriptor[]>(Api + "/entities"))!;
@@ -35,6 +35,43 @@ public sealed class StudioMcpContractTests
         var native = await Call<StudioTopology>(mcp, "studio_get_topology", new() { ["entityId"] = "translation-workflow", ["profileId"] = "cli-default" });
         Assert.Equal(StudioTopologyStatus.Available, native.Status);
         Assert.NotEmpty(native.Nodes);
+    }
+    [Fact]
+    public async Task Comparisons_share_results_errors_and_retention_across_http_and_official_mcp()
+    {
+        await using var host = await StudioTransportHost.Create(maxCompleted: 2);
+        await using var mcp = await host.Connect();
+        async Task<StudioRunSnapshot> Run(string id, string title)
+        {
+            var receipt = await Call<StudioRunReceipt>(mcp, "studio_start_run", new() { ["request"] = new StudioRunRequest(id, "novel-review", "cli-default", JsonSerializer.SerializeToElement(new { review_items = new[] { new { title, priority = "Urgent" } } }), null) });
+            return await host.Terminal(receipt.RunId);
+        }
+        var a = await Run("comparison-a", "First");
+        var b = await Run("comparison-b", "Second");
+        var request = new StudioComparisonRequest(a.HostInstanceId, a.RunId, b.RunId);
+        var http = await host.Http.PostAsJsonAsync(Api + "/comparisons", request);
+        Assert.Equal(HttpStatusCode.OK, http.StatusCode);
+        var expected = (await http.Content.ReadFromJsonAsync<StudioComparison>())!;
+        var actual = await Call<StudioComparison>(mcp, "studio_compare_runs", new() { ["request"] = request });
+        Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
+        Assert.Contains(actual.Changes, x => x.Path == "/result/titles/0" && x.Candidate!.Contains("Second"));
+        Assert.Null(actual.Cost.Delta);
+        Assert.Empty(host.Model.Requests);
+        foreach (var (invalid, status, code) in new[] {
+            (request with { HostInstanceId = "other-host" }, HttpStatusCode.BadRequest, "invalid_request"),
+            (request with { BaselineRunId = "unknown" }, HttpStatusCode.NotFound, "not_found_or_evicted"),
+            (request with { CandidateRunId = new string('x', 129) }, HttpStatusCode.BadRequest, "invalid_request") })
+        {
+            Assert.Equal(status, (await host.Http.PostAsJsonAsync(Api + "/comparisons", invalid)).StatusCode);
+            var error = await mcp.CallToolAsync("studio_compare_runs", new Dictionary<string, object?> { ["request"] = invalid });
+            Assert.True(error.IsError);
+            Assert.Contains(code, JsonSerializer.Serialize(error));
+        }
+        _ = await Run("comparison-c", "Third");
+        Assert.Equal(HttpStatusCode.NotFound, (await host.Http.PostAsJsonAsync(Api + "/comparisons", request)).StatusCode);
+        Assert.True((await mcp.CallToolAsync("studio_compare_runs", new Dictionary<string, object?> { ["request"] = request })).IsError);
+        host.Http.DefaultRequestHeaders.Authorization = null;
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Http.PostAsJsonAsync(Api + "/comparisons", request)).StatusCode);
     }
     [Fact]
     public async Task Http_and_mcp_duplicate_submission_share_the_same_job_and_one_model_call()

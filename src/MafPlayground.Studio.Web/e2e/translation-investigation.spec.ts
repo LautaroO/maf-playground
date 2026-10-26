@@ -1,4 +1,4 @@
-import { test, expect, openEntity, runInput } from './fixtures/studio';
+import { test, expect, openEntity, runInput, inputJson } from './fixtures/studio';
 test('investigates real translation validation, retry cycle and partial branch', async ({
   studio: page,
 }, testInfo) => {
@@ -90,5 +90,36 @@ test('investigates real translation validation, retry cycle and partial branch',
   await page.getByRole('heading', { name: 'Trace timeline' }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('timeline-collapsed-1024.png') });
   expect(invocation).not.toBe('');
-  // Task 9 extends this same journey with baseline/candidate comparison.
+  const baselineId = page.url().split('/').pop()!;
+  await page.getByRole('button', { name: 'Run again' }).click();
+  await expect(page).toHaveURL(/\/input$/);
+  await expect(page.getByRole('button', { name: /Run entity/ })).toBeDisabled();
+  await page.getByLabel('Execution profile').selectOption('reviewed');
+  await inputJson(page, { text: 'Your order 247 is ready now.', targetLanguages: ['es', 'fr'] });
+  await page.getByLabel('I reviewed the input, profile and session for this rerun').check();
+  await page.getByRole('button', { name: /Run entity/ }).click();
+  await expect(page).toHaveURL(/\/runs\//);
+  const candidateId = page.url().split('/').pop()!;
+  expect(candidateId).not.toBe(baselineId);
+  await expect(page.locator('.run-heading studio-status')).toContainText('Completed');
+  await page.locator('.run-heading').getByRole('link', { name: 'Compare' }).click();
+  await page.getByLabel('Baseline run', { exact: true }).selectOption(baselineId);
+  await page.getByLabel('Candidate run', { exact: true }).selectOption(candidateId);
+  await page.getByRole('button', { name: 'Compare runs' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Structural and text differences' }),
+  ).toBeVisible();
+  await expect(page.locator('.summaries')).toContainText('reviewed');
+  await expect(page.locator('.summaries')).toContainText('Partial result');
+  await expect(page.locator('.summaries')).toContainText('Completed');
+  await expect(page.locator('.changes')).toContainText('/input/text');
+  await expect(page.locator('.changes')).toContainText('/result');
+  await expect(page.locator('studio-run-comparison')).toContainText('Unknown');
+  await expect(page.locator('studio-run-comparison')).toContainText('not causal equivalence');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('heading', { name: 'Compare executions' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('comparison-1440.png'), fullPage: true });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.screenshot({ path: testInfo.outputPath('comparison-1024.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);
 });

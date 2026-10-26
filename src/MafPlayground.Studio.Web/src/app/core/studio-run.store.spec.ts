@@ -293,3 +293,29 @@ it('blocks creation and submission until the selected profile availability compl
     requests.find((item) => item.url.endsWith('/sessions') && item.body)?.body?.['profileId'],
   ).toBe('fast');
 });
+
+it('reruns require reviewed input, use a new request ID, and default to a fresh session', async () => {
+  const { store, requests, restart } = setup();
+  await store.bootstrap();
+  store.selectEntity(novel.id);
+  store.selectSession('session-a');
+  await store.prepareRerun('run-a');
+  expect(store.selectedSessionId()).toBeNull();
+  expect(store.rerunDraft()?.input).toEqual(novel.inputExample);
+  await store.submit(novel.inputExample);
+  expect(requests.filter((x) => x.url.endsWith('/runs') && x.body)).toHaveLength(0);
+  await store.submit(novel.inputExample, true);
+  const sent = requests.find((x) => x.url.endsWith('/runs') && x.body)!.body!;
+  expect(sent['requestId']).not.toBe('request-a');
+  expect(sent['sessionId']).toBeNull();
+  await store.prepareRerun('run-a');
+  store.selectSession('session-a');
+  await store.submit(novel.inputExample, true);
+  expect(
+    requests.filter((x) => x.url.endsWith('/runs') && x.body).at(-1)?.body?.['sessionId'],
+  ).toBe('session-a');
+  await store.prepareRerun('run-a');
+  restart();
+  await store.bootstrap();
+  expect(store.rerunDraft()).toBeNull();
+});

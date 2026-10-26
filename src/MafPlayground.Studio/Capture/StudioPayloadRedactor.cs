@@ -17,24 +17,31 @@ internal sealed partial class StudioPayloadRedactor(IEnumerable<string> secrets,
         return Bearer().Replace(value, "${prefix}[REDACTED]");
     }
 
-    internal void Write(Utf8JsonWriter writer, JsonElement value, int depth = 0)
+    internal bool Write(Utf8JsonWriter writer, JsonElement value, int depth = 0)
     {
         if (depth >= 32) throw new JsonException("Capture depth exceeded.");
+        bool changed = false;
         switch (value.ValueKind)
         {
             case JsonValueKind.Object:
                 writer.WriteStartObject();
                 foreach (var property in value.EnumerateObject())
                 {
-                    writer.WritePropertyName(RedactText(property.Name));
-                    if (Sensitive(property.Name)) writer.WriteStringValue("[REDACTED]");
-                    else Write(writer, property.Value, depth + 1);
+                    string name = RedactText(property.Name);
+                    changed |= !string.Equals(name, property.Name, StringComparison.Ordinal);
+                    writer.WritePropertyName(name);
+                    if (Sensitive(property.Name))
+                    {
+                        changed |= property.Value.ValueKind != JsonValueKind.String || property.Value.GetString() != "[REDACTED]";
+                        writer.WriteStringValue("[REDACTED]");
+                    }
+                    else changed |= Write(writer, property.Value, depth + 1);
                 }
                 writer.WriteEndObject();
                 break;
             case JsonValueKind.Array:
                 writer.WriteStartArray();
-                foreach (var item in value.EnumerateArray()) Write(writer, item, depth + 1);
+                foreach (var item in value.EnumerateArray()) changed |= Write(writer, item, depth + 1);
                 writer.WriteEndArray();
                 break;
             case JsonValueKind.String:
@@ -46,15 +53,20 @@ internal sealed partial class StudioPayloadRedactor(IEnumerable<string> secrets,
                     {
                         using JsonDocument document = JsonDocument.Parse(text, new() { MaxDepth = 32 });
                         StudioPayloadStore.BoundedBuffer buffer = new(maxBytes);
-                        using (Utf8JsonWriter nested = new(buffer, writerOptions)) Write(nested, document.RootElement, depth + 1);
-                        text = System.Text.Encoding.UTF8.GetString(buffer.WrittenMemory.Span);
+                        bool nestedChanged;
+                        using (Utf8JsonWriter nested = new(buffer, writerOptions)) nestedChanged = Write(nested, document.RootElement, depth + 1);
+                        // Preserve benign embedded JSON verbatim; formatting/escaping is not redaction.
+                        if (nestedChanged) text = System.Text.Encoding.UTF8.GetString(buffer.WrittenMemory.Span);
                     }
                     catch (JsonException) { text = "[REDACTED]"; }
                 }
-                writer.WriteStringValue(RedactText(text));
+                text = RedactText(text);
+                changed |= !string.Equals(text, value.GetString(), StringComparison.Ordinal);
+                writer.WriteStringValue(text);
                 break;
             default: value.WriteTo(writer); break;
         }
+        return changed;
     }
 
     private static bool Sensitive(string name)

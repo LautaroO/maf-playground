@@ -17,6 +17,8 @@ builder.Services.AddSingleton<IChatClientProvider, FixtureProvider>();
 builder.Services.AddSingleton<IUserContextAccessor, FixtureUser>();
 builder.Services.AddAIRuntime(builder.Configuration).AddMafPlaygroundSampleEntities();
 builder.Services.AddInMemoryAgentSessions();
+builder.Configuration["Studio:Profiles:0:Id"] = "reviewed";
+builder.Configuration["Studio:Profiles:0:Model"] = "fixture:reviewed";
 builder.Services.AddStudio(builder.Configuration);
 await using var app = builder.Build();
 app.UseStudioAccess();
@@ -30,9 +32,9 @@ internal sealed class FixtureUser : IUserContextAccessor { public UserContext Ge
 internal sealed class FixtureProvider : IChatClientProvider
 {
   public string Name => "fixture";
-  public IChatClient CreateChatClient(string model) => new FixtureClient();
+  public IChatClient CreateChatClient(string model) => new FixtureClient(model);
 }
-internal sealed class FixtureClient : IChatClient
+internal sealed class FixtureClient(string model) : IChatClient
 {
   public async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
   {
@@ -47,14 +49,14 @@ internal sealed class FixtureClient : IChatClient
         "User turns: " + string.Join(" | ", input.Where(message => message.Role == ChatRole.User).Select(message => message.Text));
     return new(new ChatMessage(ChatRole.Assistant, reply));
   }
-  private static ChatResponse Translation(string input)
+  private ChatResponse Translation(string input)
   {
     using JsonDocument json = JsonDocument.Parse(input);
     JsonElement root = json.RootElement;
     string language = root.GetProperty("targetLanguage").GetString()!;
     object reply;
     if (!root.TryGetProperty("translatedText", out _))
-      reply = new { translatedText = language == "fr" ? "Votre commande est prête." : "Su pedido 247 está listo." };
+      reply = new { translatedText = language == "fr" ? model == "reviewed" ? "Votre commande 247 est prête maintenant." : "Votre commande est prête." : "Su pedido 247 está listo." };
     else if (root.TryGetProperty("previousBlockingIssues", out var issues) && issues.GetArrayLength() > 0)
       reply = new { isValid = false, confidence = 0.98, previousIssueResolutions = issues.EnumerateArray().Select(issue => new { issueId = issue.GetProperty("id").GetString(), status = "StillPresent" }).ToArray() };
     else reply = new { isValid = true, confidence = 0.98, issues = Array.Empty<object>() };

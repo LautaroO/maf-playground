@@ -18,7 +18,7 @@ import { PayloadViewer } from './payload-viewer.component';
             [value]="store.inspectionSelection().invocationId || ''"
             (change)="store.selectInvocation($any($event.target).value)"
           >
-            <option value="">Choose a captured invocation</option>
+            <option value="" disabled>Choose a captured invocation</option>
             @for (item of invocations(); track item.id) {
               <option
                 [value]="item.id"

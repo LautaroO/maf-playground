@@ -176,6 +176,9 @@ describe('Captured content investigation', () => {
     inspector.detectChanges();
     expect(inspector.nativeElement.textContent).toContain('Missing identifier: 247');
     expect(inspector.nativeElement.textContent).toContain('tool_result');
+    expect(
+      (inspector.nativeElement.querySelector('option[value=""]') as HTMLOptionElement).disabled,
+    ).toBe(true);
     const timeline = TestBed.createComponent(TraceTimeline);
     timeline.detectChanges();
     const row = timeline.nativeElement.querySelector('[data-span]');
