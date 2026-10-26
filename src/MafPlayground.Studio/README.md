@@ -223,8 +223,8 @@ snapshots under the existing store lock.
 
 `studio --export-contracts <path>` writes transport and entity JSON schemas using
 `AIJsonUtilities` without building/starting a host or registering providers. The
-current `/studio` page explicitly reports absent frontend assets; asset packaging
-is a separate delivery step; MCP is mapped with the HTTP API. The [Angular workspace](../MafPlayground.Studio.Web/README.md) provides the development UI via a strict loopback proxy. Transport export also includes backend-derived numeric enum schemas for frontend generation.
+`/studio` UI serves compiled local assets when installed, otherwise actionable
+build instructions; MCP is mapped with the HTTP API. The [Angular workspace](../MafPlayground.Studio.Web/README.md) provides the development UI via a strict loopback proxy. Transport export also includes backend-derived numeric enum schemas for frontend generation.
 
 Access and error protection is middleware, not an endpoint filter.
 `UseStudioAccess()` wraps all downstream routes before minimal API argument
@@ -408,3 +408,85 @@ strings keeps its original text formatting; embedded credentials still pass thro
 the same bounded redactor. The existing payload/depth/allocation limits remain.
 `hasRedactions` reports retained event flags; snapshots themselves remain sanitized
 JSON and do not expose original private execution input or infer secret markers.
+
+## Build, publish and start
+
+From the repository root, with the pinned .NET SDK and Node 24/npm 11 available:
+
+```sh
+./scripts/build-studio.sh
+dotnet run --project src/MafPlayground.CLI -- studio --no-open
+# Or publish once and run on a machine with the matching .NET runtime:
+dotnet publish src/MafPlayground.CLI -c Release -o artifacts/studio -m:1 -p:UseSharedCompilation=false -nr:false
+dotnet artifacts/studio/MafPlayground.CLI.dll studio --no-open
+```
+
+`build-studio.sh` runs `npm ci` and the pinned production build. The CLI project
+copies `dist/studio/browser` into `studio/` on build and publish, including local
+workers/fonts and DM Sans, IBM Plex Mono, Monaco/codicon notices. Publish to a
+fresh output directory when distributing a new build. Neither Node nor the
+example backend is needed at runtime. Missing `studio/index.html` produces build
+instructions on the console and authenticated `/studio` page; API/MCP still work
+and browser auto-launch is suppressed. `--no-open` always leaves launch to you.
+
+Enter the console's single-use access code at the printed `/studio/login` URL.
+Assets and deep links pass through `UseStudioAccess` before static middleware or
+endpoint binding. Missing file requests return 404 rather than HTML. Production
+CSP allows only same-origin scripts, module workers, connections and base URI;
+inline styles are needed by Angular/Monaco. It does not allow `unsafe-eval`, HMR
+WebSockets, embedding or plugins. Login credentials never enter a URL or localStorage.
+
+No configured model is a supported inspection state, with explicit unavailable
+reasons. Invalid URL/model/profile configuration fails with a sanitized startup
+message. Set `Studio:EnableRetrieval=true` only with the existing retrieval/store
+configuration; this opt-in does not provision a database or migrate/index data.
+All four normal entities remain discoverable and availability follows the selected
+profile. Profiles are immutable configuration, not arbitrary model selectors in
+browser requests. For example, set `Studio__Profiles__0__Id=reviewed` and
+`Studio__Profiles__0__Model=provider:model` in the host environment.
+
+### Investigating with an assistant
+
+After manually connecting the MCP client described above, examples of requests are:
+
+> Inspect the retained translation run I selected. Follow the French branch's
+> recorded executor and invocation IDs through validation and retry. Load only
+> relevant span payloads, explain the blocking issue, and flag missing evidence.
+
+> Discover available profiles and the translation input schema. Start a new case
+> translating “Your order 247 is ready.” to Spanish and French under cli-default,
+> then the reviewed profile. Wait for both terminal runs and compare their typed
+> outcomes, structural output differences and known metrics. Do not infer quality
+> or cost from missing telemetry.
+
+Submission performs real configured model/tool calls. The assistant stays in its
+normal session and uses narrow Studio tools; Studio does not take over that session.
+For Codex the equivalent manual CLI registration is
+`codex mcp add local-agent-studio --url http://localhost:5051/mcp --bearer-token-env-var STUDIO_BEARER_TOKEN`.
+The token must already be set in the assistant process environment. Never reuse a
+cloud/provider credential for it. No command here is executed automatically.
+
+### Capture, export and lifecycle limits
+
+Local capture includes sanitized input/output and model/tool evidence by default.
+This is separate from `Observability:AgentFramework:EnableSensitiveData`, whose
+external OTLP default remains false. Configure an external collector explicitly
+with the existing observability settings; Studio is not an OTLP receiver or a
+substitute for Aspire/DevUI. To validate export, compare a recorded trace ID in
+Studio with that exact trace in your local Aspire instance, then confirm external
+prompt/tool contents remain absent while local capture is visible. A running
+exporter or a fake capture test alone does not prove collector delivery.
+
+IDs, correlations, invocation matching, usage coverage and capture gaps reflect
+retained observations. Missing parents, unavailable metrics and truncated/redacted
+payloads are explicit; edge traversal, causal equivalence and billed calls are not
+inferred. Run again starts fresh work from reviewed sanitized input, with a new
+request ID; redacted or evicted originals cannot be recovered. Browser disconnect
+ends observation only; explicitly cancel execution when wanted. Ctrl+C stops the
+host and cancels accepted work within its configured shutdown grace.
+
+Configured HTTP/MCP input limits and Kestrel's envelope limit use the same
+`Studio:Limits:MaxPayloadBytes`; the default stays 2 MiB. Values below 64 bytes or
+above `Int32.MaxValue - 4097` are rejected to keep envelope/probe arithmetic safe.
+The browser editor independently caps input/schema text at 2 MiB; increasing the
+server limit does not expand the browser editor's limit.

@@ -159,7 +159,11 @@ falls back to `AI_MODEL`; no model is needed to inspect disabled entities. The
 browser exchanges the console-displayed one-time code at `/studio/login` for an
 HttpOnly cookie. `--no-open` leaves browser launch to the user. A separate console
 bearer token authorizes API clients; never put it in a URL or browser storage.
-The initial authenticated page explains that frontend assets are not installed.
+Build the Angular assets with `./scripts/build-studio.sh` before building/publishing
+this CLI. The project copies them to `studio/`; published execution needs .NET but
+no Node runtime. Without assets, an actionable build message appears and API/MCP
+remain available with `--no-open`; no browser is launched automatically. See
+[build/publish operations](../MafPlayground.Studio/README.md#build-publish-and-start).
 
 Studio explicitly opts into `AIStartupValidationMode.LocalInspection`. This defers
 model/provider readiness to availability and execution while retaining structural

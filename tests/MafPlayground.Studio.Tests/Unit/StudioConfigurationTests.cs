@@ -30,6 +30,17 @@ public sealed class StudioConfigurationTests
     }
 
     [Theory]
+    [InlineData(63)]
+    [InlineData(int.MaxValue)]
+    [InlineData(int.MaxValue - 4096)]
+    public void Payload_limit_leaves_safe_space_for_envelope_and_overflow_probe(int maximum)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["Studio:Limits:MaxPayloadBytes"] = maximum.ToString(System.Globalization.CultureInfo.InvariantCulture) }).Build();
+        Assert.Throws<ArgumentException>(() => new ServiceCollection().AddStudio(config));
+    }
+
+    [Theory]
     [InlineData("provider:https://user:password@host/model")]
     [InlineData("provider:model?token=secret")]
     [InlineData("provider:model with spaces")]

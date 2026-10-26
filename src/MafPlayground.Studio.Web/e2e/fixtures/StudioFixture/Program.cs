@@ -22,6 +22,7 @@ builder.Configuration["Studio:Profiles:0:Model"] = "fixture:reviewed";
 builder.Services.AddStudio(builder.Configuration);
 await using var app = builder.Build();
 app.UseStudioAccess();
+app.UseStudioFrontend(Path.Combine(AppContext.BaseDirectory, "studio"));
 app.MapStudio();
 await app.StartAsync();
 // Parent test process captures this pipe in memory; never emit it to test logs/artifacts.
@@ -40,6 +41,7 @@ internal sealed class FixtureClient(string model) : IChatClient
   {
     ChatMessage[] input = messages.ToArray();
     string last = input.Last(message => message.Role == ChatRole.User).Text;
+    if (last == "fixture-fail") throw new InvalidOperationException("Deterministic test failure.");
     if (last == "fixture-wait") await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
     if (last.StartsWith('{') && JsonDocument.Parse(last).RootElement.TryGetProperty("targetLanguage", out _)) return Translation(last);
     FunctionResultContent? tool = input.SelectMany(message => message.Contents).OfType<FunctionResultContent>().LastOrDefault();

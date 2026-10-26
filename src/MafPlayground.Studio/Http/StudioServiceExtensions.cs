@@ -17,6 +17,8 @@ public static class StudioServiceExtensions
         foreach (IConfigurationSection section in configuration.GetSection("AI:Entities").GetChildren().Prepend(configuration.GetSection("AI:Defaults")))
             if (!string.IsNullOrWhiteSpace(section["Model"])) _ = StudioProfileCatalog.ParseModel(section["Model"]);
         StudioOptions configured = configuration.GetSection("Studio:Limits").Get<StudioOptions>() ?? new();
+        if (configured.MaxPayloadBytes is < 64 or > int.MaxValue - 4097)
+            throw new ArgumentException("Studio payload limit must leave room for the request envelope.");
         string[] secrets = configuration.AsEnumerable().Where(item => IsCredentialKey(item.Key) && !string.IsNullOrEmpty(item.Value))
             .Select(item => item.Value!).Concat(configured.Secrets).Distinct(StringComparer.Ordinal).ToArray();
         services.TryAddSingleton(provider => configured with

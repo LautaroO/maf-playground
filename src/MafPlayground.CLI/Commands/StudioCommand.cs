@@ -72,7 +72,8 @@ public sealed class StudioCommand : ICliCommand
                 builder.Configuration["AI:Defaults:Model"] = selector;
             }
             builder.WebHost.UseUrls(access.Endpoint.GetLeftPart(UriPartial.Authority));
-            builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = 2 * 1024 * 1024 + 4096);
+            builder.Services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()
+                .Configure<StudioOptions>((server, limits) => server.Limits.MaxRequestBodySize = (long)limits.MaxPayloadBytes + 4096);
             builder.Services.AddSingleton(access);
             builder.Services.AddLocalUserContext();
             builder.Services.AddAIRuntime(builder.Configuration, AIStartupValidationMode.LocalInspection).AddMafPlaygroundSampleEntities();
@@ -91,14 +92,15 @@ public sealed class StudioCommand : ICliCommand
             builder.Services.AddStudio(builder.Configuration);
             await using WebApplication app = builder.Build();
             app.UseStudioAccess();
+            bool hasFrontend = app.UseStudioFrontend(Path.Combine(AppContext.BaseDirectory, "studio"));
             app.MapStudio();
             await app.StartAsync(token);
             string login = access.Endpoint.GetLeftPart(UriPartial.Authority) + "/studio/login";
             // Credentials appear only on this local console, never in URLs or structured telemetry.
             Console.WriteLine($"Studio: {login}\nOne-time browser access code: {access.BootstrapCode}");
             Console.WriteLine($"Local API bearer token: {access.BearerToken}");
-            Console.WriteLine("Frontend assets are not installed in this build; the authenticated HTTP API is available.");
-            if (!options.NoOpen)
+            if (!hasFrontend) Console.WriteLine("Frontend assets are not installed. Run ./scripts/build-studio.sh, rebuild or publish the CLI, then restart. HTTP API and MCP remain usable with --no-open.");
+            if (!options.NoOpen && hasFrontend)
             {
                 try { Process.Start(new ProcessStartInfo(login) { UseShellExecute = true }); }
                 catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)

@@ -4,6 +4,9 @@ test('investigates real translation validation, retry cycle and partial branch',
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: testInfo.outputPath('catalog-empty-1440.png') });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.screenshot({ path: testInfo.outputPath('catalog-empty-1024.png') });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openEntity(page, 'translation-workflow');
   await runInput(page, { text: 'Your order 247 is ready.', targetLanguages: ['es', 'fr'] });
   await expect(page.locator('.run-heading studio-status')).toContainText('Partial result');

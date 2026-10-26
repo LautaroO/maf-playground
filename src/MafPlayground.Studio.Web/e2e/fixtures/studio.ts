@@ -4,6 +4,11 @@ import { once } from 'node:events';
 import { resolve } from 'node:path';
 export const test = base.extend<{ studio: Page }>({
   studio: async ({ page }, use) => {
+    const violations: string[] = [];
+    page.on('console', (message) => {
+      if (/Content Security Policy|violates.*directive/i.test(message.text()))
+        violations.push(message.text());
+    });
     const child = spawn(
       'dotnet',
       [resolve('e2e/fixtures/StudioFixture/bin/Debug/net10.0/StudioFixture.dll')],
@@ -42,6 +47,7 @@ export const test = base.extend<{ studio: Page }>({
       await page.goto('./catalog');
       await expect(page.getByRole('heading', { name: 'Registered entities' })).toBeVisible();
       await use(page);
+      expect(violations, 'Packaged CSP violations').toEqual([]);
     } finally {
       await page.close();
       const exit = once(child, 'exit');

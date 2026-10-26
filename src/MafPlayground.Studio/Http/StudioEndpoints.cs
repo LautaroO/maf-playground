@@ -38,11 +38,6 @@ public static class StudioEndpoints
             context.Response.Headers.Location = "/studio";
             return Results.StatusCode(303);
         }).DisableAntiforgery();
-        root.MapGet("/studio", () => Results.Content("""
-            <!doctype html><html lang="en"><meta charset="utf-8"><title>Local Agent Studio</title>
-            <h1>Local Agent Studio</h1><p>The HTTP API is running. Frontend assets are not installed in this build.</p>
-            <p>API: <a href="/api/studio/v1/entities">registered entities</a></p></html>
-            """, "text/html"));
         var api = root.MapGroup(Prefix);
         api.MapGet("/instance", (StudioRunService runs) => Results.Ok(new StudioInstance(runs.HostInstanceId)));
         api.MapGet("/entities", async (IStudioCatalog catalog, string? profileId, CancellationToken token) => Results.Ok(await catalog.ListAsync(token, profileId)));

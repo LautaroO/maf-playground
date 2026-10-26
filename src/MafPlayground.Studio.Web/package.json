@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "scripts": {
     "start": "ng serve --host 127.0.0.1 --port 4200 --proxy-config proxy.conf.cjs",
-    "build": "ng build",
+    "build": "ng build && node scripts/licenses.mjs",
     "typecheck": "ngc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.spec.json && tsc --noEmit -p tsconfig.e2e.json",
     "test:unit": "ng test --watch=false && node --test scripts/proxy.test.cjs",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/e2e.mjs",
     "generate:contracts": "node scripts/contracts.mjs",
     "check:contracts": "node scripts/contracts.mjs --check",
     "format": "prettier --write src scripts \"e2e/**/*.ts\" *.json *.ts *.cjs",

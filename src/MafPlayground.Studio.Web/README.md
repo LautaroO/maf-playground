@@ -112,7 +112,7 @@ validates nested constraints, produces editor locations and rejects external sch
 fetches. Input/schema text is capped at 2 MiB. `JsonView` renders output as escaped,
 selectable JSON; chat is escaped text. No model text is interpreted as HTML.
 
-## Assets, visual system and packaging handoff
+## Assets, visual system and packaging
 
 `src/styles/tokens.css` and `shared/ui` define Precision surfaces, readable 13px UI,
 12px code, status labels, focus, reduced motion and responsive panels. DM Sans and
@@ -127,18 +127,21 @@ they preserve native input and default delimiter behavior. Clearing matters beca
 Monaco intentionally surrounds an existing selection when an opening delimiter is typed.
 
 Production output is `dist/studio/browser`, with `/studio/` base href and lazy
-feature/Monaco chunks. Task 10 must package this directory in the existing CLI
-host and provide authenticated `/studio/*` deep-link fallback after access
-middleware. Node is build-time only. The backend currently serves its explicit
-missing-assets page; this task does not claim packaged-host integration.
+feature/Monaco chunks. `npm run build` includes Monaco's MIT/third-party notices
+and the Codicons CC BY 4.0 font attribution/MIT code notices alongside the font
+OFL notices. `./scripts/build-studio.sh` runs
+`npm ci`, builds and checks license outputs. The CLI project consumes this directory
+on build/publish; Node is build-time only. Run `./scripts/verify-studio-package.sh`
+from the repository root to publish into a temporary directory and verify the
+actual CLI's authenticated routes, workers/fonts, notices and deep links with an
+empty runtime PATH. The directory is removed on completion.
 
-The real dev UI was exercised under a narrow CSP: scripts/workers same-origin,
-styles same-origin plus `unsafe-inline` for Angular/Monaco style elements and
-layout attributes, `base-uri 'self'`, no `unsafe-eval`. The dev CSP permits the
-loopback HMR WebSocket. The packaged host currently has `base-uri 'none'` and no
-style/worker directives: Task 10 must make the narrow equivalent style/worker/base
-integration and verify the real packaged host. Do not disable CSP or enable
-`unsafe-eval`; production does not need the HMR WebSocket allowance.
+Production CSP permits scripts/workers and connections only from the same origin,
+styles from the same origin plus `unsafe-inline` for Angular/Monaco style elements
+and layout attributes, and `base-uri 'self'`. It has no `unsafe-eval` or HMR allowance.
+The three existing browser journeys now use compiled assets through the test-only
+fixture's real `UseStudioFrontend` and production access/CSP pipeline. The development
+server separately permits its loopback HMR WebSocket. No extra browser matrix is used.
 
 `RunWorkspace` includes a direct Cytoscape **3.34.4** adapter and coordinated
 executor/invocation/span selection. Native workflow topology retains actual IDs,

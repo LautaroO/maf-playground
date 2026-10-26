@@ -24,4 +24,11 @@
     <ProjectReference Include="../MafPlayground.Retrieval.Postgres/MafPlayground.Retrieval.Postgres.csproj" />
   </ItemGroup>
 
+  <!-- Build-time input only. No npm/Node dependency is introduced at runtime. -->
+  <ItemGroup>
+    <Content Include="../MafPlayground.Studio.Web/dist/studio/browser/**/*"
+             Link="studio/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

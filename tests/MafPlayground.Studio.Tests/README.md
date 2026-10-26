@@ -64,3 +64,7 @@ suite checks HTTP parity, missing/evicted baselines and access without model cal
 Privacy regressions also distinguish benign DateTimeOffset escaping and embedded
 JSON formatting from real redaction while preserving nested credential removal
 and the existing allocation/depth/payload bounds.
+
+This dedicated fast suite is part of `scripts/verify.sh`. Static packaging and
+configuration/startup behavior are tested through the actual CLI in the owning
+Studio integration project; frontend unit/component checks remain separate.

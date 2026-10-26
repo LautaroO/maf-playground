@@ -484,3 +484,29 @@ machine-specific trust settings in user configuration, outside this repository.
   jurisdiction-specific policy is required.
 - The Aspire Dashboard stores telemetry in memory and local anonymous access is
   enabled by default for convenience.
+
+## Local Agent Studio
+
+Studio is the local Angular investigation UI, HTTP/SSE API and MCP server hosted
+by the existing CLI process. It discovers registered agents/workflows, input
+contracts and profiles dynamically. Inspect retained runs, native workflow graphs,
+observed agent calls, tool/model payloads, cancellation and same-host comparisons.
+
+```sh
+./scripts/build-studio.sh
+dotnet run --project src/MafPlayground.CLI -- studio --no-open
+```
+
+Open the printed `/studio/login` URL and enter the one-time console code. A model
+is optional for discovery; configure `AI_MODEL=provider:model` or pass `--model`
+to execute. Build-time Node/npm are not needed by the compiled or published host.
+Without assets, Studio prints build instructions and still supports authenticated
+API/MCP access. See [Studio operations](src/MafPlayground.Studio/README.md#build-publish-and-start),
+[frontend development](src/MafPlayground.Studio.Web/README.md), and
+[verification](tests/README.md#studio-verification).
+
+The independent ASP.NET Core example remains a separate host. Its explicit Basic
+and Translation registration preserves its original behavior; it does not host or
+reference Studio. All Studio history is bounded and in memory. Restarting clears
+runs, sessions, tokens and comparisons; no replay, remote-process attachment or
+retrieval migration occurs.

@@ -370,8 +370,13 @@ Run `dotnet run --project src/MafPlayground.CLI -- studio --no-open`. Studio
 uses `http://localhost:5051` by default and prints a one-time access code for
 `/studio/login`. `--model` falls back to `AI_MODEL`; disabled entities can be
 inspected without a model. `STUDIO__ENABLERETRIEVAL=true` opts into configured
-retrieval for grounded entities. The initial build provides authenticated HTTP/SSE
-contracts and an explicit missing-assets page.
+retrieval for grounded entities. Run `./scripts/build-studio.sh` before building
+or publishing the CLI to include the Angular UI. The CLI copies local static
+assets into its `studio/` directory; a published host needs no Node runtime.
+Missing assets produce actionable instructions and API/MCP-only operation remains
+available with `--no-open`. For development, run
+`npm --prefix src/MafPlayground.Studio.Web start` separately; its strict loopback proxy targets
+port 5051 by default. See [build/publish operations](../../src/MafPlayground.Studio/README.md#build-publish-and-start).
 
 Export schemas offline with `studio --export-contracts /tmp/studio-contracts.json`.
 See the [Studio service documentation](../../src/MafPlayground.Studio/README.md#local-http-host)
@@ -383,3 +388,27 @@ browser cookies do not authenticate MCP. See [Studio MCP access and manual
 Codex/Claude configuration](../../src/MafPlayground.Studio/README.md#mcp-access-to-shared-runs).
 HTTP and MCP session reset both return a new explicit session ID; the original
 handle remains valid with cleared native history.
+
+Profiles use `Studio:Profiles` entries with `Id`, optional `Model=provider:model`,
+`GuardProfile` and `ModelCallTimeout`; browser requests select configured IDs.
+`Studio:Limits` defaults to four concurrent runs, 16 queued, 100 completed,
+128 MiB capture, 2 MiB per payload and 2048 events per run. History, sessions,
+access tokens and comparisons last for one host lifetime. Eviction and missing
+correlation/metrics are explicit; there is no replay, external attachment or
+persisted Studio history. Run again requires reviewing sanitized input and creates
+new work. Local payload capture is independent of external OTLP sensitive-data
+export, which remains disabled by default.
+
+An assistant can investigate a retained branch using recorded executor/invocation
+IDs, or discover a schema and launch baseline/candidate cases under two configured
+profiles, then call `studio_compare_runs`. Comparisons report observed structural
+and metric differences, not semantic quality or causal equivalence. See [example
+requests](../../src/MafPlayground.Studio/README.md#investigating-with-an-assistant).
+Codex/Claude setup is manual and uses a Studio-specific bearer environment variable,
+never a provider key; official [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp)
+and [Claude MCP](https://code.claude.com/docs/en/mcp) explain their client settings.
+
+After changing this manual or the generated CLI reference, explicitly re-ingest
+the changed documents using the repository-help procedure above if your index
+should include the new instructions. Documentation generation/build does not
+perform ingestion, re-indexing or a retrieval-storage migration.

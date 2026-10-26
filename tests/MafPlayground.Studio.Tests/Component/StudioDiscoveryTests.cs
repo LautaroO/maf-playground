@@ -31,7 +31,7 @@ public sealed class StudioDiscoveryTests
         Assert.True(Assert.Single(entities, entity => entity.Id == "translation-workflow").SupportsNativeWorkflow);
         Assert.DoesNotContain(typeof(StudioCatalog).Assembly.GetReferencedAssemblies(), assembly =>
             assembly.Name!.Contains("Samples", StringComparison.Ordinal) ||
-            assembly.Name.Contains("Providers", StringComparison.Ordinal));
+            assembly.Name.StartsWith("MafPlayground.Providers.", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -1,0 +1,14 @@
+Visual Studio Code Codicons
+Copyright (c) Microsoft Corporation.
+https://github.com/microsoft/vscode-codicons
+
+Codicon font/icon artwork is licensed under Creative Commons Attribution 4.0
+International: https://creativecommons.org/licenses/by/4.0/
+The accompanying code is licensed under MIT.
+See Codicons-CC-BY-4.0.txt and Codicons-MIT.txt in this directory.
+
+The font is distributed as bundled by monaco-editor 0.57.0. MafPlayground does
+not modify the glyphs; the production bundler only fingerprints the asset filename.
+License text source (retrieved 2026-10-26):
+https://github.com/microsoft/vscode-codicons/blob/main/LICENSE
+https://github.com/microsoft/vscode-codicons/blob/main/LICENSE-CODE

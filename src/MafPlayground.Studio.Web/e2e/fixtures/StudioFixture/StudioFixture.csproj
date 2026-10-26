@@ -4,4 +4,7 @@
     <ProjectReference Include="../../../../MafPlayground.Studio/MafPlayground.Studio.csproj" />
     <ProjectReference Include="../../../../MafPlayground.AI.Samples/MafPlayground.AI.Samples.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../../dist/studio/browser/**/*" Link="studio/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

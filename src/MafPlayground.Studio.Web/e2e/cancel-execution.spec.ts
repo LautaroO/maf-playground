@@ -7,6 +7,8 @@ test('cancels a running provider attempt and completes a fresh execution', async
   await runInput(page, { message: 'fixture-wait' });
   await expect(page.locator('.run-heading studio-status')).toContainText('Running');
   await page.screenshot({ path: testInfo.outputPath('running-empty-1024.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: testInfo.outputPath('running-1440.png'), fullPage: true });
   const runId = page.url().split('/').at(-1)!;
   await expect
     .poll(async () => {
@@ -20,7 +22,14 @@ test('cancels a running provider attempt and completes a fresh execution', async
     .toBe(true);
   await page.getByRole('button', { name: 'Cancel run', exact: true }).click();
   await expect(page.locator('.run-heading studio-status')).toContainText('Cancelled');
+  await page.setViewportSize({ width: 1024, height: 768 });
   await page.screenshot({ path: testInfo.outputPath('cancelled-1024.png'), fullPage: true });
+  await openEntity(page, 'basic-agent');
+  await runInput(page, { message: 'fixture-fail' });
+  await expect(page.locator('.run-heading studio-status')).toContainText('Failed');
+  await page.screenshot({ path: testInfo.outputPath('failed-1024.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: testInfo.outputPath('failed-1440.png'), fullPage: true });
   await openEntity(page, 'basic-agent');
   await runInput(page, { message: 'fresh-after-cancel' });
   await expect(page.locator('.run-heading studio-status')).toContainText('Completed');
