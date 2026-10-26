@@ -70,6 +70,19 @@ import { PayloadViewer } from './payload-viewer.component';
           }
         }
       }
+      @if (invocationSpans().length) {
+        <h3>Captured spans</h3>
+        <p class="meta">Select a span to inspect metadata and load its captured content.</p>
+        @for (item of invocationSpans(); track item.spanId) {
+          <button
+            class="button span-link"
+            data-inspect-span
+            (click)="store.selectSpan(item.spanId)"
+          >
+            {{ item.name }} · {{ item.spanId }}
+          </button>
+        }
+      }
       @if (relatedEvents().length) {
         <h3>Captured events</h3>
         <label class="meta"
@@ -159,6 +172,14 @@ import { PayloadViewer } from './payload-viewer.component';
       border: 1px solid var(--border);
       border-radius: 4px;
     }
+    .span-link {
+      white-space: normal;
+      display: block;
+      width: 100%;
+      margin: 8px 0;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
     .event-list {
       max-height: 420px;
       overflow: auto;
@@ -193,16 +214,26 @@ export class SpanInspector {
       .invocations()
       .filter((x) => x.executorId === this.store.inspectionSelection().executorId),
   );
+  readonly invocationSpans = computed(() => {
+    const selected = this.store.inspectionSelection();
+    return selected.invocationId && !selected.spanId
+      ? this.store.spans().filter((span) => span.invocationId === selected.invocationId)
+      : [];
+  });
   readonly relatedEvents = computed(() => {
     const selected = this.store.inspectionSelection();
+    // Span bodies include nested payload Values. Keep them out of eager JSON/search;
+    // invocationSpans exposes metadata-only links to the existing lazy span inspector.
     return this.store
       .selectedEvents()
-      .filter((x) =>
-        selected.spanId
-          ? x.spanId === selected.spanId && x.kind !== 'span'
-          : selected.invocationId
-            ? x.invocationId === selected.invocationId
-            : false,
+      .filter(
+        (x) =>
+          x.kind !== 'span' &&
+          (selected.spanId
+            ? x.spanId === selected.spanId
+            : selected.invocationId
+              ? x.invocationId === selected.invocationId
+              : false),
       );
   });
   readonly filteredEvents = computed(() =>
