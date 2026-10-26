@@ -30,7 +30,7 @@ internal sealed class StudioExecutionFixture : IAsyncDisposable
         services.AddSingleton<IStudioEventSink>(Events);
         services.AddStudioCatalog().AddStudioRuns();
         configure?.Invoke(services);
-        Provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        Provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
     }
     internal async Task<StudioEntityExecutionResult> RunAsync(object input, string entity = "basic-agent", string profile = "cli-default", string? session = null, CancellationToken token = default)
     {

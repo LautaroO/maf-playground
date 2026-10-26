@@ -20,7 +20,13 @@ and `IHelpCapabilityCatalog`. Readiness callbacks report missing host dependenci
 without constructing agents or calling models. Repository-specific Help
 instructions and the command catalog remain in the CLI.
 
-Default CLI/DevUI source factories preserve the existing host-owned singleton
-agents. Typed profile runs use scope-owned clients and fresh native workflow
-executors. Translation registers its own classifier for accepted, partially
-rejected, and fully rejected branch results.
+Typed sample registration installs options, wrappers and profile factories without
+requiring legacy global model clients or grounded singleton services. Default
+CLI/DevUI source factories preserve the existing host-owned singleton agents;
+hosts explicitly register these with `AddBasicRagAgent` and `AddHelpAgent`.
+An unconfigured default source reports that missing registration when accessed;
+configured profile factories remain available independently of default sources.
+The ASP.NET example explicitly registers only Basic and Translation. Typed profile
+runs use scope-owned clients and fresh native workflow executors. Translation
+registers its own classifier for accepted, partially rejected, and fully rejected
+branch results.

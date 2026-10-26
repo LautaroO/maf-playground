@@ -16,6 +16,7 @@ using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Runtime;
 using MafPlayground.AI.Workflows.Translation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace MafPlayground.AI;
 
@@ -75,11 +76,12 @@ public static class SampleAIServiceExtensions
 
     public static AIBuilder AddBasicRagAgentEntity(this AIBuilder builder)
     {
-        builder.Services.AddBasicRagAgent();
+        builder.Services.AddBasicRagAgentOptions();
+        builder.Services.TryAddSingleton<CitationValidator>();
         return builder.AddAgent<BasicRagAgentEntity, BasicRagAgentRequest, BasicRagAgentResponse>("basic-rag-agent", entity => entity
             .WithDescription("A grounded assistant answering from the configured knowledge base.")
             .WithInputExample(new BasicRagAgentRequest("How long does a password-reset link remain valid?"))
-            .WithMafAgentSource((services, _) => new SampleAgentSource(() => services.GetRequiredService<BasicRagAgent>().Agent))
+            .WithMafAgentSource((services, _) => new SampleAgentSource(() => BasicRagAgentEntity.GetDefaultAgent(services.GetService<BasicRagAgent>())))
             .WithProfileFactory<BasicRagAgentEntity>((services, context) => new(() => GroundedAgentProfiles.CreateRag(services, context), services.GetServices<IAgentSessionStore>()))
             .WithAvailability(services => GroundedAvailability(services, help: false))
             .WithStreamingEvents().EnableSessions().RequireAuthorization("AI.BasicRag"));
@@ -87,11 +89,12 @@ public static class SampleAIServiceExtensions
 
     public static AIBuilder AddHelpAgentEntity(this AIBuilder builder)
     {
-        builder.Services.AddHelpAgentServices();
+        builder.Services.AddHelpAgentOptions();
+        builder.Services.TryAddSingleton<CitationValidator>();
         return builder.AddAgent<HelpAgentEntity, HelpAgentRequest, HelpAgentResponse>("repository-help-agent", entity => entity
             .WithDescription("A grounded assistant for host-provided documentation and capabilities.")
             .WithInputExample(new HelpAgentRequest("What can this application do?"))
-            .WithMafAgentSource((services, _) => new SampleAgentSource(() => services.GetRequiredService<HelpAgent>().Agent))
+            .WithMafAgentSource((services, _) => new SampleAgentSource(() => HelpAgentEntity.GetDefaultAgent(services.GetService<HelpAgent>())))
             .WithProfileFactory<HelpAgentEntity>((services, context) => new(() => GroundedAgentProfiles.CreateHelp(services, context), services.GetServices<IAgentSessionStore>()))
             .WithAvailability(services => GroundedAvailability(services, help: true))
             .WithStreamingEvents().EnableSessions().RequireAuthorization("AI.Help"));

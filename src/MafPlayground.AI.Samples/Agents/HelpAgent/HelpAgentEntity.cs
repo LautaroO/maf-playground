@@ -12,14 +12,17 @@ public sealed class HelpAgentEntity : IAIEntity<HelpAgentRequest, HelpAgentRespo
 {
     private readonly Lazy<AIAgent> agent;
     private readonly IAgentSessionStore? sessions;
-    public HelpAgentEntity(HelpAgent source, IEnumerable<IAgentSessionStore> sessions)
-        : this(() => source.Agent, sessions) { }
+    public HelpAgentEntity(IEnumerable<IAgentSessionStore> sessions, HelpAgent? source = null)
+        : this(() => GetDefaultAgent(source), sessions) { }
 
     internal HelpAgentEntity(Func<AIAgent> factory, IEnumerable<IAgentSessionStore> sessions)
     {
         agent = new(factory);
         this.sessions = sessions.SingleOrDefault();
     }
+
+    internal static AIAgent GetDefaultAgent(HelpAgent? source) => source?.Agent
+        ?? throw new InvalidOperationException("The default HelpAgent source is not configured. Register AddHelpAgent in the host or use a bound execution profile.");
 
     public AIAgent Agent => agent.Value;
 

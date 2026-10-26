@@ -13,26 +13,7 @@ public static class BasicRagAgentServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddOptions<BasicRagAgentOptions>()
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.KnowledgeBase),
-                "Basic RAG agent requires a knowledge base.")
-            .Validate(
-                options => options.Retrieval.TopK > 0,
-                "Basic RAG agent retrieval TopK must be greater than zero.")
-            .Validate(
-                options => options.Retrieval.MinimumSimilarity is >= 0 and <= 1,
-                "Basic RAG agent retrieval MinimumSimilarity must be between zero and one.")
-            .Validate(
-                options => options.Retrieval.MaximumAdditionalSearches >= 0,
-                "Basic RAG agent retrieval MaximumAdditionalSearches cannot be negative.")
-            .Validate(
-                options => options.Retrieval.MaximumQueryCharacters > 0,
-                "Basic RAG agent retrieval MaximumQueryCharacters must be greater than zero.")
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.GuardProfile),
-                "Basic RAG agent requires a guard profile.")
-            .ValidateOnStart();
+        services.AddBasicRagAgentOptions();
         services.TryAddSingleton<RagInvocationContextAccessor>();
         services.TryAddSingleton<RagContextProvider>(provider =>
         {
@@ -60,6 +41,31 @@ public static class BasicRagAgentServiceCollectionExtensions
         services.TryAddSingleton<CitationValidator>();
         services.TryAddSingleton<IRagAnswerRepairService, ChatClientRagAnswerRepairService>();
         services.TryAddSingleton<BasicRagAgent>();
+        return services;
+    }
+
+    internal static IServiceCollection AddBasicRagAgentOptions(this IServiceCollection services)
+    {
+        services.AddOptions<BasicRagAgentOptions>()
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.KnowledgeBase),
+                "Basic RAG agent requires a knowledge base.")
+            .Validate(
+                options => options.Retrieval.TopK > 0,
+                "Basic RAG agent retrieval TopK must be greater than zero.")
+            .Validate(
+                options => options.Retrieval.MinimumSimilarity is >= 0 and <= 1,
+                "Basic RAG agent retrieval MinimumSimilarity must be between zero and one.")
+            .Validate(
+                options => options.Retrieval.MaximumAdditionalSearches >= 0,
+                "Basic RAG agent retrieval MaximumAdditionalSearches cannot be negative.")
+            .Validate(
+                options => options.Retrieval.MaximumQueryCharacters > 0,
+                "Basic RAG agent retrieval MaximumQueryCharacters must be greater than zero.")
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.GuardProfile),
+                "Basic RAG agent requires a guard profile.")
+            .ValidateOnStart();
         return services;
     }
 }

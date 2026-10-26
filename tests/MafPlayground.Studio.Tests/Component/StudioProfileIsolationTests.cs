@@ -42,13 +42,35 @@ public sealed class StudioProfileIsolationTests
     [Fact]
     public async Task NativeDefaultSources_RemainUsableAtRootForDevUI()
     {
-        await using StudioExecutionFixture fixture = Create(new(), new());
+        await using StudioExecutionFixture fixture = Create(new(), new(), services => services
+            .AddSingleton<IChatClient>(new StudioExecutionFixture.RecordingClient())
+            .AddBasicRagAgent()
+            .AddHelpAgent(new("host-help", "Host help", "Explain this host using its capabilities.")));
         await using var scope = fixture.Provider.CreateAsyncScope();
         foreach (string id in new[] { "basic-rag-agent", "repository-help-agent" })
         {
             var registration = scope.ServiceProvider.GetRequiredService<IAIEntityInspection>().GetRegistration(id);
             Assert.NotNull(registration.AgentSourceFactory!(fixture.Provider, new("host-default")).Agent);
         }
+    }
+
+    [Theory]
+    [InlineData("basic-rag-agent", "AddBasicRagAgent")]
+    [InlineData("repository-help-agent", "AddHelpAgent")]
+    public async Task UnboundGroundedSources_ReportMissingHostRegistrationExplicitly(string id, string registration)
+    {
+        ProfileProvider clients = new();
+        await using StudioExecutionFixture fixture = Create(clients, new());
+        Assert.Null(fixture.Provider.GetService<IChatClient>());
+        await using var scope = fixture.Provider.CreateAsyncScope();
+        var inspection = scope.ServiceProvider.GetRequiredService<IAIEntityInspection>();
+        var source = inspection.GetAgentSource(id, new("host-default"));
+        InvalidOperationException nativeError = Assert.Throws<InvalidOperationException>(() => source!.Agent);
+        Assert.Contains(registration, nativeError.Message);
+        InvalidOperationException typedError = await Assert.ThrowsAsync<InvalidOperationException>(() => scope.ServiceProvider.GetRequiredService<IAIEntityInvoker>()
+            .InvokeAsync(id, JsonSerializer.SerializeToElement(new { message = "hello" }), AIExecutionContext.Create(new("tester")), default).AsTask());
+        Assert.Equal(nativeError.Message, typedError.Message);
+        Assert.Empty(clients.Created);
     }
 
     [Theory]
@@ -111,6 +133,7 @@ public sealed class StudioProfileIsolationTests
             };
         }
         await using StudioExecutionFixture fixture = Create(clients, search);
+        Assert.Null(fixture.Provider.GetService<IChatClient>());
         var results = await Task.WhenAll(fixture.RunAsync(new BasicRagAgentRequest("question a"), "basic-rag-agent", "a"),
             fixture.RunAsync(new BasicRagAgentRequest("question b"), "basic-rag-agent", "b"));
         Assert.Contains("Answer a", results[0].Output.GetProperty("text").GetString());
@@ -178,17 +201,17 @@ public sealed class StudioProfileIsolationTests
         Assert.Equal(2, clients.Clients["a"].Requests.Count);
     }
 
-    private static StudioExecutionFixture Create(ProfileProvider clients, SearchFactory search) => new(services =>
+    private static StudioExecutionFixture Create(ProfileProvider clients, SearchFactory search, Action<IServiceCollection>? configure = null) => new(services =>
     {
         services.RemoveAll<IChatClientProvider>();
         services.AddSingleton<IChatClientProvider>(clients);
-        services.AddSingleton<IChatClient>(clients.Clients["a"]);
         services.AddSingleton(new StudioExecutionProfile("a", AIModelSelection.Parse("fake:a")));
         services.AddSingleton(new StudioExecutionProfile("b", AIModelSelection.Parse("fake:b")));
         services.AddSingleton<IKnowledgeSearchFactory>(search);
         services.Configure<BasicRagAgentOptions>(options => options.KnowledgeBase = "separate-kb");
         services.AddSingleton(new HelpAgentDefinition("host-help", "Host help", "Explain this host using its capabilities."));
         services.AddSingleton<IHelpCapabilityCatalog>(new HelpCatalog());
+        configure?.Invoke(services);
     });
 
     private sealed class ProfileProvider : IChatClientProvider

@@ -1,9 +1,12 @@
 using System.Text.Json;
 using MafPlayground.AI;
 using MafPlayground.AI.Abstractions;
+using MafPlayground.AI.Agents.BasicRagAgent;
+using MafPlayground.AI.Agents.HelpAgent;
 using MafPlayground.AI.Runtime.Registry;
 using MafPlayground.Studio.Catalog;
 using MafPlayground.Studio.Tests.Fixtures;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -29,6 +32,40 @@ public sealed class StudioDiscoveryTests
         Assert.DoesNotContain(typeof(StudioCatalog).Assembly.GetReferencedAssemblies(), assembly =>
             assembly.Name!.Contains("Samples", StringComparison.Ordinal) ||
             assembly.Name.Contains("Providers", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AllFourEntities_BuildWithValidationAndReportMissingGroundedDependencies()
+    {
+        await using StudioExecutionFixture fixture = new();
+        await using var scope = fixture.Provider.CreateAsyncScope();
+        var entities = await scope.ServiceProvider.GetRequiredService<IStudioCatalog>().ListAsync(default);
+        Assert.Equal(["basic-agent", "basic-rag-agent", "repository-help-agent", "translation-workflow"], entities.Select(entity => entity.Id));
+        Assert.True(Assert.Single(entities, entity => entity.Id == "basic-agent").IsAvailable);
+        Assert.True(Assert.Single(entities, entity => entity.Id == "translation-workflow").IsAvailable);
+        foreach (string id in new[] { "basic-rag-agent", "repository-help-agent" })
+        {
+            var entity = Assert.Single(entities, entity => entity.Id == id);
+            Assert.False(entity.IsAvailable);
+            Assert.Equal("Knowledge search is not configured.", entity.UnavailableReason);
+            InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.RunAsync(new { message = "hello" }, id));
+            Assert.Equal(entity.UnavailableReason, error.Message);
+        }
+        Assert.Empty(fixture.Client.Models);
+        Assert.Equal("hello world", (await fixture.RunAsync(new { message = "hello" })).Output.GetProperty("text").GetString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExplicitLegacySources_WithInvalidDependenciesStillFailProviderValidation(bool help)
+    {
+        AggregateException error = Assert.Throws<AggregateException>(() => new StudioExecutionFixture(services =>
+        {
+            if (help) services.AddHelpAgent(new("host-help", "Host help", "Explain this host."));
+            else services.AddBasicRagAgent();
+        }));
+        Assert.Contains(typeof(IChatClient).FullName!, error.Message);
     }
 
     [Fact]

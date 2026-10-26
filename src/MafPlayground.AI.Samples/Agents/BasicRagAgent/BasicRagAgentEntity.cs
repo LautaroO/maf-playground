@@ -12,14 +12,17 @@ public sealed class BasicRagAgentEntity : IAIEntity<BasicRagAgentRequest, BasicR
 {
     private readonly Lazy<AIAgent> agent;
     private readonly IAgentSessionStore? sessions;
-    public BasicRagAgentEntity(BasicRagAgent source, IEnumerable<IAgentSessionStore> sessions)
-        : this(() => source.Agent, sessions) { }
+    public BasicRagAgentEntity(IEnumerable<IAgentSessionStore> sessions, BasicRagAgent? source = null)
+        : this(() => GetDefaultAgent(source), sessions) { }
 
     internal BasicRagAgentEntity(Func<AIAgent> factory, IEnumerable<IAgentSessionStore> sessions)
     {
         agent = new(factory);
         this.sessions = sessions.SingleOrDefault();
     }
+
+    internal static AIAgent GetDefaultAgent(BasicRagAgent? source) => source?.Agent
+        ?? throw new InvalidOperationException("The default BasicRagAgent source is not configured. Register AddBasicRagAgent in the host or use a bound execution profile.");
 
     public AIAgent Agent => agent.Value;
 
