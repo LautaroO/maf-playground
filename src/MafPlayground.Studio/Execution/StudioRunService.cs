@@ -82,14 +82,11 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrWhiteSpace(runId);
-        StudioRunStore.RunState? run;
         lock (store.Gate)
         {
-            run = store.Find(runId);
-            if (run is null || !store.RequestCancellation(run)) return ValueTask.FromResult(false);
+            StudioRunStore.RunState? run = store.Find(runId);
+            return ValueTask.FromResult(run is not null && BeginCancellation(run));
         }
-        BeginCancellation(run);
-        return ValueTask.FromResult(true);
     }
 
     public ValueTask<StudioEventPage> ReadEventsAsync(string runId, long after, int limit, CancellationToken cancellationToken)
@@ -138,15 +135,12 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
     {
         using CancellationTokenSource grace = new(options.ShutdownGracePeriod, clock);
         using CancellationTokenSource cleanup = CancellationTokenSource.CreateLinkedTokenSource(grace.Token, cancellationToken);
-        StudioRunStore.RunState[] active;
         lock (store.Gate)
         {
             stopping = true;
             queue.Writer.TryComplete();
-            active = store.Active();
-            foreach (StudioRunStore.RunState run in active) store.RequestCancellation(run);
+            foreach (StudioRunStore.RunState run in store.Active()) BeginCancellation(run);
         }
-        foreach (StudioRunStore.RunState run in active) BeginCancellation(run);
         try
         {
             await workers.WaitAsync(cleanup.Token).ConfigureAwait(false);
@@ -164,25 +158,20 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
             string? error = null;
             using ITimer timeout = clock.CreateTimer(_ =>
             {
-                lock (store.Gate)
-                {
-                    if (run.IsTerminal) return;
-                    run.TimeoutRequested = true;
-                    store.RequestCancellation(run);
-                }
-                BeginCancellation(run);
+                BeginCancellation(run, timedOut: true);
             }, null, options.RunTimeout, Timeout.InfiniteTimeSpan);
             // Timeout, explicit cancellation, and shutdown converge on this job-owned source.
             CancellationToken executionToken = run.Cancellation.Token;
+            AsyncServiceScope? scope = null;
             try
             {
                 executionToken.ThrowIfCancellationRequested();
                 lock (store.Gate) store.Running(run);
-                await using AsyncServiceScope scope = scopes.CreateAsyncScope();
-                IStudioCatalog catalog = scope.ServiceProvider.GetRequiredService<IStudioCatalog>();
+                scope = scopes.CreateAsyncScope();
+                IStudioCatalog catalog = scope.Value.ServiceProvider.GetRequiredService<IStudioCatalog>();
                 StudioTopology topology = await catalog.GetTopologyAsync(run.Request.EntityId, run.Request.ProfileId, executionToken).ConfigureAwait(false);
                 lock (store.Gate) store.SetTopology(run, topology);
-                IStudioEntityExecutor executor = scope.ServiceProvider.GetRequiredService<IStudioEntityExecutor>();
+                IStudioEntityExecutor executor = scope.Value.ServiceProvider.GetRequiredService<IStudioEntityExecutor>();
                 JsonElement output = await executor.ExecuteAsync(run.Request,
                     new(run.Receipt.RunId, run.Request.EntityId, run.Request.ProfileId, run.Request.SessionId, run.Caller), executionToken).ConfigureAwait(false);
                 if (output.ValueKind == JsonValueKind.Undefined) throw new InvalidDataException("Executor returned no JSON value.");
@@ -204,16 +193,41 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
                 error = "execution_failed";
             }
             Task? cancellationWork;
-            lock (store.Gate) cancellationWork = run.CancellationWork;
+            lock (store.Gate)
+            {
+                // Closing cancellation admission and capturing its work are one transition.
+                // No callback can start once scoped resources begin disposal.
+                run.Finalizing = true;
+                cancellationWork = run.CancellationWork;
+                if (status is StudioRunStatus.Cancelled or StudioRunStatus.TimedOut)
+                    status = run.TimeoutRequested ? StudioRunStatus.TimedOut : StudioRunStatus.Cancelled;
+            }
             if (cancellationWork is not null) await cancellationWork.ConfigureAwait(false);
+            try
+            {
+                if (scope is { } executionScope) await executionScope.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                status = StudioRunStatus.Failed;
+                error = "execution_failed";
+            }
             lock (store.Gate) store.Finish(run, status, result, error);
         }
     }
 
     private StudioRunStore.RunState Required(string id) => store.Find(id) ?? throw new KeyNotFoundException("The run is unknown or evicted.");
-    private void BeginCancellation(StudioRunStore.RunState run)
+    private bool BeginCancellation(StudioRunStore.RunState run, bool timedOut = false)
     {
-        lock (store.Gate) run.CancellationWork ??= ObserveCancellationAsync(run);
+        lock (store.Gate)
+        {
+            if (run.IsTerminal || run.Finalizing) return false;
+            if (timedOut) run.TimeoutRequested = true;
+            store.RequestCancellation(run);
+            // Registration precedes release of the acceptance gate, including for shutdown.
+            run.CancellationWork ??= ObserveCancellationAsync(run);
+            return true;
+        }
     }
 
     private static async Task ObserveCancellationAsync(StudioRunStore.RunState run)

@@ -133,4 +133,50 @@ public sealed class StudioRunLifecycleTests
         await host.SubmitAsync("after-callback");
         (await host.NextAsync()).Complete();
     }
+
+    [Fact]
+    public async Task CancellationAtExecutorReturnKeepsScopeAndSessionUntilCallbacksFinish()
+    {
+        await using RunHarness host = await RunHarness.CreateAsync();
+        StudioRunReceipt receipt = await host.SubmitAsync("finalizing", "lease");
+        TestExecution job = await host.NextAsync();
+        using ManualResetEventSlim releaseCallback = new();
+        TaskCompletionSource callbackStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenRegistration registration = job.Token.Register(() =>
+        {
+            callbackStarted.TrySetResult();
+            releaseCallback.Wait(TimeSpan.FromSeconds(5));
+        });
+        Task<bool>? cancellation = null;
+        // The fake dispatches cancellation after it has produced the successful result,
+        // immediately before its inline continuation enters supervisor finalization.
+        job.BeforeReturn = () => cancellation = host.Service.CancelAsync(receipt.RunId, default).AsTask();
+        try
+        {
+            // A default-scheduler thread permits the fake's inline continuations;
+            // completion returns after the supervisor reaches its pending callback await.
+            await Task.Run(() => job.Complete());
+            Assert.NotNull(cancellation);
+            Assert.True(await cancellation);
+            await callbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.DoesNotContain(job.ScopeId, host.DisposingScopes);
+            Assert.False(await host.Service.CancelAsync(receipt.RunId, default));
+            Assert.False((await host.Service.GetAsync(receipt.RunId, default))!.IsTerminal);
+            await Assert.ThrowsAsync<StudioSessionBusyException>(() => host.SubmitAsync("overlap-finalizing", "lease"));
+            Task stop = host.Service.StopAsync(default);
+            host.Clock.Advance(TimeSpan.FromSeconds(10));
+            await stop.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False((await host.Service.GetAsync(receipt.RunId, default))!.IsTerminal);
+            Assert.DoesNotContain(job.ScopeId, host.DisposingScopes);
+        }
+        finally
+        {
+            releaseCallback.Set();
+        }
+        StudioRunSnapshot snapshot = await host.TerminalAsync(receipt.RunId);
+        Assert.Equal(StudioRunStatus.Completed, snapshot.Status);
+        Assert.True(snapshot.CancellationRequested);
+        Assert.Contains(job.ScopeId, host.DisposedScopes);
+        Assert.False(await host.Service.CancelAsync(receipt.RunId, default));
+    }
 }

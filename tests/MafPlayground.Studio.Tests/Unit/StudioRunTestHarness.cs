@@ -19,6 +19,7 @@ internal sealed class RunHarness(ServiceProvider provider, StudioRunService serv
     internal Task<StudioRunReceipt> SubmitAsync(string key, string? session = null) => service.StartAsync(Request(key, session), Caller, default).AsTask();
     internal Task<TestExecution> NextAsync() => executor.NextAsync();
     internal IReadOnlyCollection<string> DisposedScopes => executor.DisposedScopes.ToArray();
+    internal IReadOnlyCollection<string> DisposingScopes => executor.DisposingScopes.ToArray();
     internal void Record(string id, object data) => provider.GetRequiredService<IStudioEventSink>().Record(new(id, 0, clock.GetUtcNow(), "tool", "node", "invocation", "span", JsonSerializer.SerializeToElement(data)));
     internal static async Task<RunHarness> CreateAsync(Func<StudioOptions, StudioOptions>? configure = null)
     {
@@ -57,6 +58,7 @@ internal sealed class RunHarness(ServiceProvider provider, StudioRunService serv
         public ValueTask<JsonElement> ExecuteAsync(StudioRunRequest request, StudioExecutionContext context, CancellationToken cancellationToken) => executor.Execute(request, context, id, cancellationToken);
         public async ValueTask DisposeAsync()
         {
+            executor.DisposingScopes.Add(id);
             await Task.Yield();
             executor.DisposedScopes.Add(id);
         }
@@ -74,6 +76,7 @@ internal sealed class ControlledExecutor
     private int count;
     private volatile bool releasing;
     internal ConcurrentBag<string> DisposedScopes { get; } = [];
+    internal ConcurrentBag<string> DisposingScopes { get; } = [];
     internal int Count => Volatile.Read(ref count);
     internal async ValueTask<JsonElement> Execute(StudioRunRequest request, StudioExecutionContext context, string scope, CancellationToken token)
     {
@@ -83,7 +86,9 @@ internal sealed class ControlledExecutor
         Interlocked.Increment(ref count);
         if (releasing) job.Complete();
         started.Writer.TryWrite(job);
-        return await job.Completion.Task;
+        JsonElement result = await job.Completion.Task.ConfigureAwait(false);
+        job.BeforeReturn?.Invoke();
+        return result;
     }
     internal async Task<TestExecution> NextAsync() => await started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
     internal void Release()
@@ -94,7 +99,9 @@ internal sealed class ControlledExecutor
 }
 internal sealed record TestExecution(StudioRunRequest Request, StudioExecutionContext Context, string ScopeId, CancellationToken Token)
 {
-    internal TaskCompletionSource<JsonElement> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Inline completion lets tests deterministically observe the supervisor reaching finalization.
+    internal TaskCompletionSource<JsonElement> Completion { get; } = new();
+    internal Action? BeforeReturn { get; set; }
     internal void Complete(JsonElement? result = null) => Completion.TrySetResult(result ?? JsonSerializer.SerializeToElement(new { ok = true }));
     internal void Cancel() => Completion.TrySetCanceled(Token);
 }

@@ -33,8 +33,12 @@ MAF invocation adapter. The hosted singleton implements `IStudioRunService` and
 scopes. Submission cancellation only governs admission. Explicit cancellation,
 timeout and shutdown converge on a job-owned cancellation source; cancellation
 requested remains separate from terminal status until execution and scope cleanup
-finish. A successful transport leaves domain outcome `Unclassified` until an
-application classifier supplies stronger evidence.
+finish. Cancellation admission closes atomically when the executor returns; all
+accepted callback work finishes before scoped resources begin disposal.
+Cancellation requests during that final cleanup return false while the session
+lease remains held until terminal publication. A successful transport leaves
+domain outcome `Unclassified` until an application classifier supplies stronger
+evidence.
 
 `StudioOptions` defaults to four workers and a queue of 16 waiting jobs. This small
 burst buffer prevents unbounded pending input/scope accumulation while keeping

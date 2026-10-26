@@ -211,6 +211,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
         internal AICallerContext Caller { get; } = caller;
         internal CancellationTokenSource Cancellation { get; } = new();
         internal Task? CancellationWork { get; set; }
+        internal bool Finalizing { get; set; }
         internal bool TimeoutRequested { get; set; }
         internal StudioEventJournal Journal { get; } = new(journalCapacity);
         internal DateTimeOffset SubmittedAt { get; } = submittedAt;
