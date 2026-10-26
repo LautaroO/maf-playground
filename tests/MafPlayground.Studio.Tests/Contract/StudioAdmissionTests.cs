@@ -144,4 +144,79 @@ public sealed class StudioAdmissionTests
         var other = await StudioMcpContractTests.Call<StudioRunReceipt>(mcp, "studio_start_run", new() { ["request"] = request with { RequestId = "valid-mcp" } });
         Assert.Equal(StudioRunStatus.Completed, (await host.Terminal(other.RunId)).Status);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Property_converter_owns_representation_through_both_transports(bool mcpTransport)
+    {
+        await using var host = await ConverterHost();
+        var request = new StudioRunRequest("converted", "converted-stream", "cli-default", JsonDocument.Parse("""{"value":"aGVsbG8="}""").RootElement, null);
+        StudioRunReceipt receipt;
+        if (mcpTransport)
+        {
+            await using var mcp = await host.Connect();
+            receipt = await StudioMcpContractTests.Call<StudioRunReceipt>(mcp, "studio_start_run", new() { ["request"] = request });
+        }
+        else
+        {
+            var response = await host.Http.PostAsJsonAsync("/api/studio/v1/runs", request);
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            receipt = (await response.Content.ReadFromJsonAsync<StudioRunReceipt>())!;
+        }
+        var run = await host.Terminal(receipt.RunId);
+        Assert.Equal(StudioRunStatus.Completed, run.Status);
+        Assert.Equal(5, run.Result!.Value.GetInt32());
+        Assert.Equal(1, host.App.Services.GetRequiredService<ConvertedExecutionCount>().Value);
+        Assert.Empty(host.Model.Requests);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"value\":null}")]
+    [InlineData("{\"value\":\"null-result\"}")]
+    [InlineData("{\"value\":\"%%%\"}")]
+    public async Task Property_converter_retains_required_and_nonnullable_boundary_checks(string json)
+    {
+        await using var host = await ConverterHost();
+        var request = new StudioRunRequest("invalid-converted", "converted-stream", "cli-default", JsonDocument.Parse(json).RootElement, null);
+        Assert.Equal(HttpStatusCode.BadRequest, (await host.Http.PostAsJsonAsync("/api/studio/v1/runs", request)).StatusCode);
+        await using var mcp = await host.Connect();
+        var response = await mcp.CallToolAsync("studio_start_run", new Dictionary<string, object?> { ["request"] = request });
+        Assert.True(response.IsError);
+        Assert.Contains("invalid_request", JsonSerializer.Serialize(response));
+        Assert.Empty(await host.App.Services.GetRequiredService<IStudioRunService>().ListAsync(default));
+        Assert.Empty(await host.App.Services.GetRequiredService<StudioSessionService>().ListAsync(default));
+        Assert.Equal(0, host.App.Services.GetRequiredService<ConvertedExecutionCount>().Value);
+        Assert.Empty(host.Model.Requests);
+    }
+
+    private static Task<StudioTransportHost> ConverterHost() => StudioTransportHost.Create(configure: services =>
+    {
+        services.AddSingleton<ConvertedExecutionCount>();
+        services.AddAIRuntime(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build())
+            .AddAgent<ConvertedEntity, ConvertedInput, int>("converted-stream", entity => entity.WithDescription("Property converter contract").AllowAnonymousAccess());
+    });
+    public sealed record ConvertedInput([property: System.Text.Json.Serialization.JsonConverter(typeof(Base64StreamConverter))] Stream Value);
+    public sealed class ConvertedExecutionCount { public int Value; }
+    public sealed class ConvertedEntity(ConvertedExecutionCount executions) : IAIEntity<ConvertedInput, int>
+    {
+        public ValueTask<int> ExecuteAsync(ConvertedInput input, AIExecutionContext context, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref executions.Value);
+            using (input.Value) return ValueTask.FromResult(checked((int)input.Value.Length));
+        }
+    }
+    public sealed class Base64StreamConverter : System.Text.Json.Serialization.JsonConverter<Stream>
+    {
+        public override Stream Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            string? value = reader.GetString();
+            if (value == "null-result") return null!;
+            try { return new MemoryStream(Convert.FromBase64String(value!)); }
+            catch (FormatException exception) { throw new JsonException("Invalid base64 stream.", exception); }
+        }
+        public override void Write(Utf8JsonWriter writer, Stream value, JsonSerializerOptions options) =>
+            writer.WriteBase64StringValue(((MemoryStream)value).ToArray());
+    }
 }

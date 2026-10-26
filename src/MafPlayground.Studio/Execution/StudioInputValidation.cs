@@ -33,7 +33,14 @@ internal static class StudioInputValidation
             {
                 if (property.Get is null) continue;
                 var info = property.AttributeProvider is PropertyInfo member ? new NullabilityInfoContext().Create(member) : null;
-                Check(property.Get(value), Json.GetTypeInfo(property.PropertyType), info, seen, depth + 1);
+                object? item = property.Get(value);
+                if (property.CustomConverter is not null)
+                {
+                    // The property converter supersedes the type contract; only its boundary remains ours.
+                    if (item is null && !property.IsGetNullable) throw new JsonException();
+                    continue;
+                }
+                Check(item, Json.GetTypeInfo(property.PropertyType), info, seen, depth + 1);
             }
         }
         else if (contract.Kind == JsonTypeInfoKind.Dictionary && value is IEnumerable entries)
