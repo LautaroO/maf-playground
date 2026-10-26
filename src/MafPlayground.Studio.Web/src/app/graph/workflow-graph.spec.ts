@@ -49,9 +49,14 @@ describe('Generic workflow graph', () => {
     nodes[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect(document.activeElement).toBe(nodes[1]);
     nodes[1].click();
-    store.applyEvent({ ...event(1, 'executor_input'), executorId: 'a', invocationId: 'attempt-a' });
+    store.applyEvent({
+      ...event(1, 'executor_started'),
+      executorId: 'a',
+      invocationId: 'attempt-a',
+    });
     fixture.detectChanges();
     expect(store.inspectionSelection().executorId).toBe('a');
+    expect(nodes[1].textContent).toContain('Active');
     expect(fixture.nativeElement.textContent).toContain('No invocation captured');
     expect(
       updates

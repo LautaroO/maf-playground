@@ -62,7 +62,7 @@ public sealed class StudioCommand : ICliCommand
                 return 0;
             }
 
-            var access = new StudioAccessPolicy(options.Url);
+            var access = new StudioAccessPolicy(options.Url, ["basic", "translation", "basic-rag", "help"]);
             WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
             { ContentRootPath = AppContext.BaseDirectory, EnvironmentName = Environments.Development });
             string? selector = options.Model ?? builder.Configuration["AI_MODEL"];
@@ -75,6 +75,7 @@ public sealed class StudioCommand : ICliCommand
             builder.Services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()
                 .Configure<StudioOptions>((server, limits) => server.Limits.MaxRequestBodySize = (long)limits.MaxPayloadBytes + 4096);
             builder.Services.AddSingleton(access);
+            builder.Services.AddSingleton(await StudioSourceRevision.ReadAsync(Environment.CurrentDirectory, token));
             builder.Services.AddLocalUserContext();
             builder.Services.AddAIRuntime(builder.Configuration, AIStartupValidationMode.LocalInspection).AddMafPlaygroundSampleEntities();
             builder.Services.AddInMemoryAgentSessions();
@@ -89,6 +90,14 @@ public sealed class StudioCommand : ICliCommand
             builder.Services.AddConfiguredAIProviders(builder.Configuration);
             AddOptionalRetrieval(builder.Services, builder.Configuration);
             builder.Services.AddMafPlaygroundObservability(builder.Configuration);
+
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy("AI.Basic", p => p.RequireClaim("ai_permission", "basic"));
+                options.AddPolicy("AI.Translation", p => p.RequireClaim("ai_permission", "translation"));
+                options.AddPolicy("AI.BasicRag", p => p.RequireClaim("ai_permission", "basic-rag"));
+                options.AddPolicy("AI.Help", p => p.RequireClaim("ai_permission", "help"));
+            });
             builder.Services.AddStudio(builder.Configuration);
             await using WebApplication app = builder.Build();
             app.UseStudioAccess();

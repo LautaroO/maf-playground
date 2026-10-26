@@ -27,6 +27,13 @@ export type Profile = {
   guardProfile: string | null;
   modelCallTimeout: string | null;
 } | null;
+export type Errors = {
+  kind: string;
+  executorId: string | null;
+  invocationId: string | null;
+  state: number;
+  detail: string;
+}[];
 
 export interface StudioComparison {
   hostInstanceId: string;
@@ -41,6 +48,9 @@ export interface StudioComparison {
     journalHasGap: boolean;
     hasRedactions: boolean;
     metrics: Metrics;
+    errorCategory: string | null;
+    errors: Errors;
+    errorCoverageComplete: boolean;
   };
   candidate: {
     runId: string;
@@ -53,6 +63,9 @@ export interface StudioComparison {
     journalHasGap: boolean;
     hasRedactions: boolean;
     metrics: Metrics;
+    errorCategory: string | null;
+    errors: Errors;
+    errorCoverageComplete: boolean;
   };
   changes: {
     path: string;
@@ -108,6 +121,14 @@ export interface Metrics {
   costCoverage: number;
 }
 
+export interface StudioComparisonError {
+  kind: string;
+  executorId: string | null;
+  invocationId: string | null;
+  state: number;
+  detail: string;
+}
+
 export interface StudioComparisonMetrics {
   observedModelAttempts: number;
   inputTokens: number | null;
@@ -150,6 +171,15 @@ export interface StudioComparisonRun {
     outputTokenCoverage: number;
     costCoverage: number;
   };
+  errorCategory: string | null;
+  errors: {
+    kind: string;
+    executorId: string | null;
+    invocationId: string | null;
+    state: number;
+    detail: string;
+  }[];
+  errorCoverageComplete: boolean;
 }
 
 export interface StudioEntityDescriptor {
@@ -209,6 +239,10 @@ export interface StudioExecutionProfileSnapshot {
 
 export interface StudioInstance {
   hostInstanceId: string;
+  provenance: {
+    revision?: string | null;
+    dirty?: boolean | null;
+  };
 }
 
 export interface StudioInvocationMatch {
@@ -296,6 +330,10 @@ export interface StudioMcpPageOfStudioRunSnapshot {
       model: string | null;
       guardProfile: string | null;
       modelCallTimeout: string | null;
+    } | null;
+    provenance?: {
+      revision?: string | null;
+      dirty?: boolean | null;
     } | null;
     isTerminal?: boolean;
   }[];
@@ -431,6 +469,10 @@ export interface StudioRunSnapshot {
     guardProfile: string | null;
     modelCallTimeout: string | null;
   } | null;
+  provenance?: {
+    revision?: string | null;
+    dirty?: boolean | null;
+  } | null;
   isTerminal?: boolean;
 }
 
@@ -454,6 +496,11 @@ export interface StudioSession {
 export interface StudioSessionRequest {
   entityId: string;
   profileId: string;
+}
+
+export interface StudioSourceProvenance {
+  revision?: string | null;
+  dirty?: boolean | null;
 }
 
 export interface StudioSpan {

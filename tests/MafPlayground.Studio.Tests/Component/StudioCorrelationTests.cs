@@ -13,6 +13,35 @@ namespace MafPlayground.Studio.Tests.Component;
 public sealed class StudioCorrelationTests
 {
     [Fact]
+    public async Task Native_executor_guard_failure_records_failed_exit_without_model_work()
+    {
+        await using StudioExecutionFixture fixture = new(services => services.Configure<MafPlayground.AI.Guards.AIGuardOptions>(options =>
+            options.Profiles[MafPlayground.AI.Guards.GuardProfileNames.Default].Content.MaxInputCharacters = 1));
+        await Assert.ThrowsAnyAsync<Exception>(() => fixture.RunAsync(new { text = "Too long for guard", targetLanguages = new[] { "es" } }, "translation-workflow"));
+        var started = Assert.Single(fixture.Events.Items, x => x.Kind == "executor_started" && x.ExecutorId == "translation-input");
+        Assert.Contains(fixture.Events.Items, x => x.Kind == "executor_failed" && x.InvocationId == started.InvocationId);
+        Assert.DoesNotContain(fixture.Events.Items, x => x.Kind == "executor_completed" && x.InvocationId == started.InvocationId);
+        Assert.Empty(fixture.Client.Requests);
+    }
+
+    [Fact]
+    public async Task Native_workflow_cancellation_records_only_observed_invocation_termination()
+    {
+        await using StudioExecutionFixture fixture = new();
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Client.Reply = async (_, token) => { reached.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, token); return "unreachable"; };
+        using var cancellation = new CancellationTokenSource();
+        var execution = fixture.RunAsync(new { text = "blocked", targetLanguages = new[] { "es" } }, "translation-workflow", token: cancellation.Token);
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains(fixture.Events.Items, x => x.Kind == "executor_started" && x.ExecutorId == "translate-es");
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
+        var started = Assert.Single(fixture.Events.Items, x => x.Kind == "executor_started" && x.ExecutorId == "translate-es");
+        Assert.True(fixture.Events.Items.Any(x => x.Kind == "executor_cancelled" && x.InvocationId == started.InvocationId), JsonSerializer.Serialize(fixture.Events.Items.Where(x => x.InvocationId == started.InvocationId && (x.Kind.StartsWith("executor_", StringComparison.Ordinal) || x.Kind == "span")).Select(x => new { x.Kind, x.Data })));
+        Assert.DoesNotContain(fixture.Events.Items, x => x.Kind == "executor_cancelled" && x.ExecutorId == "validate-es");
+    }
+
+    [Fact]
     public async Task RepeatedAndParallelInvocations_PreserveIdentity_AndLateUncorrelatedSpans()
     {
         StudioExecutionFixture.EventCollector sink = new();
@@ -112,6 +141,9 @@ public sealed class StudioCorrelationTests
             : """{"translatedText":"Hola"}""");
         await fixture.RunAsync(new { text = "Hello", targetLanguages = new[] { "es", "fr" } }, "translation-workflow");
         Assert.Equal(4, fixture.Client.Requests.Count);
+        var started = fixture.Events.Items.Where(item => item.Kind == "executor_started").ToArray();
+        Assert.NotEmpty(started);
+        Assert.All(started, start => Assert.Contains(fixture.Events.Items, end => end.Kind == "executor_completed" && end.InvocationId == start.InvocationId && end.ExecutorId == start.ExecutorId));
         Assert.Contains(fixture.Events.Items, item => item.Kind == "executor_input" && item.Data.ToString().Contains("Hello", StringComparison.Ordinal));
         Assert.Contains(fixture.Events.Items, item => item.Kind == "validation_feedback" && item.Data.ToString().Contains("Hola", StringComparison.Ordinal));
         Assert.Contains(fixture.Events.Items, item => item.Kind == "executor_output");

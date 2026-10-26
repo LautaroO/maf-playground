@@ -10,7 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { StudioRunStore } from '../core/studio-run.store';
-import { GRAPH_DRIVER, graphElements, type GraphDriver } from './graph-adapter';
+import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from './graph-adapter';
 @Component({
   selector: 'studio-workflow-graph',
   template: `
@@ -32,8 +32,8 @@ import { GRAPH_DRIVER, graphElements, type GraphDriver } from './graph-adapter';
     </div>
     @if (topology()?.status === 0) {
       <p class="legend meta">
-        Solid borders: invocation captured · dashed edges: conditional structure. Edge traversal is
-        not inferred.
+        Labels and borders show observed lifecycle; retries remain distinct · dashed edges:
+        conditional structure. Edge traversal is not inferred.
       </p>
     } @else {
       <p class="notice">
@@ -63,6 +63,7 @@ import { GRAPH_DRIVER, graphElements, type GraphDriver } from './graph-adapter';
             (click)="store.selectExecutor(node.id)"
           >
             <strong>{{ node.label }}</strong
+            ><span class="meta">{{ state(node.id) }}</span
             ><code>{{ node.id }}</code
             ><span class="meta">{{
               count(node.id)
@@ -137,6 +138,9 @@ import { GRAPH_DRIVER, graphElements, type GraphDriver } from './graph-adapter';
 })
 export class WorkflowGraph implements AfterViewInit {
   readonly expanded = signal(true);
+  state(id: string) {
+    return invocationState(this.store.invocations().filter((x) => x.executorId === id));
+  }
   readonly store = inject(StudioRunStore);
   readonly topology = computed(() => this.store.selectedRun()?.topology);
   readonly factory = inject(GRAPH_DRIVER);

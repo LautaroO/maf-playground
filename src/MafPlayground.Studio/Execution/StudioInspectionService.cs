@@ -1,4 +1,6 @@
 using System.Text.Json;
+using MafPlayground.Studio.Http;
+using Microsoft.AspNetCore.Authorization;
 using MafPlayground.AI.Abstractions;
 using MafPlayground.AI.Runtime.Registry;
 using MafPlayground.Studio.Contracts;
@@ -7,7 +9,8 @@ namespace MafPlayground.Studio.Execution;
 
 /// <summary>Reusable transport preflight and retained-data inspection; never reconstructs evicted capture.</summary>
 public sealed class StudioInspectionService(IAIEntityInspection inspection, StudioExecutionProfileBinder binding,
-    StudioProfileCatalog profiles, IStudioRunService runs)
+    StudioProfileCatalog profiles, IStudioRunService runs, IAuthorizationService authorization,
+    IAuthorizationPolicyProvider policies, StudioAccessPolicy access)
 {
     public AIEntityRegistrationInfo ValidateEntity(string entityId, string profileId, bool requireAvailable)
     {
@@ -18,16 +21,28 @@ public sealed class StudioInspectionService(IAIEntityInspection inspection, Stud
         return registration;
     }
 
-    public void ValidateRun(StudioRunRequest request)
+    public async ValueTask AuthorizeAsync(AIEntityRegistrationInfo registration, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var descriptor = registration.Descriptor;
+        if (descriptor.AllowAnonymous) return;
+        if (descriptor.AuthorizationPolicy is not { } name || await policies.GetPolicyAsync(name).ConfigureAwait(false) is not { } policy ||
+            !(await authorization.AuthorizeAsync(access.Principal, resource: null, policy).ConfigureAwait(false)).Succeeded)
+            throw new StudioEntityForbiddenException();
+        token.ThrowIfCancellationRequested();
+    }
+
+    public async ValueTask ValidateRunAsync(StudioRunRequest request, CancellationToken token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.RequestId);
         if (request.RequestId.Length > 128 || request.RequestId.Any(char.IsControl)) throw new ArgumentException("Invalid request identity.");
         var registration = ValidateEntity(request.EntityId, request.ProfileId, true);
+        await AuthorizeAsync(registration, token).ConfigureAwait(false);
         if (request.SessionId is not null && !registration.Descriptor.SupportsSessions) throw new ArgumentException("Sessions are unsupported.");
         if (request.Input.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) throw new ArgumentException("Input is required.");
         try
         {
-            _ = request.Input.Deserialize(registration.Descriptor.InputType, AIJsonSerializerOptions.Default) ?? throw new JsonException();
+            StudioInputValidation.Validate(request.Input, registration.Descriptor.InputType);
         }
         catch (JsonException) { throw new ArgumentException("Input does not match the entity contract."); }
     }
@@ -69,3 +84,5 @@ public sealed class StudioInspectionService(IAIEntityInspection inspection, Stud
     }
 }
 public sealed class StudioEntityUnavailableException() : InvalidOperationException("The entity is unavailable for this profile.");
+
+public sealed class StudioEntityForbiddenException() : InvalidOperationException("Entity authorization denied.");

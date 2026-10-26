@@ -5,11 +5,12 @@ Exactly three Chromium journeys use the real Studio HTTP/auth/runtime pipeline:
 - `translation-investigation.spec.ts`: native parallel translation, deterministic
   missing-data validation, repair retry and partial result; real Cytoscape
   pan/zoom/canvas selection, shared timeline/inspector selection and lazy payloads.
-  Task 9 extends this journey with comparison.
+  Includes linked timeline filtering/reset and profile-variation comparison.
 - `agent-session.spec.ts`: the real date tool, native agent conversation continuity,
   session reset, and observed call hierarchy.
-- `cancel-execution.spec.ts`: a cancellation-aware pending model attempt, explicit
-  cancellation, then a deterministic failed case and a successful independent execution.
+- `cancel-execution.spec.ts`: a cooperatively blocked native translation workflow,
+  visible active executor, explicit cancellation and observed cancelled executor,
+  then a deterministic failed case and a successful fresh workflow execution.
 
 From the repository root:
 

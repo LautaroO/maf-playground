@@ -382,6 +382,14 @@ Export schemas offline with `studio --export-contracts /tmp/studio-contracts.jso
 See the [Studio service documentation](../../src/MafPlayground.Studio/README.md#local-http-host)
 for authentication, routes, profiles and retention limits.
 
+Executor selection filters the timeline; Reset timeline filters restores all
+retained spans. Operation, branch, status and relative-time controls narrow the
+view while unknown correlation remains visible. Run/unmatched events expose
+sanitized diagnostics, and comparisons include captured error differences.
+Browser capture has its own bounded retention with explicit incomplete evidence.
+Optional startup revision/dirty metadata is unknown outside a source checkout.
+See [admission and evidence limits](../../src/MafPlayground.Studio/README.md#admission-and-investigation-evidence).
+
 Studio also exposes the same run/session/catalog services through the official
 MCP Streamable HTTP endpoint `/mcp`. It requires the printed local bearer token;
 browser cookies do not authenticate MCP. See [Studio MCP access and manual

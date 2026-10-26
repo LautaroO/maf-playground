@@ -9,6 +9,14 @@ export interface GraphDriver {
   zoom(factor: number): void;
   destroy(): void;
 }
+export function invocationState(items: Invocation[]): string {
+  if (!items.length) return 'Unobserved';
+  if (items.some((x) => x.state === 'Active')) return 'Active';
+  if (items.some((x) => x.state === 'Failed')) return 'Failed';
+  if (items.some((x) => x.state === 'Cancelled')) return 'Cancelled';
+  if (items.every((x) => x.state === 'Completed')) return 'Completed';
+  return 'Unknown';
+}
 export function graphElements(
   topology: StudioTopology,
   invocations: Invocation[],
@@ -17,10 +25,14 @@ export function graphElements(
     data: {
       id: 'node:' + node.id,
       actualId: node.id,
-      label: node.label,
+      label:
+        node.label + '\n' + invocationState(invocations.filter((x) => x.executorId === node.id)),
       count: invocations.filter((x) => x.executorId === node.id).length,
     },
-    classes: invocations.some((x) => x.executorId === node.id) ? 'observed' : 'unobserved',
+    classes: invocations.some((x) => x.executorId === node.id)
+      ? 'observed ' +
+        invocationState(invocations.filter((x) => x.executorId === node.id)).toLowerCase()
+      : 'unobserved',
   }));
   for (const edge of topology.edges) {
     const id = 'edge:' + edge.id;
@@ -74,6 +86,10 @@ export function createGraphDriver(
         },
       },
       { selector: 'node.observed', style: { 'border-color': '#86d9b5' } },
+      { selector: 'node.active', style: { 'border-color': '#a7afff', 'border-width': 3 } },
+      { selector: 'node.failed', style: { 'border-color': '#f5a3a7' } },
+      { selector: 'node.cancelled', style: { 'border-color': '#edbf7b' } },
+      { selector: 'node.unknown', style: { 'border-color': '#98a4b6' } },
       { selector: 'node.unobserved', style: { 'border-style': 'dashed' } },
       {
         selector: 'node.junction',

@@ -133,3 +133,22 @@ describe('Captured inspection projections', () => {
     });
   });
 });
+
+it('projects explicit executor lifecycle without treating output as success', () => {
+  const items = [
+    observed(1, 'executor_started', 'a', 'first'),
+    observed(2, 'executor_completed', 'a', 'first'),
+    observed(3, 'executor_started', 'a', 'retry'),
+    observed(4, 'executor_failed', 'a', 'retry'),
+    observed(5, 'executor_started', 'b', 'parallel'),
+    observed(6, 'executor_cancelled', 'c', 'cancelled'),
+    observed(7, 'executor_output', 'd', 'unknown'),
+  ];
+  expect(projectInvocations(items).map((x) => x.state)).toEqual([
+    'Completed',
+    'Failed',
+    'Active',
+    'Cancelled',
+    'Output captured',
+  ]);
+});

@@ -490,3 +490,41 @@ Configured HTTP/MCP input limits and Kestrel's envelope limit use the same
 above `Int32.MaxValue - 4097` are rejected to keep envelope/probe arithmetic safe.
 The browser editor independently caps input/schema text at 2 MiB; increasing the
 server limit does not expand the browser editor's limit.
+
+
+### Admission and investigation evidence
+
+HTTP and MCP enforce the registered entity authorization policy before reserving
+runs or sessions. The CLI maps its authenticated `studio-local` principal to the
+four sample `ai_permission` grants; custom hosts must register their policies and
+explicit local grants. Unknown or denied policies fail closed. Anonymous entities
+retain their declared behavior. Typed preflight uses a Studio-only serializer
+clone with nullable/required constructor validation, preserving aliases, case
+insensitivity, enum converters, constructor defaults and custom converter contracts.
+
+The browser reconciles server eviction on refresh and run navigation. It retains
+at most 100 completed snapshots (including selection), active control records,
+4096 total journal events, and a conservative 16 MiB budget shared by snapshot and
+event bodies. Large or discarded capture is marked incomplete; selection and
+cancellation controls survive body pruning. Reopening discarded capture can only
+recover what the host still retains. Nested span payloads load explicitly by ID.
+
+Executor lifecycle comes from explicit invocation entry and method exit/error
+observations at the existing runtime seam. Output capture alone never proves
+success, and run cancellation never labels untaken nodes cancelled. Pinned MAF
+1.16 native executor spans can end `Unset` on cancellation, so those spans do not
+supply successful completion. Executors without lifecycle observations remain
+unknown. Repeated IDs remain separate invocations; graph updates preserve viewport.
+
+Executor/invocation selection filters the timeline by actual IDs, retaining
+uncorrelated evidence and ancestor context. Operation, branch/executor, status and
+relative start-time bounds narrow it further; Reset timeline filters clears all
+selection/filters. Run/unmatched events expose uncorrelated diagnostics lazily as
+text. Comparison includes error categories and up to 32 sanitized error previews
+per run, exact available invocation IDs, structural error differences and explicit
+unknown/incomplete coverage. Shared HTTP/MCP responses remain bounded to 96 KiB.
+
+At startup the CLI optionally records the checkout revision and dirty state with
+a bounded Git probe. Outside a source checkout, or without Git, both are unknown.
+This metadata appears in the instance/run contracts and run inspector; a dirty
+flag is not an exact source snapshot. No history or migration is introduced.

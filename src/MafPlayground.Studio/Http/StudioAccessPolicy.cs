@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using MafPlayground.AI.Abstractions;
@@ -18,7 +19,9 @@ public sealed class StudioAccessPolicy
     internal IReadOnlyList<string> Secrets => [BootstrapCode, BearerToken, cookie];
     public AICallerContext Caller { get; } = new("studio-local");
 
-    public StudioAccessPolicy(string url)
+    public ClaimsPrincipal Principal { get; }
+
+    public StudioAccessPolicy(string url, IEnumerable<string>? permissions = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? endpoint) || endpoint.Scheme != "http" ||
             endpoint.UserInfo.Length != 0 || endpoint.AbsolutePath != "/" || endpoint.Query.Length != 0 || endpoint.Fragment.Length != 0 ||
@@ -26,6 +29,9 @@ public sealed class StudioAccessPolicy
               IPAddress.TryParse(endpoint.IdnHost.Trim('[', ']'), out IPAddress? address) && IPAddress.IsLoopback(address)))
             throw new ArgumentException("Studio requires an HTTP loopback URL without credentials, path, query, or fragment.", nameof(url));
         Endpoint = endpoint;
+        Principal = new ClaimsPrincipal(new ClaimsIdentity(
+            new[] { new Claim(ClaimTypes.NameIdentifier, Caller.SubjectId) }
+                .Concat((permissions ?? []).Select(value => new Claim("ai_permission", value))), "StudioLocal"));
     }
 
     public bool IsLocalRequest(HttpContext context)

@@ -37,7 +37,22 @@ public static class AIExecutionObservation
             if (Activity.Current is { } activity && activity.Source.Name == AITelemetry.WorkflowSourceName &&
                 activity.GetTagItem("executor.id") is string nativeId && nativeId == executorId)
                 activity.SetCustomProperty(InvocationActivityProperty, Invocation.Value);
+            Record("executor_started", new { observation = "invocation_boundary" });
             Record("executor_input", input);
+        }
+        private bool terminated;
+        public void Complete()
+        {
+            if (terminated) return;
+            terminated = true;
+            Record("executor_completed", new { observation = "invocation_return" });
+        }
+        public void Failed(Exception exception)
+        {
+            if (terminated) return;
+            terminated = true;
+            Record(exception is OperationCanceledException ? "executor_cancelled" : "executor_failed",
+                new { observation = "invocation_exception", type = exception.GetType().Name, exception.Message });
         }
         public void Output(object? output) => Record("executor_output", output);
         public void Send(object? message, string? targetId = null) => Record("message_sent", new { targetId, message });

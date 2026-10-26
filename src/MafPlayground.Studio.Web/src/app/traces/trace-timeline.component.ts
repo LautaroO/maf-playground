@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { StudioRunStore } from '../core/studio-run.store';
 import { durationMs, timelineRows } from './inspection';
 @Component({
@@ -16,6 +16,54 @@ import { durationMs, timelineRows } from './inspection';
       Parent span IDs define hierarchy. Bars show captured start and duration; missing parents
       remain explicit.
     </p>
+    <div class="filters">
+      <label
+        >Operation<input
+          aria-label="Filter operation"
+          [value]="operation()"
+          (input)="operation.set($any($event.target).value)"
+      /></label>
+      <label
+        >Branch / executor<input
+          aria-label="Filter branch"
+          [value]="branch()"
+          (input)="branch.set($any($event.target).value)"
+      /></label>
+      <label
+        >Status<select
+          aria-label="Filter span status"
+          [value]="status()"
+          (change)="status.set($any($event.target).value)"
+        >
+          <option value="">All</option>
+          <option>Ok</option>
+          <option>Error</option>
+          <option>Unset</option>
+        </select></label
+      >
+      <label
+        >From (ms)<input
+          type="number"
+          min="0"
+          aria-label="Filter start time"
+          [value]="from()"
+          (input)="from.set($any($event.target).value)"
+      /></label>
+      <label
+        >To (ms)<input
+          type="number"
+          min="0"
+          aria-label="Filter end time"
+          [value]="to()"
+          (input)="to.set($any($event.target).value)"
+      /></label>
+      <button class="button" (click)="reset()">Reset timeline filters</button>
+    </div>
+    @if (store.inspectionSelection().executorId || store.inspectionSelection().invocationId) {
+      <p class="meta note">
+        Filtered by recorded selection. Uncorrelated evidence and parent context remain visible.
+      </p>
+    }
     <div class="timeline" aria-label="Captured span timeline">
       @for (row of rows(); track row.span.spanId) {
         <button
@@ -28,7 +76,9 @@ import { durationMs, timelineRows } from './inspection';
           <span class="trace-name" [style.padding-left.px]="Math.min(row.depth, 8) * 12"
             ><strong>{{ row.span.name }}</strong
             ><small
-              >{{ row.span.executorId || 'Unknown executor'
+              >{{
+                (contextIds().has(row.span.spanId) ? 'Parent context · ' : '') +
+                  (row.span.executorId || 'Unknown executor')
               }}{{ row.missingParent ? ' · parent not captured' : '' }}</small
             ></span
           ><span class="track"
@@ -56,6 +106,31 @@ import { durationMs, timelineRows } from './inspection';
     .note {
       padding: 0 16px;
       line-height: 1.6;
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 16px 12px;
+      align-items: end;
+    }
+    .filters label {
+      display: grid;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 70px;
+      flex: 1;
+    }
+    .filters input,
+    .filters select {
+      width: 100%;
+      min-width: 0;
+      background: var(--base);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px;
+      border-radius: 4px;
     }
     .timeline {
       max-height: 340px;
@@ -126,7 +201,60 @@ import { durationMs, timelineRows } from './inspection';
 })
 export class TraceTimeline {
   readonly store = inject(StudioRunStore);
-  readonly rows = computed(() => timelineRows(this.store.spans()));
+  readonly operation = signal('');
+  readonly branch = signal('');
+  readonly status = signal('');
+  readonly from = signal('');
+  readonly to = signal('');
+  reset() {
+    this.operation.set('');
+    this.branch.set('');
+    this.status.set('');
+    this.from.set('');
+    this.to.set('');
+    this.store.clearInspectionSelection();
+  }
+  readonly filtered = computed(() => {
+    const spans = this.store.spans();
+    const selected = this.store.inspectionSelection();
+    const origin = Math.min(...spans.map((x) => Date.parse(x.startedAt)));
+    const direct = spans.filter((span) => {
+      const correlated = selected.invocationId
+        ? span.invocationId === selected.invocationId
+        : !selected.executorId || span.executorId === selected.executorId;
+      const unknown = selected.invocationId ? !span.invocationId : !span.executorId;
+      const time = Date.parse(span.startedAt) - origin;
+      return (
+        (correlated || unknown) &&
+        span.name.toLowerCase().includes(this.operation().toLowerCase()) &&
+        (!span.executorId || span.executorId.toLowerCase().includes(this.branch().toLowerCase())) &&
+        (!this.status() || span.status === this.status()) &&
+        (!this.from() || time >= Number(this.from())) &&
+        (!this.to() || time <= Number(this.to()))
+      );
+    });
+    const ids = new Set(direct.map((x) => x.spanId));
+    const context = new Set<string>();
+    for (const span of direct) {
+      let child = span;
+      const visited = new Set<string>();
+      while (child.parentSpanId && !visited.has(child.parentSpanId)) {
+        visited.add(child.parentSpanId);
+        const parent = spans.find(
+          (x) => x.spanId === child.parentSpanId && x.traceId === child.traceId,
+        );
+        if (!parent) break;
+        if (!ids.has(parent.spanId)) {
+          ids.add(parent.spanId);
+          context.add(parent.spanId);
+        }
+        child = parent;
+      }
+    }
+    return { spans: spans.filter((x) => ids.has(x.spanId)), context };
+  });
+  readonly contextIds = computed(() => this.filtered().context);
+  readonly rows = computed(() => timelineRows(this.filtered().spans));
   readonly Math = Math;
   duration(value: string) {
     return durationMs(value).toFixed(1);

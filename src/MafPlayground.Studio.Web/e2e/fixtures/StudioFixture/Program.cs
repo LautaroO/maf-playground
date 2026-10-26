@@ -10,7 +10,7 @@ using Microsoft.Extensions.AI;
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Configuration["AI:Defaults:Model"] = "fixture:deterministic";
-var access = new StudioAccessPolicy("http://127.0.0.1:5053");
+var access = new StudioAccessPolicy("http://127.0.0.1:5053", ["basic", "translation", "basic-rag", "help"]);
 builder.WebHost.UseUrls(access.Endpoint.AbsoluteUri);
 builder.Services.AddSingleton(access);
 builder.Services.AddSingleton<IChatClientProvider, FixtureProvider>();
@@ -19,7 +19,16 @@ builder.Services.AddAIRuntime(builder.Configuration).AddMafPlaygroundSampleEntit
 builder.Services.AddInMemoryAgentSessions();
 builder.Configuration["Studio:Profiles:0:Id"] = "reviewed";
 builder.Configuration["Studio:Profiles:0:Model"] = "fixture:reviewed";
-builder.Services.AddStudio(builder.Configuration);
+
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy("AI.Basic", p => p.RequireClaim("ai_permission", "basic"));
+            options.AddPolicy("AI.Translation", p => p.RequireClaim("ai_permission", "translation"));
+            options.AddPolicy("AI.BasicRag", p => p.RequireClaim("ai_permission", "basic-rag"));
+            options.AddPolicy("AI.Help", p => p.RequireClaim("ai_permission", "help"));
+        });
+
+        builder.Services.AddStudio(builder.Configuration);
 await using var app = builder.Build();
 app.UseStudioAccess();
 app.UseStudioFrontend(Path.Combine(AppContext.BaseDirectory, "studio"));
@@ -42,7 +51,7 @@ internal sealed class FixtureClient(string model) : IChatClient
     ChatMessage[] input = messages.ToArray();
     string last = input.Last(message => message.Role == ChatRole.User).Text;
     if (last == "fixture-fail") throw new InvalidOperationException("Deterministic test failure.");
-    if (last == "fixture-wait") await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+    if (last.Contains("fixture-wait", StringComparison.Ordinal)) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
     if (last.StartsWith('{') && JsonDocument.Parse(last).RootElement.TryGetProperty("targetLanguage", out _)) return Translation(last);
     FunctionResultContent? tool = input.SelectMany(message => message.Contents).OfType<FunctionResultContent>().LastOrDefault();
     if (last == "fixture-time" && tool is null)

@@ -23,6 +23,8 @@ public static class StudioServiceExtensions
             .Select(item => item.Value!).Concat(configured.Secrets).Distinct(StringComparer.Ordinal).ToArray();
         services.TryAddSingleton(provider => configured with
         { Secrets = secrets.Concat(provider.GetRequiredService<StudioAccessPolicy>().Secrets).ToArray() });
+        services.TryAddSingleton(new Contracts.StudioSourceProvenance());
+        services.AddAuthorization();
         services.AddStudioCatalog().AddStudioRuns();
         services.AddStudioMcp();
         services.TryAddSingleton(_ => new StudioAccessPolicy(configuration["Studio:Url"] ?? "http://localhost:5051"));

@@ -362,3 +362,29 @@ it.each([
     expect(store.error()).toBe('');
   },
 );
+
+it('bounds same-host captures and prunes server-evicted maps during refresh', async () => {
+  const { store } = setup();
+  await store.bootstrap();
+  for (let n = 0; n < 105; n++) {
+    await store.selectRun('retained-' + n);
+    store.applyEvent({ ...event(1, 'Completed'), runId: 'retained-' + n });
+    store.applyEvent({ ...event(2), runId: 'retained-' + n });
+  }
+  expect(store.runs().length).toBeLessThanOrEqual(102);
+  await store.bootstrap();
+  expect(Object.keys(store.eventHistory()).length).toBeLessThanOrEqual(3);
+  expect(Object.keys(store.historyGaps()).length).toBeLessThanOrEqual(3);
+  expect(Object.keys((store as any).cursors).length).toBeLessThanOrEqual(3);
+});
+it('bounds total payload memory while preserving active cancellation and explicit lost evidence', async () => {
+  const { store } = setup();
+  await store.bootstrap();
+  await store.selectRun('run-a');
+  for (let n = 1; n <= 24; n++) store.applyEvent(event(n, 'payload', 'x'.repeat(1024 * 1024)));
+  expect(JSON.stringify(store.eventHistory()).length).toBeLessThan(16 * 1024 * 1024);
+  expect(store.historyGaps()['run-a']).toBe(true);
+  expect(store.selectedRun()?.runId).toBe('run-a');
+  await store.cancelSelected();
+  expect(store.selectedRun()?.cancellationRequested).toBe(true);
+});

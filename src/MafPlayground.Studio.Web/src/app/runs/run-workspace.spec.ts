@@ -77,6 +77,7 @@ for (const phase of ['snapshot', 'availability'] as const) {
                 requested.resolve();
                 return response.promise;
               }
+              if (url.endsWith('/runs')) return Response.json([source, snapshot('run-b')]);
               return Response.json(url.endsWith('/runs/run-a') ? source : snapshot('run-b'));
             },
           },

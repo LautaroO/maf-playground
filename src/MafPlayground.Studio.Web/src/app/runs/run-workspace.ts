@@ -60,6 +60,10 @@ import { StatusBadge } from '../shared/ui/status-badge';
           </button>
         </div>
       </header>
+      <p class="meta">
+        Startup revision · {{ run.provenance?.revision ?? 'Unknown' }} · dirty
+        {{ run.provenance?.dirty ?? 'Unknown' }}. Checkout metadata is not an exact source snapshot.
+      </p>
       <div class="metrics">
         <div>
           <span>Duration</span><strong>{{ duration() }}</strong>

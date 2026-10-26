@@ -77,6 +77,9 @@ export class StudioRunStore {
   readonly spans = computed(() => projectSpans(this.selectedEvents()));
   readonly invocations = computed(() => projectInvocations(this.selectedEvents()));
   readonly metrics = computed(() => modelMetrics(this.spans()));
+  clearInspectionSelection() {
+    this.inspectionSelection.set({ executorId: null, invocationId: null, spanId: null });
+  }
   selectExecutor(executorId: string) {
     this.inspectionSelection.set({ executorId, invocationId: null, spanId: null });
   }
@@ -119,7 +122,13 @@ export class StudioRunStore {
       if (epoch !== this.epoch) return;
       this.profiles.set(profiles);
       this.sessions.set(sessions);
-      this.runs.set(runs.filter((run) => run.hostInstanceId === this.hostInstanceId()));
+      const retained = runs.filter((run) => run.hostInstanceId === this.hostInstanceId());
+      const protectedRuns = this.runs().filter((run) => run.runId === this.selectedRunId());
+      this.runs.set([
+        ...retained,
+        ...protectedRuns.filter((run) => !retained.some((item) => item.runId === run.runId)),
+      ]);
+      this.retainCapture();
       if (!profiles.includes(this.selectedProfileId())) {
         this.selectionRevision++;
         this.selectedProfileId.set(profiles[0] ?? '');
@@ -300,9 +309,13 @@ export class StudioRunStore {
     }
     this.selectedRunId.set(id);
     try {
-      const run = await this.api.run(id, controller.signal);
+      const [run, retained] = await Promise.all([
+        this.api.run(id, controller.signal),
+        this.api.runs(),
+      ]);
       if (controller.signal.aborted || epoch !== this.epoch) return;
       if (this.acceptInstance(run.hostInstanceId)) return;
+      this.runs.set(retained.filter((item) => item.hostInstanceId === this.hostInstanceId()));
       this.upsert(run);
       // Watching never owns execution cancellation. Terminal runs stay watched for late spans.
       void this.watch(id, controller, epoch);
@@ -368,6 +381,86 @@ export class StudioRunStore {
         ),
       );
     }
+    this.retainCapture();
+  }
+  private retainCapture() {
+    // Keep control records for active runs and the inspected run; capture bodies may be dropped.
+    let completed = this.runs().some((run) => run.runId === this.selectedRunId() && run.isTerminal)
+      ? 1
+      : 0;
+    const retained = this.runs().filter(
+      (run) => !run.isTerminal || run.runId === this.selectedRunId() || completed++ < 100,
+    );
+    const ids = new Set(retained.map((run) => run.runId));
+    const gaps = Object.fromEntries(
+      Object.entries(this.historyGaps()).filter(([id]) => ids.has(id)),
+    );
+    const history = Object.fromEntries(
+      Object.entries(this.eventHistory()).filter(([id]) => ids.has(id)),
+    );
+    this.cursors = Object.fromEntries(Object.entries(this.cursors).filter(([id]) => ids.has(id)));
+    let budget = 16 * 1024 * 1024; // conservative UTF-16 bytes, shared by snapshots and journal bodies
+    const size = (value: unknown) => {
+      // Account for JSON data without serializing bodies or invoking inspection accessors.
+      const pending = [value];
+      const seen = new Set<object>();
+      let bytes = 0;
+      let nodes = 0;
+      while (pending.length && bytes <= 16 * 1024 * 1024 && nodes++ < 100000) {
+        const item = pending.pop();
+        bytes += 16;
+        if (typeof item === 'string') bytes += item.length * 2;
+        else if (item && typeof item === 'object' && !seen.has(item)) {
+          seen.add(item);
+          for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(item))) {
+            bytes += key.length * 2;
+            if ('value' in descriptor) pending.push(descriptor.value);
+          }
+        }
+      }
+      return pending.length ? 16 * 1024 * 1024 + 1 : bytes;
+    };
+    this.runs.set(
+      retained.map((run) => {
+        const bytes = size(run);
+        if (bytes <= budget / 2) {
+          budget -= bytes;
+          return run;
+        }
+        gaps[run.runId] = true;
+        const reduced = {
+          ...run,
+          request: { ...run.request, input: { unavailable: 'client_capture_budget' } },
+          result: null,
+          topology: null,
+          captureComplete: false,
+        };
+        budget -= size(reduced);
+        return reduced;
+      }),
+    );
+    let count = 4096;
+    // Prefer selected and recent capture. Selection/control identity is never removed by body pressure.
+    const order = [...retained].sort(
+      (a, b) => Number(b.runId === this.selectedRunId()) - Number(a.runId === this.selectedRunId()),
+    );
+    for (const run of order) {
+      const items = history[run.runId];
+      if (!items) continue;
+      const kept: StudioEvent[] = [];
+      for (let index = items.length - 1; index >= 0; index--) {
+        const bytes = size(items[index]);
+        if (count > 0 && bytes <= budget) {
+          kept.push(items[index]);
+          budget -= bytes;
+          count--;
+        } else gaps[run.runId] = true;
+      }
+      history[run.runId] = kept.reverse();
+      if (!kept.length) delete this.cursors[run.runId];
+    }
+    this.historyGaps.set(gaps);
+    this.eventHistory.set(history);
   }
   transcript(id: string) {
     return (this.eventHistory()[id] ?? [])
@@ -428,6 +521,7 @@ export class StudioRunStore {
         b.submittedAt.localeCompare(a.submittedAt),
       ),
     );
+    this.retainCapture();
   }
   private async action(operation: (epoch: number) => Promise<void>) {
     if (this.busy()) return;

@@ -75,6 +75,23 @@ import { StatusBadge } from '../shared/ui/status-badge';
               ><span>Guard · {{ run.profile?.guardProfile ?? 'Unknown' }}</span
               ><span>Timeout · {{ run.profile?.modelCallTimeout ?? 'Unknown' }}</span>
             </div>
+            <p class="meta">Error category · {{ run.errorCategory ?? 'None recorded' }}</p>
+            <p class="meta">
+              Error coverage ·
+              {{
+                run.errorCoverageComplete ? 'Complete retained evidence' : 'Unknown / incomplete'
+              }}
+            </p>
+            @for (error of run.errors; track $index) {
+              <details>
+                <summary>{{ error.kind }} · {{ error.executorId ?? 'Uncorrelated' }}</summary>
+                <p class="meta">
+                  Invocation · {{ error.invocationId ?? 'Unknown' }} · capture state
+                  {{ error.state }}
+                </p>
+                <pre class="error-detail">{{ error.detail }}</pre>
+              </details>
+            }
             <p class="meta">Typed outcome · {{ outcomes[run.outcome] ?? 'Unclassified' }}</p>
             <p
               class="capture"
@@ -219,6 +236,11 @@ import { StatusBadge } from '../shared/ui/status-badge';
     }
   `,
   styles: `
+    .error-detail {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font: 12px/1.6 var(--mono);
+    }
     :host {
       display: block;
       padding: 24px;

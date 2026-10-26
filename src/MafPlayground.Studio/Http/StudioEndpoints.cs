@@ -39,7 +39,7 @@ public static class StudioEndpoints
             return Results.StatusCode(303);
         }).DisableAntiforgery();
         var api = root.MapGroup(Prefix);
-        api.MapGet("/instance", (StudioRunService runs) => Results.Ok(new StudioInstance(runs.HostInstanceId)));
+        api.MapGet("/instance", (StudioRunService runs, StudioSourceProvenance provenance) => Results.Ok(new StudioInstance(runs.HostInstanceId, provenance)));
         api.MapGet("/entities", async (IStudioCatalog catalog, string? profileId, CancellationToken token) => Results.Ok(await catalog.ListAsync(token, profileId)));
         api.MapGet("/topology", async (string entityId, string profileId, StudioInspectionService inspection, IStudioCatalog catalog, CancellationToken token) =>
         {
@@ -51,7 +51,9 @@ public static class StudioEndpoints
         api.MapPost("/sessions", async (HttpContext context, StudioInspectionService inspection, StudioSessionService sessions) =>
         {
             StudioSessionRequest request = await ReadAsync<StudioSessionRequest>(context);
-            if (!inspection.ValidateEntity(request.EntityId, request.ProfileId, false).Descriptor.SupportsSessions) throw new ArgumentException();
+            var registration = inspection.ValidateEntity(request.EntityId, request.ProfileId, false);
+            await inspection.AuthorizeAsync(registration, context.RequestAborted);
+            if (!registration.Descriptor.SupportsSessions) throw new ArgumentException();
             StudioSession session = await sessions.CreateAsync(request, context.RequestAborted);
             return Results.Created($"{Prefix}/sessions/{session.Id}", session);
         });
@@ -60,7 +62,7 @@ public static class StudioEndpoints
         api.MapPost("/runs", async (HttpContext context, StudioInspectionService inspection, StudioSessionService sessions, StudioAccessPolicy policy) =>
         {
             StudioRunRequest request = await ReadAsync<StudioRunRequest>(context);
-            inspection.ValidateRun(request);
+            await inspection.ValidateRunAsync(request, context.RequestAborted);
             StudioRunReceipt receipt = await sessions.StartAsync(request, policy.Caller, context.RequestAborted);
             return Results.Accepted($"{Prefix}/runs/{receipt.RunId}", receipt);
         });

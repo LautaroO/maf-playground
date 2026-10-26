@@ -14,16 +14,34 @@ export function projectInvocations(events: StudioEvent[]): Invocation[] {
   const result = new Map<string, Invocation>();
   for (const event of events) {
     if (!event.invocationId) continue;
-    const item = result.get(event.invocationId) ?? {
-      id: event.invocationId,
-      executorId: event.executorId,
-      state: 'Observed',
-      events: [],
-    };
+    const prior = result.get(event.invocationId);
+    const item = prior
+      ? { ...prior, events: [...prior.events] }
+      : {
+          id: event.invocationId,
+          executorId: event.executorId,
+          state: 'Observed',
+          events: [],
+        };
     item.events.push(event);
     if (event.kind === 'executor_input') item.state = 'Input captured';
     if (event.kind === 'executor_output') item.state = 'Output captured';
     if (event.kind === 'model_failed') item.state = 'Error captured';
+    const lifecycle: Record<string, string> = {
+      executor_started: 'Active',
+      executor_completed: 'Completed',
+      executor_failed: 'Failed',
+      executor_cancelled: 'Cancelled',
+    };
+    if (lifecycle[event.kind]) item.state = lifecycle[event.kind];
+    // Capture observations cannot overwrite an observed execution lifecycle.
+    const previous = result.get(item.id);
+    if (
+      !lifecycle[event.kind] &&
+      previous &&
+      ['Active', 'Completed', 'Failed', 'Cancelled'].includes(previous.state)
+    )
+      item.state = previous.state;
     result.set(item.id, item);
   }
   return [...result.values()];
@@ -86,7 +104,7 @@ export function durationMs(value: string): number {
 }
 export function timelineRows(spans: StudioSpan[]) {
   if (!spans.length) return [];
-  const sorted = spans.slice().sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const sorted = spans.slice().sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
   const start = Math.min(...spans.map((x) => Date.parse(x.startedAt)));
   const end = Math.max(...spans.map((x) => Date.parse(x.startedAt) + durationMs(x.duration)));
   const range = Math.max(1, end - start);

@@ -7,7 +7,7 @@ using MafPlayground.Studio.Contracts;
 
 namespace MafPlayground.Studio.Execution;
 
-internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
+internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock, StudioSourceProvenance provenance)
 {
     private readonly StudioPayloadStore payloads = new(options);
     internal object Gate { get; } = new();
@@ -74,7 +74,7 @@ internal sealed class StudioRunStore(StudioOptions options, TimeProvider clock)
         HostInstanceId, state.Receipt.RunId, state.Request, state.Status, state.CancellationRequested,
         state.SubmittedAt, state.StartedAt, state.CompletedAt, state.Result, state.Outcome,
         state.Topology, state.ErrorCategory, state.Journal.LatestSequence, state.CapturedBytes,
-        !state.Incomplete && !state.Journal.HasLostEvents, state.Journal.EarliestSequence, state.Journal.LatestSequence, state.Profile);
+        !state.Incomplete && !state.Journal.HasLostEvents, state.Journal.EarliestSequence, state.Journal.LatestSequence, state.Profile, provenance);
 
     internal void Running(RunState state)
     {

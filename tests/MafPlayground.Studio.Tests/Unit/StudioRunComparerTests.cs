@@ -7,6 +7,39 @@ namespace MafPlayground.Studio.Tests.Unit;
 public sealed class StudioRunComparerTests
 {
     [Fact]
+    public void Errors_after_preview_prefix_remain_different_and_resolution_gaps_and_limits_are_explicit()
+    {
+        StudioEvent Error(int n, string text, StudioCaptureState state = StudioCaptureState.Available) => new("run", n, DateTimeOffset.UtcNow, "model_failed", "executor", "attempt-" + n, null, JsonSerializer.SerializeToElement(new { message = text }), state);
+        var left = Snapshot("a", "null") with { Status = StudioRunStatus.Failed, ErrorCategory = "execution_failed" };
+        var right = Snapshot("b", "null");
+        var result = new StudioRunComparer().Compare(left, right, [Error(1, new string('x', 500) + "A")], [Error(1, new string('x', 500) + "B")]);
+        Assert.Contains(result.Changes, x => x.Path.StartsWith("/invocations/executor/1/errors", StringComparison.Ordinal) && x.TextOffset == 500);
+        Assert.Equal("execution_failed", result.Baseline.ErrorCategory);
+        Assert.False(result.Baseline.ErrorCoverageComplete);
+        var resolved = new StudioRunComparer().Compare(left, right, [Error(1, "failure")], []);
+        Assert.Contains(resolved.Changes, x => x.Path.StartsWith("/invocations/executor/1/errors", StringComparison.Ordinal) && x.Kind == "removed");
+        var unknown = new StudioRunComparer().Compare(left, right, [], [], baselineGap: true);
+        Assert.False(unknown.Baseline.ErrorCoverageComplete);
+        var many = new StudioRunComparer().Compare(left, right, Enumerable.Range(1, 50).Select(n => Error(n, new string('x', 1000), StudioCaptureState.Redacted)).ToArray(), []);
+        Assert.Equal(32, many.Baseline.Errors.Count); Assert.True(many.Truncated);
+        Assert.False(many.Baseline.ErrorCoverageComplete);
+        Assert.True(JsonSerializer.SerializeToUtf8Bytes(many).Length < 96 * 1024);
+        Assert.Equal("attempt-1", many.Baseline.Errors[0].InvocationId);
+    }
+
+    [Fact]
+    public void Captured_errors_and_categories_are_compared_with_identical_input_output()
+    {
+        StudioEvent Error(string message) => new("run", 1, DateTimeOffset.UtcNow, "execution_error", null, null, null,
+            JsonSerializer.SerializeToElement(new StudioPayload("error", "application/json", JsonSerializer.SerializeToElement(new { message }), StudioCaptureState.Available, null)));
+        var result = new StudioRunComparer().Compare(Snapshot("a", "null") with { Status = StudioRunStatus.Failed, ErrorCategory = "execution_failed" },
+            Snapshot("b", "null") with { Status = StudioRunStatus.Failed, ErrorCategory = "execution_failed" }, [Error("failure A")], [Error("failure B")]);
+        Assert.Contains(result.Changes, x => x.Path.StartsWith("/errors", StringComparison.Ordinal));
+        Assert.Contains("failure A", JsonSerializer.Serialize(result));
+        Assert.Contains("failure B", JsonSerializer.Serialize(result));
+    }
+
+    [Fact]
     public void Object_order_is_ignored_but_arrays_and_text_are_structural_changes()
     {
         var a = Snapshot("a", """{"b":2,"a":1,"items":[1,2],"text":"hello"}""");

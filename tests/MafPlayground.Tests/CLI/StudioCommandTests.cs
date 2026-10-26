@@ -21,6 +21,27 @@ public sealed class StudioCommandTests
     }
 
     [Fact]
+    public async Task Startup_provenance_is_optional_sanitized_and_does_not_require_git()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var absent = await StudioSourceRevision.ReadAsync(directory, default, (_, _) => throw new Exception("Must not invoke Git outside checkout"));
+            Assert.Null(absent.Revision); Assert.Null(absent.Dirty);
+            File.WriteAllText(Path.Combine(directory, "MafPlayground.slnx"), "fixture");
+            File.WriteAllText(Path.Combine(directory, ".git"), "fixture");
+            var available = await StudioSourceRevision.ReadAsync(directory, default, (command, _) => Task.FromResult<string?>(command.StartsWith("rev-parse", StringComparison.Ordinal) ? new string('a', 40) : " M source.cs"));
+            Assert.Equal(new string('a', 40), available.Revision); Assert.True(available.Dirty);
+            var invalid = await StudioSourceRevision.ReadAsync(directory, default, (_, _) => Task.FromResult<string?>("private invalid metadata"));
+            Assert.Null(invalid.Revision); Assert.Null(invalid.Dirty);
+            var unavailable = await StudioSourceRevision.ReadAsync(directory, default, (_, _) => throw new System.ComponentModel.Win32Exception());
+            Assert.Null(unavailable.Revision);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
     public async Task Maps_options_and_defaults()
     {
         StudioCommandOptions? captured = null;

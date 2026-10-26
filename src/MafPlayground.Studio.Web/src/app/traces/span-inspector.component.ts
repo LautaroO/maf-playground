@@ -120,6 +120,35 @@ import { PayloadViewer } from './payload-viewer.component';
           }
         </div>
       }
+      @if (unmatchedEvents().length) {
+        <h3>Run / unmatched events</h3>
+        <p class="meta">
+          Uncorrelated evidence · no executor ownership is inferred. Most recent 100 events.
+        </p>
+        @for (item of unmatchedEvents(); track item.sequence) {
+          <details (toggle)="toggleEvent(item.sequence, $any($event.target).open)">
+            <summary>
+              {{ item.kind }} <span class="meta">#{{ item.sequence }} · Uncorrelated</span>
+            </summary>
+            @if (opened().has(item.sequence)) {
+              @if (payloadOf(item); as payload) {
+                <studio-payload-viewer
+                  [runId]="store.selectedRunId()!"
+                  [payloadId]="payload.id"
+                  [label]="item.kind"
+                />
+              } @else {
+                <studio-json [label]="'event ' + item.sequence" [value]="item.data" />
+              }
+              @if (item.captureState) {
+                <p class="notice">
+                  Content redacted, truncated or unavailable ({{ item.captureState }}).
+                </p>
+              }
+            }
+          </details>
+        }
+      }
       @if (!span() && !store.inspectionSelection().executorId) {
         <div class="empty">
           <strong>Select an executor or span</strong
@@ -205,6 +234,39 @@ import { PayloadViewer } from './payload-viewer.component';
 export class SpanInspector {
   readonly payloadOf = eventPayload;
   readonly store = inject(StudioRunStore);
+  readonly opened = signal(new Set<number>());
+  toggleEvent(sequence: number, open: boolean) {
+    this.opened.update((previous) => {
+      const visible = new Set(this.unmatchedEvents().map((item) => item.sequence));
+      const next = new Set([...previous].filter((item) => visible.has(item)));
+      if (open) next.add(sequence);
+      else next.delete(sequence);
+      return next;
+    });
+  }
+  readonly unmatchedEvents = computed(() => {
+    const spans = new Set(
+      this.store
+        .spans()
+        .filter((x) => x.executorId)
+        .map((x) => x.spanId),
+    );
+    const invocations = new Set(
+      this.store
+        .invocations()
+        .filter((x) => x.executorId)
+        .map((x) => x.id),
+    );
+    return this.store
+      .selectedEvents()
+      .filter(
+        (x) =>
+          x.kind !== 'span' &&
+          (!x.spanId || !spans.has(x.spanId)) &&
+          (!x.invocationId || !invocations.has(x.invocationId)),
+      )
+      .slice(-100);
+  });
   readonly query = signal('');
   readonly span = computed(() =>
     this.store.spans().find((x) => x.spanId === this.store.inspectionSelection().spanId),

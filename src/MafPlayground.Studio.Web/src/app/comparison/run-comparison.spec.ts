@@ -25,6 +25,17 @@ const summary = (id: string) => ({
   captureComplete: false,
   journalHasGap: true,
   hasRedactions: false,
+  errorCategory: 'execution_failed',
+  errors: [
+    {
+      kind: 'execution_error',
+      executorId: null,
+      invocationId: null,
+      state: 1,
+      detail: '<img src=x> sanitized failure',
+    },
+  ],
+  errorCoverageComplete: false,
   metrics,
 });
 const unknown = { baseline: null, candidate: null, delta: null };
@@ -89,6 +100,8 @@ it('shows aligned unknown metrics, gaps, unmatched invocations and safe text fro
   fixture.detectChanges();
   expect(body).toEqual({ hostInstanceId: 'host-a', baselineRunId: 'a', candidateRunId: 'b' });
   expect(fixture.nativeElement.textContent).toContain('Unknown');
+  expect(fixture.nativeElement.textContent).toContain('execution_failed');
+  expect(fixture.nativeElement.textContent).toContain('sanitized failure');
   expect(fixture.nativeElement.textContent).toContain('Incomplete');
   expect(fixture.nativeElement.textContent).toContain('Unmatched');
   expect(fixture.nativeElement.textContent).toContain('Absent');

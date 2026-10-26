@@ -36,7 +36,7 @@ public sealed class StudioMcpTools(IServiceScopeFactory scopes)
     [McpServerTool(Name = "studio_start_run", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = true), Description("Submit an existing Studio run contract. Reuse requestId for retries. newSession creates an explicit session; omit it to use request.sessionId or run without a session." + Evidence)]
     public Task<string> StartRun(StudioRunRequest request, CancellationToken cancellationToken, bool newSession = false) => Invoke(async (provider, token) =>
     {
-        provider.GetRequiredService<StudioInspectionService>().ValidateRun(request);
+        await provider.GetRequiredService<StudioInspectionService>().ValidateRunAsync(request, token);
         var sessions = provider.GetRequiredService<StudioSessionService>();
         var caller = provider.GetRequiredService<StudioAccessPolicy>().Caller;
         if (newSession)
@@ -121,6 +121,7 @@ public sealed class StudioMcpTools(IServiceScopeFactory scopes)
             string category = exception switch
             {
                 AIEntityNotFoundException or KeyNotFoundException => "not_found_or_evicted",
+                StudioEntityForbiddenException => "entity_forbidden",
                 StudioCapacityException => "capacity_exceeded",
                 StudioSessionBusyException or StudioSessionConflictException or StudioRequestConflictException or AISessionConcurrencyException or StudioEntityUnavailableException or StudioEndpoints.StudioResultPendingException => "state_conflict",
                 ArgumentException or JsonException or FormatException or OverflowException => "invalid_request",

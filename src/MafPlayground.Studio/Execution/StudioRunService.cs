@@ -26,13 +26,13 @@ public sealed class StudioRunService : IStudioRunService, IStudioEventSink, IHos
     private bool started;
     private bool stopping;
 
-    public StudioRunService(IServiceScopeFactory scopes, StudioOptions options, TimeProvider clock)
+    public StudioRunService(IServiceScopeFactory scopes, StudioOptions options, TimeProvider clock, StudioSourceProvenance? provenance = null)
     {
         Validate(options);
         this.scopes = scopes;
         this.options = options;
         this.clock = clock;
-        store = new(options, clock);
+        store = new(options, clock, provenance ?? new());
         payloads = new(options);
         queue = Channel.CreateBounded<StudioRunStore.RunState>(new BoundedChannelOptions(options.QueueCapacity)
         { FullMode = BoundedChannelFullMode.Wait, SingleWriter = false, SingleReader = false, AllowSynchronousContinuations = false });

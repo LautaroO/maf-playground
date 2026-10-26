@@ -40,6 +40,9 @@ public sealed class StudioHttpTests
         var identity = await response.Content.ReadFromJsonAsync<JsonElement>();
         string? id = identity.GetProperty("hostInstanceId").GetString();
         Assert.False(string.IsNullOrEmpty(id));
+        Assert.True(identity.TryGetProperty("provenance", out var provenance));
+        Assert.Equal(JsonValueKind.Null, provenance.GetProperty("revision").ValueKind);
+        Assert.Equal(JsonValueKind.Null, provenance.GetProperty("dirty").ValueKind);
         var again = await first.Client.GetFromJsonAsync<JsonElement>(Api + "/instance");
         Assert.Equal(id, again.GetProperty("hostInstanceId").GetString());
         Assert.Empty((await first.Client.GetFromJsonAsync<StudioRunSnapshot[]>(Api + "/runs"))!);
@@ -391,6 +394,15 @@ public sealed class StudioHttpTests
                 builder.Configuration["Studio:Limits:MaxConcurrentRuns"] = limits.MaxConcurrentRuns.ToString();
                 builder.Configuration["Studio:Limits:QueueCapacity"] = limits.QueueCapacity.ToString();
             }
+
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy("AI.Basic", p => p.RequireClaim("ai_permission", "basic"));
+                options.AddPolicy("AI.Translation", p => p.RequireClaim("ai_permission", "translation"));
+                options.AddPolicy("AI.BasicRag", p => p.RequireClaim("ai_permission", "basic-rag"));
+                options.AddPolicy("AI.Help", p => p.RequireClaim("ai_permission", "help"));
+            });
+            builder.Services.AddSingleton(new StudioAccessPolicy(builder.Configuration["Studio:Url"] ?? "http://localhost:5051", ["basic", "translation", "basic-rag", "help"]));
             builder.Services.AddStudio(builder.Configuration);
             builder.Services.AddSingleton<ActivationProbe>();
             builder.Services.AddScoped<FailingDependency>(provider =>

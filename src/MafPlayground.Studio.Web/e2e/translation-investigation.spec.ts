@@ -12,7 +12,13 @@ test('investigates real translation validation, retry cycle and partial branch',
   await expect(page.locator('.run-heading studio-status')).toContainText('Partial result');
   await expect(page.getByRole('heading', { name: 'Declared workflow topology' })).toBeVisible();
   const french = page.locator('[data-node-id="translate-fr"]');
+  const fullTimelineCount = await page.locator('[data-span]').count();
   await french.click();
+  await expect.poll(() => page.locator('[data-span]').count()).toBeLessThan(fullTimelineCount);
+  await page.getByRole('button', { name: 'Reset timeline filters' }).click();
+  await expect(page.locator('[data-span]')).toHaveCount(fullTimelineCount);
+  await french.click();
+  await expect(french).toContainText('Completed');
   await expect(page.getByLabel('Select invocation').locator('option')).toHaveCount(3);
   await page.getByLabel('Select invocation').selectOption({ index: 2 });
   const invocation = await page.getByLabel('Select invocation').inputValue();

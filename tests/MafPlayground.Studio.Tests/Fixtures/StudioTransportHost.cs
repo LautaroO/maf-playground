@@ -28,7 +28,7 @@ internal sealed class StudioTransportHost(WebApplication app, HttpClient http) :
     internal HttpClient Http => http;
     internal StudioAccessPolicy Policy => app.Services.GetRequiredService<StudioAccessPolicy>();
     internal StudioExecutionFixture.RecordingClient Model => app.Services.GetRequiredService<StudioExecutionFixture.RecordingClient>();
-    internal static async Task<StudioTransportHost> Create(bool loopback = false, int maxCompleted = 100, int maxPayload = 2 * 1024 * 1024, int maxRequests = 10000, string? defaultModel = "fake:model", string? alternateModel = null, string[]? additionalIds = null, string? opaqueTransportId = null)
+    internal static async Task<StudioTransportHost> Create(bool loopback = false, int maxCompleted = 100, int maxPayload = 2 * 1024 * 1024, int maxRequests = 10000, string? defaultModel = "fake:model", string? alternateModel = null, string[]? additionalIds = null, string? opaqueTransportId = null, Action<IServiceCollection>? configure = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Configuration.Sources.Clear();
@@ -61,7 +61,17 @@ internal sealed class StudioTransportHost(WebApplication app, HttpClient http) :
         builder.Configuration["Studio:Limits:MaxPayloadBytes"] = maxPayload.ToString(System.Globalization.CultureInfo.InvariantCulture);
         builder.Configuration["Studio:Limits:MaxCompletedRuns"] = maxCompleted.ToString(System.Globalization.CultureInfo.InvariantCulture);
         builder.Configuration["Studio:Limits:MaxRequestRecords"] = maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy("AI.Basic", p => p.RequireClaim("ai_permission", "basic"));
+            options.AddPolicy("AI.Translation", p => p.RequireClaim("ai_permission", "translation"));
+            options.AddPolicy("AI.BasicRag", p => p.RequireClaim("ai_permission", "basic-rag"));
+            options.AddPolicy("AI.Help", p => p.RequireClaim("ai_permission", "help"));
+        });
+        builder.Services.AddSingleton(new StudioAccessPolicy(builder.Configuration["Studio:Url"] ?? "http://localhost:5051", ["basic", "translation", "basic-rag", "help"]));
         builder.Services.AddStudio(builder.Configuration);
+        configure?.Invoke(builder.Services);
         // This transport-only adapter exercises opaque query decoding. AIBuilder intentionally
         // accepts only letters, digits, hyphens, underscores and periods for real registrations.
         if (opaqueTransportId is not null)

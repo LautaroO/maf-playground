@@ -11,11 +11,11 @@ public static class StudioContractSchema
 {
     public static JsonElement Create(IEnumerable<AIEntityRegistrationInfo> registrations)
     {
-        Type[] types = [typeof(StudioInstance), typeof(StudioRunRequest), typeof(StudioRunReceipt), typeof(StudioRunSnapshot),
+        Type[] types = [typeof(StudioInstance), typeof(StudioSourceProvenance), typeof(StudioRunRequest), typeof(StudioRunReceipt), typeof(StudioRunSnapshot),
             typeof(StudioEntityDescriptor), typeof(StudioTopology), typeof(StudioEvent), typeof(StudioEventPage),
             typeof(StudioPayload), typeof(StudioSpan), typeof(StudioSessionRequest), typeof(StudioSession),
             typeof(StudioExecutionProfileSnapshot), typeof(StudioMcpSpanPage),
-            typeof(StudioComparisonRequest), typeof(StudioComparison), typeof(StudioComparisonRun), typeof(StudioComparisonMetrics),
+            typeof(StudioComparisonRequest), typeof(StudioComparison), typeof(StudioComparisonRun), typeof(StudioComparisonMetrics), typeof(StudioComparisonError),
             typeof(StudioMetricDelta), typeof(StudioValueChange), typeof(StudioInvocationMatch),
             typeof(StudioMcpPage<StudioEntityDescriptor>), typeof(StudioMcpPage<StudioRunSnapshot>), typeof(StudioMcpPage<string>), typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)];
         var transport = types.ToDictionary(type => type.IsGenericType ? $"StudioMcpPageOf{type.GenericTypeArguments[0].Name}" : type.Name, type => AIJsonUtilities.CreateJsonSchema(type, serializerOptions: AIJsonSerializerOptions.Default));

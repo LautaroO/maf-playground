@@ -63,6 +63,7 @@ public static class StudioAccessMiddleware
                 (int status, string code) = exception switch
                 {
                     AIEntityNotFoundException or KeyNotFoundException => (404, "not_found_or_evicted"),
+                    StudioEntityForbiddenException => (403, "entity_forbidden"),
                     StudioCapacityException => (429, "capacity_exceeded"),
                     StudioSessionBusyException or StudioSessionConflictException or StudioRequestConflictException or AISessionConcurrencyException or StudioEntityUnavailableException or StudioEndpoints.StudioResultPendingException => (409, "state_conflict"),
                     ArgumentException or JsonException or InvalidDataException or FormatException or OverflowException or BadHttpRequestException => (400, "invalid_request"),

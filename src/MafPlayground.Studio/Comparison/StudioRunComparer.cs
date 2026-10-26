@@ -26,22 +26,31 @@ public sealed class StudioRunComparer
         var bEvents = candidateEvents.Take(MaxEvents).ToArray();
         var a = Summarize(baseline, aEvents, baselineGap, cancellationToken);
         var b = Summarize(candidate, bEvents, candidateGap, cancellationToken);
+        var allMatches = Match(aEvents, bEvents).ToArray();
         var diff = new Difference(cancellationToken);
+        diff.Visit(JsonSerializer.SerializeToElement(a.ErrorCategory), JsonSerializer.SerializeToElement(b.ErrorCategory), "/errorCategory");
+        // Uncorrelated errors stay at run level. Correlated errors use the same exact-executor/occurrence matches as the table.
+        diff.Visit(ErrorValues(aEvents.Where(x => x.InvocationId is null || x.ExecutorId is null)),
+            ErrorValues(bEvents.Where(x => x.InvocationId is null || x.ExecutorId is null)), "/errors");
+        foreach (var match in allMatches.Take(MaxInvocations).Where(x => x.ExecutorId is not null))
+            diff.Visit(ErrorValues(aEvents.Where(x => x.InvocationId == match.BaselineInvocationId && x.InvocationId is not null)),
+                ErrorValues(bEvents.Where(x => x.InvocationId == match.CandidateInvocationId && x.InvocationId is not null)),
+                "/invocations/" + match.ExecutorId!.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal) + "/" + match.Occurrence + "/errors");
         diff.Visit(baseline.Request.Input, candidate.Request.Input, "/input");
         diff.Visit(baseline.Result, candidate.Result, "/result");
         diff.Visit(JsonSerializer.SerializeToElement(baseline.Request.ProfileId), JsonSerializer.SerializeToElement(candidate.Request.ProfileId), "/profileId");
         diff.Visit(JsonSerializer.SerializeToElement(baseline.Profile, Json), JsonSerializer.SerializeToElement(candidate.Profile, Json), "/profile");
         List<string> limitations = ["Structural/text differences do not establish semantic correctness or quality.",
+            "Errors include at most 32 retained observations per run with 160-character sanitized previews; absent or incomplete error coverage never proves no error. Exact invocation IDs remain in each summary.",
             "Model attempts are Studio observations, including attempts rejected before provider execution; not billed-call counts.",
             "Usage and cost aggregate only unique Studio model spans; missing/partial coverage is unknown. Native and agent spans are excluded."];
         if (!a.CaptureComplete || !b.CaptureComplete || a.JournalHasGap || b.JournalHasGap || a.HasRedactions || b.HasRedactions)
             limitations.Add("Capture is incomplete or redacted, or retained journal history has gaps. Metrics and differences describe only available evidence.");
         if (diff.PreviewTruncated) limitations.Add("Value/path previews are capped at 160 characters; textOffset is the UTF-16 offset of the first changed Unicode scalar; preview start/end preserve scalar boundaries. Full retained values remain in run inspection.");
-        var allMatches = Match(aEvents, bEvents).ToArray();
         bool eventLimit = baselineEvents.Count > MaxEvents || candidateEvents.Count > MaxEvents ||
             (aEvents.Length == MaxEvents && aEvents[^1].Sequence < baseline.LatestSequence) ||
             (bEvents.Length == MaxEvents && bEvents[^1].Sequence < candidate.LatestSequence);
-        bool truncated = diff.Truncated || allMatches.Length > MaxInvocations || eventLimit;
+        bool truncated = diff.Truncated || allMatches.Length > MaxInvocations || eventLimit || aEvents.Count(IsError) > 32 || bEvents.Count(IsError) > 32;
         if (truncated) limitations.Add("Comparison limits: 48 changes, 64 invocation rows, 8192 visited JSON nodes, 2048 properties per object, depth 32 and 2048 events per run. Duplicate object properties are ambiguous and mark the diff truncated.");
         var result = new StudioComparison(baseline.HostInstanceId, a, b, diff.Changes,
             Delta(Duration(baseline), Duration(candidate)), Delta(a.Metrics.ObservedModelAttempts, b.Metrics.ObservedModelAttempts),
@@ -56,6 +65,8 @@ public sealed class StudioRunComparer
             if (!limitations.Contains("Response trimmed to 96 KiB.")) limitations.Add("Response trimmed to 96 KiB.");
             if (result.Invocations.Count > 0) result = result with { Invocations = result.Invocations.SkipLast(1).ToArray(), Truncated = true };
             else if (result.Changes.Count > 0) result = result with { Changes = result.Changes.SkipLast(1).ToArray(), Truncated = true };
+            else if (result.Baseline.Errors.Count > 0) result = result with { Baseline = result.Baseline with { Errors = result.Baseline.Errors.SkipLast(1).ToArray(), ErrorCoverageComplete = false }, Truncated = true };
+            else if (result.Candidate.Errors.Count > 0) result = result with { Candidate = result.Candidate with { Errors = result.Candidate.Errors.SkipLast(1).ToArray(), ErrorCoverageComplete = false }, Truncated = true };
             else throw new ArgumentException("Comparison metadata exceeds response limit.");
         }
         return result;
@@ -90,7 +101,28 @@ public sealed class StudioRunComparer
             known && outputs == model.Length ? model.Sum(x => (double)x.OutputTokens!.Value) : null,
             known && costs == model.Length && currency is not null ? Finite(model.Sum(x => x.Cost!.Value)) : null,
             currency, inputs, outputs, costs);
-        return new(run.RunId, run.Request.EntityId, run.Request.ProfileId, run.Status, run.Outcome, run.Profile, complete, gap, redacted, metrics);
+        var errors = events.Where(IsError).ToArray();
+        var previews = errors.Take(32).Select(Error).ToArray();
+        return new(run.RunId, run.Request.EntityId, run.Request.ProfileId, run.Status, run.Outcome, run.Profile, complete, gap, redacted, metrics,
+            run.ErrorCategory, previews, complete && !gap && !redacted && errors.Length <= 32 && previews.All(x => x.State == StudioCaptureState.Available) && (run.ErrorCategory is null || errors.Length > 0));
+    }
+    private static bool IsError(StudioEvent item) => item.Kind is "execution_error" or "model_failed" or "executor_failed";
+    private static JsonElement ErrorData(StudioEvent item) => item.Data.ValueKind == JsonValueKind.Object &&
+        item.Data.TryGetProperty("Value", out var value) && item.Data.TryGetProperty("ContentType", out _) ? value : item.Data;
+    private static JsonElement ErrorValues(IEnumerable<StudioEvent> events) => JsonSerializer.SerializeToElement(events.Where(IsError).Take(32)
+        .Select(x => new { x.Kind, x.ExecutorId, x.CaptureState, Detail = ErrorData(x) }));
+    private static StudioComparisonError Error(StudioEvent item)
+    {
+        JsonElement data = ErrorData(item);
+        StudioCaptureState state = item.CaptureState;
+        string detail = data.GetRawText();
+        if (detail.Length > MaxPreview)
+        {
+            int end = char.IsHighSurrogate(detail[MaxPreview - 1]) ? MaxPreview - 1 : MaxPreview;
+            detail = detail[..end] + "…";
+            state = StudioCaptureState.Truncated;
+        }
+        return new(item.Kind, item.ExecutorId, item.InvocationId, state, detail);
     }
     private static double? Finite(double value) => double.IsFinite(value) ? value : null;
     private static double? Duration(StudioRunSnapshot run) => run.StartedAt is { } start && run.CompletedAt is { } end ? (end - start).TotalMilliseconds : null;

@@ -36,6 +36,14 @@ try {
     { cwd: root, stdio: 'pipe' },
   );
   const { transport } = JSON.parse(await readFile(join(temp, 'contracts.json'), 'utf8'));
+  // MEAI emits an unconstrained items sibling beside repeated array $refs. It adds
+  // no JSON Schema constraint, but the TS compiler otherwise replaces referenced items with unknown.
+  const normalizeReferences = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.$ref && node.items && Object.keys(node.items).length === 0) delete node.items;
+    for (const child of Object.values(node)) normalizeReferences(child);
+  };
+  normalizeReferences(transport);
   const parts = [];
   for (const [name, schema] of Object.entries(transport).sort(([a], [b]) => a.localeCompare(b))) {
     parts.push(
