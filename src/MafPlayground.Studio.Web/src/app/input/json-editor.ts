@@ -142,7 +142,8 @@ export class JsonEditor {
     afterNextRender(() => {
       if (typeof Worker === 'undefined') return;
       void import('./monaco-adapter')
-        .then((module) => {
+        .then(async (module) => {
+          await module.stylesLoaded;
           if (this.destroyed) return;
           this.editor = module.attachEditor(
             this.host().nativeElement,

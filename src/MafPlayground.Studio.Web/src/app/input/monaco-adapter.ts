@@ -8,6 +8,19 @@ import type { editor } from 'monaco-editor';
       ? new Worker(new URL('./json.worker', import.meta.url), { type: 'module' })
       : new Worker(new URL('./editor.worker', import.meta.url), { type: 'module' }),
 };
+// Angular extracts CSS imported by the lazy Monaco entry but does not inject
+// those companion chunks. Load its explicit non-injected bundle before mounting.
+export const stylesLoaded = new Promise<void>((resolve, reject) => {
+  const stylesheet = document.createElement('link');
+  stylesheet.rel = 'stylesheet';
+  stylesheet.href = new URL('monaco-editor.css', document.baseURI).href;
+  stylesheet.onload = () => resolve();
+  stylesheet.onerror = () => {
+    stylesheet.remove();
+    reject(new Error('Monaco styles could not be loaded.'));
+  };
+  document.head.append(stylesheet);
+});
 export function attachEditor(
   element: HTMLElement,
   text: string,

@@ -25,7 +25,14 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.css"],
+            "styles": [
+              {
+                "input": "src/styles/monaco.css",
+                "bundleName": "monaco-editor",
+                "inject": false
+              },
+              "src/styles.css"
+            ],
             "baseHref": "/studio/",
             "outputPath": "dist/studio",
             "webWorkerTsConfig": "tsconfig.worker.json",

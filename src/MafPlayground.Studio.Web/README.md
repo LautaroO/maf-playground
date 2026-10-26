@@ -126,6 +126,14 @@ Monaco, clear the selected document, and type through ordinary keyboard events;
 they preserve native input and default delimiter behavior. Clearing matters because
 Monaco intentionally surrounds an existing selection when an opening delimiter is typed.
 
+Angular extracts CSS imported by the lazy Monaco JavaScript without injecting its
+companion stylesheets. `src/styles/monaco.css` explicitly indexes the pinned ESM
+styles into a non-injected `monaco-editor.css` bundle; the editor waits for that
+same-origin stylesheet before mounting. ESM font URLs stay local, preserving CSP
+without the minified distribution's embedded data-font. Keep the import index in
+sync when upgrading Monaco. The existing translation journey verifies JSON lines
+stay inside the editor at 1440 and 1024 pixels, alongside real typing and validation.
+
 Production output is `dist/studio/browser`, with `/studio/` base href and lazy
 feature/Monaco chunks. `npm run build` includes Monaco's MIT/third-party notices
 and the Codicons CC BY 4.0 font attribution/MIT code notices alongside the font

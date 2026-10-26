@@ -8,6 +8,28 @@ test('investigates real translation validation, retry cycle and partial branch',
   await page.screenshot({ path: testInfo.outputPath('catalog-empty-1024.png') });
   await page.setViewportSize({ width: 1440, height: 900 });
   await openEntity(page, 'translation-workflow');
+  await expect(page.getByText('JSON · Monaco', { exact: true })).toBeVisible();
+  // The compiled page must load Monaco's structural CSS, not only its JS/theme.
+  // Missing CSS places JSON lines outside the editor even though typing works.
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: width === 1440 ? 900 : 768 });
+    await expect
+      .poll(async () => {
+        const editorBox = await page.locator('studio-json-editor .monaco').boundingBox();
+        const line = await page.locator('studio-json-editor .view-line').first().boundingBox();
+        return (
+          !!editorBox &&
+          !!line &&
+          line.x >= editorBox.x &&
+          line.y >= editorBox.y &&
+          line.x + line.width <= editorBox.x + editorBox.width + 1 &&
+          line.y + line.height <= editorBox.y + editorBox.height
+        );
+      })
+      .toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`input-editor-${width}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   await runInput(page, { text: 'Your order 247 is ready.', targetLanguages: ['es', 'fr'] });
   await expect(page.locator('.run-heading studio-status')).toContainText('Partial result');
   await expect(page.getByRole('heading', { name: 'Declared workflow topology' })).toBeVisible();
