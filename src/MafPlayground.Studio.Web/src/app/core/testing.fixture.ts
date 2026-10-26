@@ -2,6 +2,7 @@ import type {
   StudioEntityDescriptor,
   StudioEvent,
   StudioRunSnapshot,
+  StudioTopology,
 } from './studio-api.generated';
 export const novel: StudioEntityDescriptor = {
   id: 'unregistered-in-ui.stellar-survey-9',
@@ -93,3 +94,37 @@ export function event(
     captureState: 0,
   };
 }
+
+export const novelTopology: StudioTopology = {
+  entityId: novel.id,
+  profileId: 'balanced',
+  status: 0,
+  unavailableReason: null,
+  startNodeId: 'start/%',
+  nodes: [
+    { id: 'start/%', label: 'Intake', isStart: true },
+    { id: 'a', label: 'Repeated label', isStart: false },
+    { id: 'b', label: 'Repeated label', isStart: false },
+    { id: 'untaken', label: 'Untaken', isStart: false },
+  ],
+  edges: [
+    {
+      id: 'fork',
+      kind: 'fanOut',
+      sourceIds: ['start/%'],
+      targetIds: ['a', 'b'],
+      isConditional: true,
+      label: null,
+    },
+    {
+      id: 'retry',
+      kind: 'direct',
+      sourceIds: ['b'],
+      targetIds: ['start/%'],
+      isConditional: true,
+      label: null,
+    },
+  ],
+  labelsUnavailableReason: 'Native labels unavailable',
+  nativeMermaid: null,
+};

@@ -60,7 +60,12 @@ import { Chat } from '../chat/chat';
                     >
                       <option value="">Single execution</option>
                       @for (session of store.compatibleSessions(); track session.id) {
-                        <option [value]="session.id">{{ session.id }}</option>
+                        <option
+                          [value]="session.id"
+                          [selected]="store.selectedSessionId() === session.id"
+                        >
+                          {{ session.id }}
+                        </option>
                       }
                     </select>
                   </div>

@@ -1,4 +1,7 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { WorkflowGraph } from '../graph/workflow-graph.component';
+import { TraceTimeline } from '../traces/trace-timeline.component';
+import { SpanInspector } from '../traces/span-inspector.component';
+import { Component, computed, inject, signal, effect, viewChild, ElementRef } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
@@ -7,7 +10,15 @@ import { JsonView } from '../shared/ui/json-view';
 import { StatusBadge } from '../shared/ui/status-badge';
 @Component({
   selector: 'studio-run-workspace',
-  imports: [RouterLink, DatePipe, JsonView, StatusBadge],
+  imports: [
+    RouterLink,
+    DatePipe,
+    JsonView,
+    StatusBadge,
+    WorkflowGraph,
+    TraceTimeline,
+    SpanInspector,
+  ],
   template: `
     @if (store.selectedRun(); as run) {
       <div class="breadcrumb">
@@ -39,11 +50,26 @@ import { StatusBadge } from '../shared/ui/status-badge';
           <span>Duration</span><strong>{{ duration() }}</strong>
         </div>
         <div>
-          <span>Captured events</span><strong>{{ run.totalEvents }}</strong>
+          <span>Captured model attempts</span><strong>{{ store.metrics().attempts }}</strong>
         </div>
-        <div><span>Reported usage</span><strong class="muted">Unavailable</strong></div>
-        <div><span>Estimated cost</span><strong class="muted">Unavailable</strong></div>
+        <div>
+          <span>Reported input / output tokens</span
+          ><strong class="muted"
+            >{{ store.metrics().inputTokens ?? 'Unknown' }} /
+            {{ store.metrics().outputTokens ?? 'Unknown' }}</strong
+          >
+        </div>
+        <div>
+          <span>Reported cost</span
+          ><strong class="muted"
+            >{{ store.metrics().cost ?? 'Unknown' }} {{ store.metrics().currency || '' }}</strong
+          >
+        </div>
       </div>
+      <p class="meta capture-note">
+        Model attempts include observations rejected before a provider call; they are not
+        billed-call counts.
+      </p>
       @if (store.historyGaps()[run.runId] || !run.captureComplete) {
         <p class="notice warning capture-note">
           Capture is incomplete. Some history was evicted or truncated; the snapshot has been
@@ -55,8 +81,12 @@ import { StatusBadge } from '../shared/ui/status-badge';
           Execution ended · {{ run.errorCategory }}
         </p>
       }
-      <div class="investigation">
+      <div #investigation class="investigation" [style.--inspector-width]="inspectorWidth() + 'px'">
         <section class="investigation-main">
+          @if (workflow()) {
+            <studio-workflow-graph />
+          }
+          <studio-trace-timeline />
           <div class="panel-head">
             <h2>Execution output</h2>
             <span class="spacer"></span><span class="meta">{{ store.connection() }}</span>
@@ -83,6 +113,19 @@ import { StatusBadge } from '../shared/ui/status-badge';
           </div>
         </section>
         <aside class="inspector">
+          <label class="width-control"
+            ><span>Inspector width</span
+            ><input
+              aria-label="Inspector width"
+              type="range"
+              min="280"
+              [max]="maxInspectorWidth()"
+              step="10"
+              [value]="inspectorWidth()"
+              (input)="resizeInspector(+$any($event.target).value)"
+            /><output>{{ inspectorWidth() }} px</output></label
+          >
+          <studio-span-inspector />
           <div class="panel-head"><h2>Run inspector</h2></div>
           <div class="inspector-tabs" role="group" aria-label="Run details">
             <button
@@ -155,7 +198,7 @@ import { StatusBadge } from '../shared/ui/status-badge';
       justify-content: space-between;
       align-items: center;
       gap: 20px;
-      padding: 24px;
+      padding: 20px 24px;
     }
     .run-heading h1 {
       overflow-wrap: anywhere;
@@ -163,7 +206,7 @@ import { StatusBadge } from '../shared/ui/status-badge';
     .metrics {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      margin: 0 24px 24px;
+      margin: 0 24px 16px;
       border: 1px solid var(--border);
       border-radius: 6px;
       background: var(--surface);
@@ -186,17 +229,41 @@ import { StatusBadge } from '../shared/ui/status-badge';
     }
     .investigation {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+      grid-template-columns: minmax(0, 1fr) var(--inspector-width, 320px);
       border-top: 1px solid var(--border);
       min-height: 500px;
+      align-items: start;
     }
     .investigation-main {
       min-width: 0;
       border-right: 1px solid var(--border);
     }
     .inspector {
+      position: sticky;
+      top: 0;
+      max-height: 100vh;
+      overflow: auto;
       background: var(--surface);
       min-width: 0;
+    }
+    .width-control {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .width-control input {
+      min-width: 60px;
+      flex: 1;
+      width: 80px;
+      accent-color: var(--accent);
+    }
+    .width-control output {
+      font: 11px var(--mono);
     }
     .inspector-tabs {
       display: flex;
@@ -243,7 +310,7 @@ import { StatusBadge } from '../shared/ui/status-badge';
         flex-wrap: wrap;
       }
       .investigation {
-        grid-template-columns: minmax(0, 1fr) 280px;
+        grid-template-columns: minmax(0, 1fr) var(--inspector-width, 280px);
       }
       .metrics > div {
         padding: 12px;
@@ -253,6 +320,9 @@ import { StatusBadge } from '../shared/ui/status-badge';
       }
     }
     @media (max-width: 950px) {
+      .width-control {
+        display: none;
+      }
       .investigation {
         grid-template-columns: minmax(0, 1fr);
       }
@@ -267,6 +337,21 @@ import { StatusBadge } from '../shared/ui/status-badge';
 })
 export class RunWorkspace {
   readonly store = inject(StudioRunStore);
+  readonly workflow = computed(
+    () =>
+      this.store.selectedRun()?.topology?.status === 0 ||
+      this.store
+        .entities()
+        .some(
+          (entity) => entity.id === this.store.selectedRun()?.request.entityId && entity.kind === 1,
+        ),
+  );
+  readonly inspectorWidth = signal(320);
+  readonly maxInspectorWidth = signal(480);
+  private readonly investigation = viewChild<ElementRef<HTMLElement>>('investigation');
+  resizeInspector(width: number) {
+    this.inspectorWidth.set(Math.min(this.maxInspectorWidth(), Math.max(280, width)));
+  }
   readonly tab = signal<'input' | 'metadata'>('input');
   readonly duration = computed(() => {
     const run = this.store.selectedRun();
@@ -275,6 +360,23 @@ export class RunWorkspace {
     return `${((Date.parse(run.completedAt) - Date.parse(run.startedAt)) / 1000).toFixed(2)} s`;
   });
   constructor() {
+    effect((cleanup) => {
+      const host = this.investigation()?.nativeElement;
+      if (!host || typeof ResizeObserver === 'undefined') return;
+      const resize = () => {
+        const available = host.clientWidth;
+        if (available > 0) {
+          this.maxInspectorWidth.set(
+            Math.max(280, Math.min(480, Math.floor((available - 360) / 10) * 10)),
+          );
+          this.resizeInspector(this.inspectorWidth());
+        }
+      };
+      const observer = new ResizeObserver(resize);
+      observer.observe(host);
+      resize();
+      cleanup(() => observer.disconnect());
+    });
     inject(ActivatedRoute)
       .paramMap.pipe(takeUntilDestroyed())
       .subscribe((params) => {

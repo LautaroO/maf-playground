@@ -60,3 +60,27 @@ it('preserves an edited input while profile availability refreshes', async () =>
   await fixture.whenStable();
   expect(fixture.componentInstance.text()).toBe(draft);
 });
+it('keeps the displayed session selection in sync when new options arrive with the selected ID', async () => {
+  TestBed.configureTestingModule({ providers: [provideRouter([])] });
+  const store = TestBed.inject(StudioRunStore);
+  store.entities.set([novel]);
+  store.profiles.set(['balanced']);
+  store.selectedProfileId.set('balanced');
+  store.selectEntity(novel.id);
+  const fixture = TestBed.createComponent(InputWorkspace);
+  fixture.detectChanges();
+  await fixture.whenStable();
+  store.sessions.set([
+    {
+      id: 'replacement',
+      entityId: novel.id,
+      profileId: 'balanced',
+      createdAt: '2026-10-25T12:00:00Z',
+    },
+  ]);
+  store.selectSession('replacement');
+  fixture.detectChanges();
+  expect((fixture.nativeElement.querySelector('#session') as HTMLSelectElement).value).toBe(
+    'replacement',
+  );
+});

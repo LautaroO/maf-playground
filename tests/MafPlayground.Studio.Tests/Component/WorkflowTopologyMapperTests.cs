@@ -61,6 +61,37 @@ public sealed class WorkflowTopologyMapperTests
         Assert.Null(first.Edges[0].Label);
     }
 
+    [Fact]
+    public async Task NativeFanIn_CoalescesRepeatedStructuralConnectionAndRetainsAllSources()
+    {
+        ServiceCollection services = new();
+        services.AddAIRuntime(new ConfigurationBuilder().Build())
+            .AddWorkflow<UnconstructableEntity, string, string>("novel-fan-in", entity => entity
+                .WithDescription("Native fan-in regression").AllowAnonymousAccess().WithMafWorkflowSource((_, _) => new FanInSource()));
+        services.AddStudioCatalog();
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        using IServiceScope scope = provider.CreateScope();
+        IStudioCatalog catalog = scope.ServiceProvider.GetRequiredService<IStudioCatalog>();
+        StudioTopology first = await catalog.GetTopologyAsync("novel-fan-in", "cli-default", default);
+        StudioTopology second = await catalog.GetTopologyAsync("novel-fan-in", "cli-default", default);
+        StudioTopologyEdge edge = Assert.Single(first.Edges, edge => edge.Kind == "fanIn");
+        Assert.Equal(["left", "right"], edge.SourceIds);
+        Assert.Equal(["finish"], edge.TargetIds);
+        Assert.Equal(2, first.Edges.Count);
+        Assert.Equal(first.Edges.Select(edge => edge.Id), second.Edges.Select(edge => edge.Id));
+    }
+
+    private sealed class FanInSource : IMafWorkflowSource
+    {
+        public Workflow CreateWorkflow()
+        {
+            NeverRunExecutor start = new("start"), left = new("left"), right = new("right"), finish = new("finish");
+            return new WorkflowBuilder(start).AddFanOutEdge(start, [left, right])
+                .AddFanInBarrierEdge([left, right], finish).WithOutputFrom(finish).Build();
+        }
+        public Workflow CreateWorkflowForDevUI(string workflowName) => throw new NotSupportedException();
+    }
+
     private sealed class ProfileWorkflowSource(string profileId) : IMafWorkflowSource
     {
         public Workflow CreateWorkflow()

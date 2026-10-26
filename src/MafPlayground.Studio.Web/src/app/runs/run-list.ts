@@ -72,7 +72,11 @@ import { StatusBadge } from '../shared/ui/status-badge';
     .run-row:hover {
       background: var(--hover);
     }
+    .run-row > div {
+      min-width: 0;
+    }
     .run-row strong {
+      overflow-wrap: anywhere;
       font-weight: 550;
     }
     .run-row .mono {

@@ -1,4 +1,5 @@
-import * as monaco from 'monaco-editor/editor/editor.api.js';
+// Initialize standalone commands and contribution services before creating the editor.
+import * as monaco from 'monaco-editor';
 import { jsonDefaults } from 'monaco-editor/language/json/monaco.contribution.js';
 import type { editor } from 'monaco-editor';
 (globalThis as typeof globalThis & { MonacoEnvironment: unknown }).MonacoEnvironment = {

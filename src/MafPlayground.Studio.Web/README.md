@@ -34,11 +34,11 @@ Tests cover API credentials/errors/reset mapping, fragmented SSE/reconnect/gaps,
 selection/reset/cancel races, dynamic schemas and safe chat rendering. They make no
 provider calls. Test-only fixtures are excluded from the application TypeScript project.
 
-Playwright Chromium is configured by `playwright.config.ts`; `npm run test:e2e`
-runs the journeys added in Tasks 8/9 against `STUDIO_E2E_URL` (default
-`http://127.0.0.1:4200/studio/`). This task intentionally adds no browser journeys;
-until they exist, Playwright reports no tests. Do not duplicate the unit failure
-matrix in browser tests.
+Playwright runs exactly three real-host journeys. See [browser journeys](e2e/README.md)
+for the test-only fixture build, lifecycle, normal bootstrap auth and screenshot artifacts.
+The fixture has no production CLI flag or deployment output. The browser suite covers
+translation investigation, native agent session/tool/reset, and cancellation followed by
+another execution. Additional state and failure permutations remain component tests.
 
 ## Development and browser authentication
 
@@ -120,7 +120,11 @@ IBM Plex Mono are bundled from pinned Fontsource packages; OFL licenses ship und
 `public/licenses`. Monaco **0.57.0** uses its explicit package ESM exports, bundled
 JSON/editor module workers and emitted codicon font. No runtime CDN workers/fonts
 or remote schema fetching are used. Plain JSON editing remains available if the
-enhanced editor cannot initialize.
+enhanced editor cannot initialize. The canonical Monaco entry initializes standalone
+commands/contribution services before editor creation. The real journeys wait for
+Monaco, clear the selected document, and type through ordinary keyboard events;
+they preserve native input and default delimiter behavior. Clearing matters because
+Monaco intentionally surrounds an existing selection when an opening delimiter is typed.
 
 Production output is `dist/studio/browser`, with `/studio/` base href and lazy
 feature/Monaco chunks. Task 10 must package this directory in the existing CLI
@@ -136,9 +140,27 @@ style/worker directives: Task 10 must make the narrow equivalent style/worker/ba
 integration and verify the real packaged host. Do not disable CSP or enable
 `unsafe-eval`; production does not need the HMR WebSocket allowance.
 
-Task 8 extends `RunWorkspace`'s main-column/inspector composition with graph and
-timeline selection. Task 9 adds comparison and rerun. No fake graph, metrics or
-provider billing claims are shown; usage/cost remain unavailable without evidence.
+`RunWorkspace` includes a direct Cytoscape **3.34.4** adapter and coordinated
+executor/invocation/span selection. Native workflow topology retains actual IDs,
+branches and cycles; agent views use observed parent-span hierarchy. Grid placement
+supports cycles without manufacturing a DAG; only native fan-in/fan-out needs junctions.
+Event updates change data/styles without relayout or viewport reset. Explicit Fit and
+collapse controls and a bounded keyboard/pointer inspector-width control support narrow
+desktop inspection, with bounded scrolling panels.
+
+`StudioRunStore.inspectionSelection`, `selectExecutor`, `selectInvocation`, and
+`selectSpan` coordinate all panels. `selectedEvents`, `spans`, `invocations`, and
+`metrics` project the bounded retained journal. Correlation comes only from recorded
+IDs, never labels or timestamps. Embedded PascalCase capture DTO fields are normalized
+without rewriting captured user keys. Payload IDs load through the existing HTTP API
+on demand; Angular text bindings render captured data safely. Search is explicitly
+limited to the selected retained invocation/span or the loaded payload. Missing parents,
+truncation, eviction, missing metrics and incomplete history stay explicit.
+
+Captured model attempts count only `MafPlayground.Studio.Model` spans. These may include
+attempts rejected by guards before provider execution. Token/cost totals stay unknown
+if any selected boundary observation lacks the metric or currencies cannot be combined.
+No billing count or edge traversal is inferred. Task 9 adds comparison and rerun.
 
 Pinned transitive patches resolve the install audit: DOMPurify 3.4.17 fixes
 GHSA-cg2g-xh64-v4q7 / GHSA-mrv2-3pqr-j5jr, Vite 8.3.5 fixes the 8.3.0–8.3.2

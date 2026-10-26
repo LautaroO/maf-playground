@@ -1,3 +1,9 @@
+import {
+  projectInvocations,
+  projectSpans,
+  modelMetrics,
+  type InspectionSelection,
+} from '../traces/inspection';
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import {
   StudioRunStatus,
@@ -61,6 +67,32 @@ export class StudioRunStore {
       .reverse(),
   );
   readonly eventHistory = signal<Record<string, StudioEvent[]>>({});
+  readonly inspectionSelection = signal<InspectionSelection>({
+    executorId: null,
+    invocationId: null,
+    spanId: null,
+  });
+  readonly selectedEvents = computed(() => this.eventHistory()[this.selectedRunId() ?? ''] ?? []);
+  readonly spans = computed(() => projectSpans(this.selectedEvents()));
+  readonly invocations = computed(() => projectInvocations(this.selectedEvents()));
+  readonly metrics = computed(() => modelMetrics(this.spans()));
+  selectExecutor(executorId: string) {
+    this.inspectionSelection.set({ executorId, invocationId: null, spanId: null });
+  }
+  selectInvocation(id: string) {
+    const item = this.invocations().find((x) => x.id === id);
+    if (item)
+      this.inspectionSelection.set({ executorId: item.executorId, invocationId: id, spanId: null });
+  }
+  selectSpan(id: string) {
+    const item = this.spans().find((x) => x.spanId === id);
+    if (item)
+      this.inspectionSelection.set({
+        executorId: item.executorId,
+        invocationId: item.invocationId,
+        spanId: id,
+      });
+  }
   readonly historyGaps = signal<Record<string, boolean>>({});
   readonly resetNotice = signal('');
   readonly error = signal('');
@@ -214,6 +246,8 @@ export class StudioRunStore {
     const controller = new AbortController();
     this.watcher = controller;
     const epoch = this.epoch;
+    if (id !== this.selectedRunId())
+      this.inspectionSelection.set({ executorId: null, invocationId: null, spanId: null });
     this.selectedRunId.set(id);
     try {
       const run = await this.api.run(id, controller.signal);
@@ -327,6 +361,7 @@ export class StudioRunStore {
       this.eventHistory.set({});
       this.historyGaps.set({});
       this.selectedRunId.set(null);
+      this.inspectionSelection.set({ executorId: null, invocationId: null, spanId: null });
       this.selectedSessionId.set(null);
       this.resetNotice.set(
         'The local host restarted. Previous runs and sessions are no longer available.',
