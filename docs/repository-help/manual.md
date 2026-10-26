@@ -376,3 +376,10 @@ contracts and an explicit missing-assets page.
 Export schemas offline with `studio --export-contracts /tmp/studio-contracts.json`.
 See the [Studio service documentation](../../src/MafPlayground.Studio/README.md#local-http-host)
 for authentication, routes, profiles and retention limits.
+
+Studio also exposes the same run/session/catalog services through the official
+MCP Streamable HTTP endpoint `/mcp`. It requires the printed local bearer token;
+browser cookies do not authenticate MCP. See [Studio MCP access and manual
+Codex/Claude configuration](../../src/MafPlayground.Studio/README.md#mcp-access-to-shared-runs).
+HTTP and MCP session reset both return a new explicit session ID; the original
+handle remains valid with cleared native history.

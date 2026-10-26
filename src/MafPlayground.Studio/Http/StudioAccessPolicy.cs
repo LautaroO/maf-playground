@@ -40,9 +40,15 @@ public sealed class StudioAccessPolicy
     public bool IsAuthenticated(HttpContext context)
     {
         if (!IsLocalRequest(context)) return false;
-        string? authorization = context.Request.Headers.Authorization.Count == 1 ? context.Request.Headers.Authorization[0] : null;
-        return authorization is not null && authorization.StartsWith("Bearer ", StringComparison.Ordinal) && Equal(authorization[7..], BearerToken) ||
+        return IsBearerAuthenticated(context) ||
             Volatile.Read(ref exchanged) == 1 && context.Request.Cookies.TryGetValue(CookieName, out string? value) && Equal(value, cookie);
+    }
+
+    public bool IsBearerAuthenticated(HttpContext context)
+    {
+        if (!IsLocalRequest(context)) return false;
+        string? authorization = context.Request.Headers.Authorization.Count == 1 ? context.Request.Headers.Authorization[0] : null;
+        return authorization is not null && authorization.StartsWith("Bearer ", StringComparison.Ordinal) && Equal(authorization[7..], BearerToken);
     }
 
     public bool TryExchange(string code, out string? value)

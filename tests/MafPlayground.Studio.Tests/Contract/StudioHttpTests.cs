@@ -159,10 +159,19 @@ public sealed class StudioHttpTests
         var histories = host.Model.Requests.ToArray();
         Assert.True(histories[1].Length > histories[0].Length);
         Assert.Equal(HttpStatusCode.Conflict, (await host.Client.PostAsJsonAsync(Api + "/runs", request with { RequestId = Guid.NewGuid().ToString(), ProfileId = "alternate" })).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await host.Client.PostAsync(Api + $"/sessions/{session.Id}/reset", null)).StatusCode);
-        var next = await host.Client.PostAsJsonAsync(Api + "/runs", request with { RequestId = Guid.NewGuid().ToString() });
+        var reset = await host.Client.PostAsync(Api + $"/sessions/{session.Id}/reset", null);
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        var replacement = (await reset.Content.ReadFromJsonAsync<StudioSession>())!;
+        Assert.NotEqual(session.Id, replacement.Id);
+        Assert.Equal(session.EntityId, replacement.EntityId);
+        Assert.Equal(session.ProfileId, replacement.ProfileId);
+        var next = await host.Client.PostAsJsonAsync(Api + "/runs", request with { RequestId = Guid.NewGuid().ToString(), SessionId = replacement.Id });
         var nextReceipt = (await next.Content.ReadFromJsonAsync<StudioRunReceipt>())!;
         await host.Terminal(nextReceipt.RunId);
+        Assert.Equal(histories[0].Length, host.Model.Requests.Last().Length);
+        var original = await host.Client.PostAsJsonAsync(Api + "/runs", request with { RequestId = Guid.NewGuid().ToString() });
+        var originalReceipt = (await original.Content.ReadFromJsonAsync<StudioRunReceipt>())!;
+        await host.Terminal(originalReceipt.RunId);
         Assert.Equal(histories[0].Length, host.Model.Requests.Last().Length);
     }
 
@@ -191,7 +200,11 @@ public sealed class StudioHttpTests
             Assert.Equal(HttpStatusCode.Accepted, (await host.Client.PostAsync(Api + $"/runs/{receipt.RunId}/cancel", null)).StatusCode);
         foreach (var receipt in receipts) await host.Terminal(receipt.RunId);
         foreach (var session in sessions)
-            Assert.Equal(HttpStatusCode.NoContent, (await host.Client.PostAsync(Api + $"/sessions/{session.Id}/reset", null)).StatusCode);
+        {
+            var reset = await host.Client.PostAsync(Api + $"/sessions/{session.Id}/reset", null);
+            Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+            Assert.NotEqual(session.Id, (await reset.Content.ReadFromJsonAsync<StudioSession>())!.Id);
+        }
     }
 
     [Fact]

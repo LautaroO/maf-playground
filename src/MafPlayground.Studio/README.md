@@ -179,7 +179,7 @@ Routes under `/api/studio/v1`:
 | `GET /entities/{id}/topology?profileId=cli-default` | Native topology or explicit unavailable state |
 | `GET /profiles` | Allowed host-configured profile IDs |
 | `GET /sessions` / `POST /sessions` | List/create bounded session handles (`entityId`, `profileId`) |
-| `POST /sessions/{id}/reset` | Reset native history; queued and active turns return conflict |
+| `POST /sessions/{id}/reset` | 200 new explicit `StudioSession`; clear native history; queued and active turns conflict |
 | `GET /runs` / `POST /runs` | Retained run snapshots / accepted receipt (202) |
 | `GET /runs/{id}` / `GET /runs/{id}/result` | Snapshot / terminal snapshot; pending result returns conflict |
 | `POST /runs/{id}/cancel` | Request job cancellation (202); terminal/finalizing run returns conflict |
@@ -223,7 +223,7 @@ snapshots under the existing store lock.
 `studio --export-contracts <path>` writes transport and entity JSON schemas using
 `AIJsonUtilities` without building/starting a host or registering providers. The
 current `/studio` page explicitly reports absent frontend assets; asset packaging
-and MCP mapping are separate delivery steps.
+is a separate delivery step; MCP is mapped with the HTTP API.
 
 Access and error protection is middleware, not an endpoint filter.
 `UseStudioAccess()` wraps all downstream routes before minimal API argument
@@ -237,3 +237,113 @@ become sanitized 500 responses. If a response has already started, the connectio
 is aborted rather than forwarding private diagnostics to a development error page.
 Development hosting and DI/options startup validation remain enabled. Do not add
 a developer exception page inside this protected pipeline.
+
+## MCP access to shared runs
+
+`AddStudio` registers the official `ModelContextProtocol.AspNetCore` **1.4.1**
+SDK; `MapStudio` maps `/mcp` in the same CLI process and service provider as HTTP
+and SSE. This production dependency supplies protocol handshake, tool argument
+binding, discovery and Streamable HTTP framing. It is not an execution engine.
+Its transitive MCP/Core packages remain 1.4.1; the net10 package minima (MEAI
+Abstractions 10.5.2 and Extensions 10.0.7) fit this repository's MEAI 10.7.0,
+Extensions 10.0.10 and MAF 1.16.0. SDK 2.0/2.3 require newer MEAI; upgrading the
+framework to consume those packages is not part of this transport. Studio resolves
+MEAI 10.7.0. The CLI already resolves MEAI 10.8.0 through the unchanged
+`OllamaSharp` 5.4.30 adapter dependency; MCP does not raise that version. Central
+MAF/MEAI/Extensions declarations and provider adapter references remain unchanged.
+
+Transport configuration is stateless Streamable HTTP, with no MCP conversation
+state or legacy SSE transport. Sampling, elicitation and roots are disabled by
+SDK stateless mode. Accepted Studio jobs and explicit agent sessions still belong
+to the shared run/session services. Each profile-sensitive tool operation creates
+a fresh async service scope. Disconnecting an MCP client never cancels an accepted
+job; use `studio_cancel_run` explicitly. No comparison placeholder, shell, file,
+ambient service client or assistant-session takeover tools are registered.
+
+Install `UseStudioAccess` before endpoint binding. `/mcp` requires the ephemeral
+local **bearer** token on every request; a valid browser cookie alone is rejected.
+The same loopback remote-address, exact Host/Origin and scheme rules apply.
+MCP POST bodies are bounded before SDK parsing to `MaxPayloadBytes + 4096` bytes,
+including chunked requests without a content length. Accepted run input remains
+subject to the independent `MaxPayloadBytes` limit. Requests and accepted work
+use the same trusted `studio-local` caller as HTTP.
+
+| Tool | Arguments and result |
+| --- | --- |
+| `studio_list_entities` | `after=0`, `limit=20`: `{items: StudioEntityDescriptor[], nextCursor}` with dynamic schemas/examples/capabilities |
+| `studio_get_topology` | `entityId`, `profileId`: `StudioTopology`, including explicit unavailable state |
+| `studio_list_profiles` | `after=0`, `limit=20`: `{items: string[], nextCursor}` |
+| `studio_start_run` | `request: StudioRunRequest`, `newSession=false`: existing `StudioRunReceipt` |
+| `studio_list_runs` | `after=0`, `limit=20`: `{items: StudioRunSnapshot[], nextCursor}` |
+| `studio_get_run` | `runId`: the same retained `StudioRunSnapshot` and result as HTTP |
+| `studio_get_events` | `runId`, `after=0`, `limit=100`: existing `StudioEventPage` |
+| `studio_get_spans` | `runId`, optional `spanId`, `after=0`, `limit=100`: `{spans, nextCursor, earliestRetainedSequence, hasGap}` |
+| `studio_get_payload` | `runId`, `payloadId`: existing sanitized `StudioPayload` |
+| `studio_cancel_run` | `runId`: accepted `StudioRunReceipt`; terminal/finalizing jobs conflict |
+| `studio_reset_session` | `sessionId`: new explicit `StudioSession`, matching HTTP reset |
+
+List cursors are offsets; list limits are 1–100. `nextCursor: null` ends a list.
+Retained run lists can change between pages. Events/spans use shared journal
+sequence cursors and limits 1–1000. Span pages scan that many **events**, so advance
+the cursor even if a page contains no spans. A targeted `spanId` lookup returns
+one span and cursor zero. Gaps indicate evicted capture, never a request to replay
+execution. Every successful tool returns a JSON document in MCP text content using
+the existing HTTP web JSON options. Embedded capture event data retains its
+original PascalCase DTO fields; targeted spans/payloads normalize typed fields.
+Results are capped at 128 KiB of UTF-8 JSON. An oversized result returns
+`result_too_large`; reduce the page or use HTTP for a large individual payload.
+Captured text is untrusted evidence, not instructions. Read tools carry read-only
+annotations; submission, cancellation and reset carry write semantics. Runtime
+validation and the shared services enforce these boundaries independently.
+
+`newSession: true` requires a session-capable entity and a null request sessionId.
+Read the assigned ID from `studio_get_run` and reuse it explicitly for later turns.
+Reusing a request ID across HTTP and MCP returns the same receipt with no second
+model call. A host-local derived handle keeps new-session retries compatible with
+the existing request tombstone after snapshot eviction. Changing input, entity,
+profile or session semantics under that request ID conflicts.
+
+Both HTTP `POST /sessions/{id}/reset` and MCP reset return a new explicit session
+with the same entity/profile (HTTP 200). Native history on the original handle is
+also cleared; that original bound handle remains valid. The common gate rejects
+queued/active turns and checks handle capacity before clearing history. Reset
+allocates another handle within the existing 1,000-handle host-lifetime limit.
+
+### Manual assistant configuration
+
+Start the existing CLI with `dotnet run --project src/MafPlayground.CLI -- studio
+--no-open`, then copy the printed bearer into `STUDIO_BEARER_TOKEN` in the
+assistant process's environment. Use the exact configured authority (default
+`localhost:5051`, not a substituted IP). Restarting Studio changes the token;
+refresh the environment and reconnect the client. Do not put credentials in URLs
+or committed configuration. Studio never edits assistant configuration.
+
+For Codex, manually add to your user configuration:
+
+```toml
+[mcp_servers.local_agent_studio]
+url = "http://localhost:5051/mcp"
+bearer_token_env_var = "STUDIO_BEARER_TOKEN"
+```
+
+For Claude Code, manually merge into your local MCP configuration, keeping the
+environment reference literal:
+
+```json
+{
+  "mcpServers": {
+    "local-agent-studio": {
+      "type": "http",
+      "url": "http://localhost:5051/mcp",
+      "headers": { "Authorization": "Bearer ${STUDIO_BEARER_TOKEN}" }
+    }
+  }
+}
+```
+
+Use the client's MCP status/tools view to confirm discovery. These are documented
+manual configurations, not claims that a particular assistant was connected.
+The official SDK client is exercised by both in-memory contracts and opt-in
+loopback transport tests. Configuration references: [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli),
+[Claude Code MCP](https://code.claude.com/docs/en/mcp), and
+[official C# SDK v1.4.1](https://github.com/modelcontextprotocol/csharp-sdk/tree/v1.4.1).

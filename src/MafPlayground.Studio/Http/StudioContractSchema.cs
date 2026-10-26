@@ -13,11 +13,12 @@ public static class StudioContractSchema
         Type[] types = [typeof(StudioRunRequest), typeof(StudioRunReceipt), typeof(StudioRunSnapshot),
             typeof(StudioEntityDescriptor), typeof(StudioTopology), typeof(StudioEvent), typeof(StudioEventPage),
             typeof(StudioPayload), typeof(StudioSpan), typeof(StudioSessionRequest), typeof(StudioSession),
-            typeof(StudioExecutionProfileSnapshot), typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)];
+            typeof(StudioExecutionProfileSnapshot), typeof(StudioMcpSpanPage),
+            typeof(StudioMcpPage<StudioEntityDescriptor>), typeof(StudioMcpPage<StudioRunSnapshot>), typeof(StudioMcpPage<string>), typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)];
         return JsonSerializer.SerializeToElement(new
         {
             version = "1",
-            transport = types.ToDictionary(type => type.Name, type => AIJsonUtilities.CreateJsonSchema(type, serializerOptions: AIJsonSerializerOptions.Default)),
+            transport = types.ToDictionary(type => type.IsGenericType ? $"StudioMcpPageOf{type.GenericTypeArguments[0].Name}" : type.Name, type => AIJsonUtilities.CreateJsonSchema(type, serializerOptions: AIJsonSerializerOptions.Default)),
             entities = registrations.Select(registration => new
             {
                 registration.Descriptor.Id,

@@ -1,4 +1,5 @@
 using MafPlayground.Studio.Catalog;
+using MafPlayground.Studio.Mcp;
 using MafPlayground.Studio.Execution;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,7 @@ public static class StudioServiceExtensions
         services.TryAddSingleton(provider => configured with
         { Secrets = secrets.Concat(provider.GetRequiredService<StudioAccessPolicy>().Secrets).ToArray() });
         services.AddStudioCatalog().AddStudioRuns();
+        services.AddStudioMcp();
         services.TryAddSingleton(_ => new StudioAccessPolicy(configuration["Studio:Url"] ?? "http://localhost:5051"));
         services.TryAddSingleton<StudioSessionService>();
         services.TryAddScoped<StudioInspectionService>();

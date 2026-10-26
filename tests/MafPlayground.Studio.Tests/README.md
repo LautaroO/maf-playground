@@ -42,3 +42,10 @@ Host/Origin, bearer/cookie authentication and a throwing endpoint dependency.
 They verify denial before activation and fixed ProblemDetails without credentials
 or development diagnostics. The process smoke test repeats the missing-query
 regression against the actual CLI with no credential, bearer and exchanged cookie.
+
+`Contract/StudioMcpContractTests.cs` uses the official MCP SDK client over TestServer
+for handshake/discovery, typed and malformed input, bearer-only/local access,
+dynamic unknown entity contracts/native topology, profile scope isolation, bounded
+list/event/span/payload pages, redaction/result limits, cross-transport request
+idempotency (including eviction), cancellation and shared session reset/history.
+No external model is called.

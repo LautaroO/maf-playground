@@ -25,12 +25,31 @@ public static class StudioAccessMiddleware
                     await Problem(context, 403, "local_access_required").ExecuteAsync(context);
                     return;
                 }
-                if (context.Request.Path != "/studio/login" && !policy.IsAuthenticated(context))
+                if (context.Request.Path != "/studio/login" && !(context.Request.Path.StartsWithSegments("/mcp") ? policy.IsBearerAuthenticated(context) : policy.IsAuthenticated(context)))
                 {
                     await Problem(context, 401, "authentication_required").ExecuteAsync(context);
                     return;
                 }
-                await next(context);
+                if (context.Request.Path.StartsWithSegments("/mcp") && HttpMethods.IsPost(context.Request.Method))
+                {
+                    // Bound chunked JSON-RPC before SDK parsing/argument binding as well as run admission.
+                    int maximum = context.RequestServices.GetRequiredService<StudioOptions>().MaxPayloadBytes + 4096;
+                    if (context.Request.ContentLength > maximum) throw new ArgumentException();
+                    Stream original = context.Request.Body;
+                    using var bounded = new MemoryStream();
+                    byte[] chunk = new byte[Math.Min(maximum + 1, 8192)];
+                    int read;
+                    while ((read = await original.ReadAsync(chunk, context.RequestAborted)) != 0)
+                    {
+                        if (bounded.Length + read > maximum) throw new ArgumentException();
+                        await bounded.WriteAsync(chunk.AsMemory(0, read), context.RequestAborted);
+                    }
+                    bounded.Position = 0;
+                    context.Request.Body = bounded;
+                    try { await next(context); }
+                    finally { context.Request.Body = original; }
+                }
+                else await next(context);
             }
             catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
             catch (Exception exception)

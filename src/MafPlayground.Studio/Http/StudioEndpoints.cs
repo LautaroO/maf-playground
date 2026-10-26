@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MafPlayground.Studio.Catalog;
+using MafPlayground.Studio.Mcp;
 using MafPlayground.Studio.Contracts;
 using MafPlayground.Studio.Execution;
 using Microsoft.AspNetCore.Builder;
@@ -20,6 +21,7 @@ public static class StudioEndpoints
 
     public static IEndpointRouteBuilder MapStudio(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapStudioMcp();
         var root = endpoints.MapGroup("");
         root.MapGet("/studio/login", () => Results.Content("""
             <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Studio access</title>
@@ -58,7 +60,7 @@ public static class StudioEndpoints
             return Results.Created($"{Prefix}/sessions/{session.Id}", session);
         });
         api.MapPost("/sessions/{id}/reset", async (string id, StudioSessionService sessions, StudioAccessPolicy policy, CancellationToken token) =>
-        { await sessions.ResetAsync(id, policy.Caller, token); return Results.NoContent(); });
+        Results.Ok(await sessions.ResetAndCreateAsync(id, policy.Caller, token)));
         api.MapPost("/runs", async (HttpContext context, StudioInspectionService inspection, StudioSessionService sessions, StudioAccessPolicy policy) =>
         {
             StudioRunRequest request = await ReadAsync<StudioRunRequest>(context);

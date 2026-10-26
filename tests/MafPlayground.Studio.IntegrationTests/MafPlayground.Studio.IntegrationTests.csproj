@@ -4,9 +4,13 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio"><PrivateAssets>all</PrivateAssets><IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets></PackageReference>
     <ProjectReference Include="../../src/MafPlayground.CLI/MafPlayground.CLI.csproj" />
+    <Compile Include="../MafPlayground.Studio.Tests/Fixtures/StudioTransportHost.cs" Link="Fixtures/StudioTransportHost.cs" />
+    <Compile Include="../MafPlayground.Studio.Tests/Fixtures/NovelEntities.cs" Link="Fixtures/NovelEntities.cs" />
+    <Compile Include="../MafPlayground.Studio.Tests/Component/StudioExecutionFixture.cs" Link="Fixtures/StudioExecutionFixture.cs" />
   </ItemGroup>
 </Project>
