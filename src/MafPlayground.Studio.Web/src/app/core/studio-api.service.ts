@@ -49,8 +49,10 @@ export class StudioApiService {
   instance(signal?: AbortSignal) {
     return this.request<D.StudioInstance>('/instance', undefined, signal);
   }
-  entities() {
-    return this.request<D.StudioEntityDescriptor[]>('/entities');
+  entities(profileId?: string) {
+    return this.request<D.StudioEntityDescriptor[]>(
+      '/entities' + (profileId ? '?profileId=' + encodeURIComponent(profileId) : ''),
+    );
   }
   profiles() {
     return this.request<string[]>('/profiles');
@@ -81,7 +83,7 @@ export class StudioApiService {
   }
   topology(id: string, profile: string) {
     return this.request<D.StudioTopology>(
-      `/entities/${encodeURIComponent(id)}/topology?profileId=${encodeURIComponent(profile)}`,
+      `/topology?entityId=${encodeURIComponent(id)}&profileId=${encodeURIComponent(profile)}`,
     );
   }
   events(id: string, after: number, limit = 100) {

@@ -44,7 +44,7 @@ public sealed class StudioStartupTests
             Task drain = process.StandardOutput.ReadToEndAsync(timeout.Token);
             using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true }) { BaseAddress = new($"http://127.0.0.1:{port}") };
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/studio/v1/entities", timeout.Token)).StatusCode);
-            const string malformed = "/api/studio/v1/entities/basic-agent/topology";
+            const string malformed = "/api/studio/v1/topology?entityId=basic-agent";
             await AssertSafeBindingProblem(await client.GetAsync(malformed, timeout.Token), HttpStatusCode.Unauthorized, "authentication_required", bearer, null);
             client.DefaultRequestHeaders.Authorization = new("Bearer", bearer);
             await AssertSafeBindingProblem(await client.GetAsync(malformed, timeout.Token), HttpStatusCode.BadRequest, "invalid_request", bearer, null);

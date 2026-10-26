@@ -9,11 +9,16 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace MafPlayground.Studio.Catalog;
 
-public sealed class StudioCatalog(IAIEntityRegistry registry, IAIEntityInspection inspection, StudioExecutionProfileBinder? profiles = null) : IStudioCatalog
+public sealed class StudioCatalog(IAIEntityRegistry registry, IAIEntityInspection inspection, StudioExecutionProfileBinder? profiles = null, StudioProfileCatalog? profileCatalog = null) : IStudioCatalog
 {
-    public ValueTask<IReadOnlyList<StudioEntityDescriptor>> ListAsync(CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<StudioEntityDescriptor>> ListAsync(CancellationToken cancellationToken, string? profileId = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (profileId is not null)
+        {
+            profileCatalog?.Validate(profileId);
+            profiles?.Bind(profileId);
+        }
         List<StudioEntityDescriptor> entities = [];
         foreach (AIEntityDescriptor descriptor in registry.Entities)
         {

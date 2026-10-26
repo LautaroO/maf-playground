@@ -8,7 +8,7 @@ import {
 } from './studio-api.generated';
 import { StudioApiService, StudioHttpError } from './studio-api.service';
 import { StudioEventClient } from './studio-event-client';
-import { validateJson } from '../input/schema-validation';
+import { STUDIO_JSON_VALIDATOR } from '../input/schema-validation';
 const lifecycle = new Set([
   'queued',
   'running',
@@ -23,8 +23,11 @@ const lifecycle = new Set([
 export class StudioRunStore {
   private readonly api = inject(StudioApiService);
   private readonly events = inject(StudioEventClient);
+  private readonly validateJson = inject(STUDIO_JSON_VALIDATOR);
   private watcher?: AbortController;
   private epoch = 0;
+  private selectionRevision = 0;
+  private catalogRevision = 0;
   private cursors: Record<string, number> = {};
   readonly hostInstanceId = signal<string | null>(null);
   readonly entities = signal<StudioEntityDescriptor[]>([]);
@@ -62,6 +65,7 @@ export class StudioRunStore {
   readonly resetNotice = signal('');
   readonly error = signal('');
   readonly loading = signal(false);
+  readonly availabilityLoading = signal(false);
   readonly busy = signal(false);
   readonly connection = signal('disconnected');
   constructor() {
@@ -73,27 +77,28 @@ export class StudioRunStore {
     try {
       this.acceptInstance((await this.api.instance()).hostInstanceId);
       const epoch = this.epoch;
-      const [entities, profiles, sessions, runs] = await Promise.all([
-        this.api.entities(),
+      const [profiles, sessions, runs] = await Promise.all([
         this.api.profiles(),
         this.api.sessions(),
         this.api.runs(),
       ]);
       if (epoch !== this.epoch) return;
-      this.entities.set(entities);
       this.profiles.set(profiles);
       this.sessions.set(sessions);
       this.runs.set(runs.filter((run) => run.hostInstanceId === this.hostInstanceId()));
-      if (!profiles.includes(this.selectedProfileId()))
+      if (!profiles.includes(this.selectedProfileId())) {
+        this.selectionRevision++;
         this.selectedProfileId.set(profiles[0] ?? '');
-      if (this.selectedEntityId() && !entities.some((item) => item.id === this.selectedEntityId()))
-        this.selectedEntityId.set(null);
+        this.selectedSessionId.set(null);
+      }
+      await this.refreshAvailability();
+      if (epoch !== this.epoch) return;
       if (
         this.selectedSessionId() &&
         !sessions.some((item) => item.id === this.selectedSessionId())
       )
-        this.selectedSessionId.set(null);
-      this.connection.set('connected');
+        this.selectSession(null);
+      if (!this.error()) this.connection.set('connected');
     } catch (error) {
       this.fail(error);
     } finally {
@@ -102,55 +107,103 @@ export class StudioRunStore {
   }
   selectEntity(id: string) {
     if (!this.entities().some((item) => item.id === id)) return;
-    if (id !== this.selectedEntityId()) this.selectedSessionId.set(null);
+    if (id !== this.selectedEntityId()) {
+      this.selectionRevision++;
+      this.selectedSessionId.set(null);
+    }
     this.selectedEntityId.set(id);
     this.error.set('');
   }
-  selectProfile(id: string) {
-    if (!this.profiles().includes(id)) return;
-    if (id !== this.selectedProfileId()) this.selectedSessionId.set(null);
+  async selectProfile(id: string) {
+    if (!this.profiles().includes(id) || id === this.selectedProfileId()) return;
+    this.selectionRevision++;
+    this.selectedSessionId.set(null);
     this.selectedProfileId.set(id);
+    await this.refreshAvailability();
   }
   selectSession(id: string | null) {
-    if (id === null || this.compatibleSessions().some((item) => item.id === id))
+    if (
+      id !== this.selectedSessionId() &&
+      (id === null || this.compatibleSessions().some((item) => item.id === id))
+    ) {
+      this.selectionRevision++;
       this.selectedSessionId.set(id);
+    }
+  }
+  private async refreshAvailability() {
+    const revision = ++this.catalogRevision;
+    const epoch = this.epoch;
+    const profile = this.selectedProfileId();
+    this.availabilityLoading.set(true);
+    const current = () =>
+      revision === this.catalogRevision &&
+      epoch === this.epoch &&
+      profile === this.selectedProfileId();
+    try {
+      const entities = await this.api.entities(profile || undefined);
+      if (!current()) return;
+      this.entities.set(entities);
+      if (
+        this.selectedEntityId() &&
+        !entities.some((item) => item.id === this.selectedEntityId())
+      ) {
+        this.selectionRevision++;
+        this.selectedEntityId.set(null);
+        this.selectedSessionId.set(null);
+      }
+    } catch (error) {
+      if (current()) {
+        this.entities.set([]);
+        this.fail(error);
+      }
+    } finally {
+      if (current()) this.availabilityLoading.set(false);
+    }
   }
   async newSession() {
     await this.action(async (epoch) => {
       const entity = this.entity();
-      if (!entity?.supportsSessions) return;
+      if (!entity?.supportsSessions || !entity.isAvailable || this.availabilityLoading()) return;
+      const revision = this.selectionRevision;
       const session = await this.api.createSession({
         entityId: entity.id,
         profileId: this.selectedProfileId(),
       });
       if (epoch !== this.epoch) return;
       this.sessions.update((items) => [session, ...items]);
-      this.selectedSessionId.set(session.id);
+      if (revision === this.selectionRevision) this.selectSession(session.id);
     });
   }
   async resetSession() {
     const id = this.selectedSessionId();
     if (!id) return;
     await this.action(async (epoch) => {
+      const revision = this.selectionRevision;
       const replacement = await this.api.resetSession(id);
       if (epoch !== this.epoch) return;
       this.sessions.update((items) => [replacement, ...items]);
-      this.selectedSessionId.set(replacement.id);
+      if (revision === this.selectionRevision) this.selectSession(replacement.id);
     });
   }
   async submit(input: unknown) {
     await this.action(async (epoch) => {
       const entity = this.entity();
-      if (!entity?.isAvailable || !this.selectedProfileId())
+      const profileId = this.selectedProfileId();
+      const sessionId = this.selectedSessionId();
+      const revision = this.selectionRevision;
+      if (!entity?.isAvailable || !profileId || this.availabilityLoading())
         throw new Error('Choose an available entity and profile.');
-      const diagnostics = await validateJson(JSON.stringify(input), entity.inputSchema);
+      const diagnostics = await this.validateJson(JSON.stringify(input), entity.inputSchema);
+      if (epoch !== this.epoch) return;
+      if (revision !== this.selectionRevision)
+        throw new Error('The selection changed. Review the input and submit again.');
       if (diagnostics.length) throw new Error('Input does not match the entity contract.');
       const receipt = await this.api.start({
         requestId: crypto.randomUUID(),
         entityId: entity.id,
-        profileId: this.selectedProfileId(),
+        profileId,
         input,
-        sessionId: this.selectedSessionId(),
+        sessionId,
       });
       if (epoch !== this.epoch || this.acceptInstance(receipt.hostInstanceId)) return;
       await this.selectRun(receipt.runId);
@@ -179,7 +232,11 @@ export class StudioRunStore {
     await this.action(async (epoch) => {
       await this.api.cancel(run.runId);
       if (epoch !== this.epoch) return;
-      this.upsert({ ...run, cancellationRequested: true });
+      this.runs.update((runs) =>
+        runs.map((current) =>
+          current.runId === run.runId ? { ...current, cancellationRequested: true } : current,
+        ),
+      );
     });
   }
   async reconnect() {

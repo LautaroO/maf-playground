@@ -45,11 +45,11 @@ public static class StudioEndpoints
             """, "text/html"));
         var api = root.MapGroup(Prefix);
         api.MapGet("/instance", (StudioRunService runs) => Results.Ok(new StudioInstance(runs.HostInstanceId)));
-        api.MapGet("/entities", async (IStudioCatalog catalog, CancellationToken token) => Results.Ok(await catalog.ListAsync(token)));
-        api.MapGet("/entities/{id}/topology", async (string id, string profileId, StudioInspectionService inspection, IStudioCatalog catalog, CancellationToken token) =>
+        api.MapGet("/entities", async (IStudioCatalog catalog, string? profileId, CancellationToken token) => Results.Ok(await catalog.ListAsync(token, profileId)));
+        api.MapGet("/topology", async (string entityId, string profileId, StudioInspectionService inspection, IStudioCatalog catalog, CancellationToken token) =>
         {
-            inspection.ValidateEntity(id, profileId, false);
-            return Results.Ok(await catalog.GetTopologyAsync(id, profileId, token));
+            inspection.ValidateEntity(entityId, profileId, false);
+            return Results.Ok(await catalog.GetTopologyAsync(entityId, profileId, token));
         });
         api.MapGet("/profiles", (StudioProfileCatalog profiles) => Results.Ok(profiles.Ids));
         api.MapGet("/sessions", async (StudioSessionService sessions, CancellationToken token) => Results.Ok(await sessions.ListAsync(token)));

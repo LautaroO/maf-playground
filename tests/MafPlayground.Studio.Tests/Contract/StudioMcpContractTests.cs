@@ -106,7 +106,7 @@ public sealed class StudioMcpContractTests
         foreach (string profile in new[] { "cli-default", "alternate", "cli-default" })
         {
             var topology = await Call<StudioTopology>(mcp, "studio_get_topology", new() { ["entityId"] = "novel-native", ["profileId"] = profile });
-            var http = (await host.Http.GetFromJsonAsync<StudioTopology>(Api + $"/entities/novel-native/topology?profileId={profile}"))!;
+            var http = (await host.Http.GetFromJsonAsync<StudioTopology>(Api + $"/topology?entityId=novel-native&profileId={profile}"))!;
             Assert.Equal(http.Nodes.Select(n => n.Id), topology.Nodes.Select(n => n.Id));
             Assert.Contains(topology.Nodes, n => n.Id == "finish-" + profile);
         }

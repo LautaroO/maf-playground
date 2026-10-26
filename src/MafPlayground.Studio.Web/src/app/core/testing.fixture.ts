@@ -4,7 +4,7 @@ import type {
   StudioRunSnapshot,
 } from './studio-api.generated';
 export const novel: StudioEntityDescriptor = {
-  id: 'unregistered-in-ui/stellar-survey-9',
+  id: 'unregistered-in-ui.stellar-survey-9',
   kind: 1,
   description: 'Survey nested observations',
   inputType: 'NovelSurvey',

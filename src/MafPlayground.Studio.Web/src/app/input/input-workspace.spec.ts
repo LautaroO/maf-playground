@@ -8,13 +8,13 @@ it('blocks submission while nested JSON is invalid and exposes only returned pro
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
-      { provide: STUDIO_FETCH, useValue: async () => Response.json([]) },
+      { provide: STUDIO_FETCH, useValue: async () => Response.json([novel]) },
     ],
   });
   const store = TestBed.inject(StudioRunStore);
   store.entities.set([novel]);
   store.profiles.set(['balanced', 'alternate']);
-  store.selectProfile('balanced');
+  await store.selectProfile('balanced');
   store.selectEntity(novel.id);
   const fixture = TestBed.createComponent(InputWorkspace);
   fixture.detectChanges();
@@ -34,4 +34,29 @@ it('blocks submission while nested JSON is invalid and exposes only returned pro
       (option: unknown) => (option as HTMLOptionElement).value,
     ),
   ).toEqual(['balanced', 'alternate']);
+});
+it('preserves an edited input while profile availability refreshes', async () => {
+  TestBed.configureTestingModule({
+    providers: [
+      provideRouter([]),
+      { provide: STUDIO_FETCH, useValue: async () => Response.json([{ ...novel }]) },
+    ],
+  });
+  const store = TestBed.inject(StudioRunStore);
+  store.profiles.set(['balanced', 'alternate']);
+  await store.selectProfile('balanced');
+  store.selectEntity(novel.id);
+  const fixture = TestBed.createComponent(InputWorkspace);
+  fixture.detectChanges();
+  await fixture.whenStable();
+  const draft = JSON.stringify({
+    observations: [{ coordinates: { latitude: 42 }, category: 'pulsar' }],
+  });
+  fixture.componentInstance.text.set(draft);
+  fixture.detectChanges();
+  await fixture.whenStable();
+  await store.selectProfile('alternate');
+  fixture.detectChanges();
+  await fixture.whenStable();
+  expect(fixture.componentInstance.text()).toBe(draft);
 });

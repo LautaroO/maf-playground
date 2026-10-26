@@ -82,12 +82,22 @@ files are removed in either mode. A restore must precede these scripts in a fres
 
 - `StudioApiService`: cookie-only HTTP DTO mapping and safe errors; inspection
   methods include topology, event pages, spans, payloads and terminal results.
+  `entities(profileId?)` requests selected-profile availability through HTTP and
+  the shared HTTP/MCP catalog. `topology(entityId, profileId)` sends both IDs as
+  query parameters to `/api/studio/v1/topology`; percent escapes are decoded once
+  by HTTP query binding, never manually. The unreleased path-based route was removed.
 - `StudioRunStore`: reactive catalog/profile/session/run snapshots, selected IDs,
   bounded per-run event lists, gap notices and text projections. `selectEntity`,
   `selectProfile`, `selectSession`, `selectRun`, `submit`, `resetSession`,
   `cancelSelected`, `reconnect` are the shared workspace actions. Session reset
-  selects the replacement ID returned by HTTP 200. An epoch prevents an in-flight
-  reset from restoring a stale handle after restart.
+  selects the replacement ID returned by HTTP 200 only when its initiating
+  entity/profile/session selection generation is still current. Same-host late
+  new/reset sessions remain in history. A host epoch rejects stale restart data.
+  `selectProfile` returns a promise; selection updates immediately and
+  `availabilityLoading` gates execution/session creation until its guarded catalog
+  refresh completes. Input drafts survive availability refreshes. `submit` captures
+  and rechecks the complete selection after async validation. Cancellation ack
+  merges only its flag into the latest snapshot, preserving terminal data.
 - `StudioEventClient.watch(runId, afterSequence, signal)`: fetch-based SSE;
   reconnects from the accepted sequence with bounded backoff, checks `/instance`
   before reopening, ignores duplicates, and keeps watching after terminal events

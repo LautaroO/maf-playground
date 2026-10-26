@@ -78,7 +78,7 @@ public sealed class StudioHttpTests
         await using var host = await Fixture.Create();
         var entities = await host.Client.GetFromJsonAsync<StudioEntityDescriptor[]>(Api + "/entities");
         Assert.Contains(entities!, entity => entity.Id == "review" && entity.IsAvailable);
-        Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync(Api + "/entities/review/topology?profileId=cli-default")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync(Api + "/topology?entityId=review&profileId=cli-default")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync(Api + "/profiles")).StatusCode);
         var receipt = await host.Start();
         StudioRunSnapshot run = await host.Terminal(receipt.RunId);
@@ -323,7 +323,7 @@ public sealed class StudioHttpTests
         else if (mode != "missing") host.Client.DefaultRequestHeaders.Authorization = new("Bearer", mode == "invalid" ? "invalid-private-credential" : host.Policy.BearerToken);
         if (mode == "foreign-host") host.Client.DefaultRequestHeaders.Host = "foreign.test:5051";
         if (mode == "foreign-origin") host.Client.DefaultRequestHeaders.Add("Origin", "http://foreign.test:5051");
-        foreach (string path in new[] { Api + "/entities/review/topology", Api + "/binding-probe?count=private-query-value" })
+        foreach (string path in new[] { Api + "/topology?entityId=review", Api + "/binding-probe?count=private-query-value" })
         {
             using var response = await host.Client.GetAsync(path);
             await AssertSafeProblem(response, status, title, secrets);

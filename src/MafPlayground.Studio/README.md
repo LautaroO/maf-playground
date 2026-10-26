@@ -176,8 +176,8 @@ Routes under `/api/studio/v1`:
 | Method and route | Result |
 | --- | --- |
 | `GET /instance` | Stable host lifetime ID, including an empty host; changes on restart |
-| `GET /entities` | Dynamic catalog and typed schemas, including unavailable entities |
-| `GET /entities/{id}/topology?profileId=cli-default` | Native topology or explicit unavailable state |
+| `GET /entities?profileId=cli-default` | Dynamic catalog and typed schemas with selected-profile availability (profile is optional) |
+| `GET /topology?entityId=review&profileId=cli-default` | Native topology or explicit unavailable state |
 | `GET /profiles` | Allowed host-configured profile IDs |
 | `GET /sessions` / `POST /sessions` | List/create bounded session handles (`entityId`, `profileId`) |
 | `POST /sessions/{id}/reset` | 200 new explicit `StudioSession`; clear native history; queued and active turns conflict |
@@ -271,7 +271,7 @@ use the same trusted `studio-local` caller as HTTP.
 
 | Tool | Arguments and result |
 | --- | --- |
-| `studio_list_entities` | `after=0`, `limit=20`: `{items: StudioEntityDescriptor[], nextCursor}` with dynamic schemas/examples/capabilities |
+| `studio_list_entities` | `after=0`, `limit=20`, optional `profileId`: `{items: StudioEntityDescriptor[], nextCursor}` with dynamic schemas/examples/capabilities |
 | `studio_get_topology` | `entityId`, `profileId`: `StudioTopology`, including explicit unavailable state |
 | `studio_list_profiles` | `after=0`, `limit=20`: `{items: string[], nextCursor}` |
 | `studio_start_run` | `request: StudioRunRequest`, `newSession=false`: existing `StudioRunReceipt` |
@@ -350,3 +350,12 @@ The official SDK client is exercised by both in-memory contracts and opt-in
 loopback transport tests. Configuration references: [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli),
 [Claude Code MCP](https://code.claude.com/docs/en/mcp), and
 [official C# SDK v1.4.1](https://github.com/modelcontextprotocol/csharp-sdk/tree/v1.4.1).
+
+Profile-aware discovery uses the same request-scoped profile binder as execution
+preflight; omitting `profileId` preserves default availability. HTTP and MCP
+`studio_list_entities` share this metadata path, including unknown-profile rejection.
+Topology IDs travel in query parameters to avoid encoded-slash path ambiguity;
+no manual URI decoding or old-route compatibility shim is applied. The runtime
+builder still limits registered IDs to letters, digits, hyphens, underscores and
+periods. Opaque slash/percent transport fixtures test query binding only; they do
+not broaden the runtime registration contract.

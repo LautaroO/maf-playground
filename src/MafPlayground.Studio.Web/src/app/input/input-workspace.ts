@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { StudioRunStore } from '../core/studio-run.store';
 import { JsonEditor } from './json-editor';
@@ -17,7 +17,9 @@ import { Chat } from '../chat/chat';
         </div>
         <a class="button" routerLink="/catalog">Change entity</a>
       </div>
-      @if (!entity.isAvailable) {
+      @if (store.availabilityLoading()) {
+        <div class="notice unavailable" role="status">Checking selected profile…</div>
+      } @else if (!entity.isAvailable) {
         <div class="notice warning unavailable" role="status">
           Unavailable · {{ entity.unavailableReason || 'This entity is not configured.' }}
         </div>
@@ -70,7 +72,7 @@ import { Chat } from '../chat/chat';
                     type="button"
                     class="button"
                     (click)="store.newSession()"
-                    [disabled]="store.busy() || !entity.isAvailable"
+                    [disabled]="store.busy() || store.availabilityLoading() || !entity.isAvailable"
                   >
                     ＋ New session</button
                   ><button
@@ -98,7 +100,11 @@ import { Chat } from '../chat/chat';
                   type="submit"
                   class="button primary"
                   [disabled]="
-                    !valid() || store.busy() || !entity.isAvailable || !store.selectedProfileId()
+                    !valid() ||
+                    store.busy() ||
+                    store.availabilityLoading() ||
+                    !entity.isAvailable ||
+                    !store.selectedProfileId()
                   "
                 >
                   {{
@@ -253,7 +259,8 @@ export class InputWorkspace {
   readonly valid = signal(false);
   constructor() {
     effect(() => {
-      const entity = this.store.entity();
+      this.store.selectedEntityId();
+      const entity = untracked(() => this.store.entity());
       this.text.set(JSON.stringify(entity?.inputExample ?? {}, null, 2));
       this.valid.set(false);
     });

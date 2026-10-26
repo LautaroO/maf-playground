@@ -3,7 +3,7 @@ import { StudioApiService, STUDIO_FETCH } from './studio-api.service';
 import { StudioEventClient, type WatchUpdate } from './studio-event-client';
 import { StudioRunStore } from './studio-run.store';
 import { event, novel, snapshot } from './testing.fixture';
-function setup() {
+function setup(validator = validation.validateJson) {
   const requests: { url: string; body?: Record<string, unknown> }[] = [];
   let host = 'host-a';
   const session = {
@@ -14,13 +14,14 @@ function setup() {
   };
   TestBed.configureTestingModule({
     providers: [
+      { provide: validation.STUDIO_JSON_VALIDATOR, useValue: validator },
       {
         provide: STUDIO_FETCH,
         useValue: async (url: string, init?: RequestInit) => {
           const body = init?.body ? JSON.parse(String(init.body)) : undefined;
           requests.push({ url, body });
           if (url.endsWith('/instance')) return Response.json({ hostInstanceId: host });
-          if (url.endsWith('/entities'))
+          if (url.includes('/entities?'))
             return Response.json([novel, { ...novel, id: 'unavailable', isAvailable: false }]);
           if (url.endsWith('/profiles')) return Response.json(['balanced', 'fast']);
           if (url.endsWith('/sessions') && !body) return Response.json([session]);
@@ -157,4 +158,138 @@ it('does not allow an in-flight reset to resurrect a session after restart', asy
   await pending;
   expect(store.selectedSessionId()).toBeNull();
   expect(store.sessions().some((item) => item.id === 'stale-replacement')).toBe(false);
+});
+
+import * as validation from '../input/schema-validation';
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => (resolve = complete));
+  return { promise, resolve };
+}
+for (const operation of ['new', 'reset'] as const) {
+  for (const change of ['entity', 'profile', 'session', 'roundtrip'] as const) {
+    it(`retains a late ${operation} session without replacing a newer ${change} selection`, async () => {
+      const { store, api } = setup();
+      await store.bootstrap();
+      store.selectEntity(novel.id);
+      store.selectSession('session-a');
+      const response = deferred<{
+        id: string;
+        entityId: string;
+        profileId: string;
+        createdAt: string;
+      }>();
+      if (operation === 'new') api.createSession = () => response.promise;
+      else api.resetSession = () => response.promise;
+      const request = operation === 'new' ? store.newSession() : store.resetSession();
+      if (change === 'entity') store.selectEntity('unavailable');
+      if (change === 'profile') await store.selectProfile('fast');
+      if (change === 'session') store.selectSession(null);
+      if (change === 'roundtrip') {
+        store.selectSession(null);
+        store.selectSession('session-a');
+      }
+      const selected = store.selectedSessionId();
+      response.resolve({
+        id: 'late-session',
+        entityId: novel.id,
+        profileId: 'balanced',
+        createdAt: '2026-10-25T12:00:00Z',
+      });
+      await request;
+      expect(store.sessions().some((item) => item.id === 'late-session')).toBe(true);
+      expect(store.selectedSessionId()).toBe(selected);
+    });
+  }
+}
+it('keeps terminal status, result and completion metadata when cancellation acknowledgment arrives late', async () => {
+  const { store, api } = setup();
+  await store.bootstrap();
+  await store.selectRun('run-a');
+  const response = deferred<void>();
+  api.cancel = () => response.promise;
+  const request = store.cancelSelected();
+  const terminal = snapshot('run-a', {
+    status: 2,
+    result: { done: true },
+    completedAt: '2026-10-25T12:00:03Z',
+    isTerminal: true,
+    totalEvents: 8,
+  });
+  store.runs.update((runs) => runs.map((run) => (run.runId === 'run-a' ? terminal : run)));
+  response.resolve();
+  await request;
+  expect(store.selectedRun()).toEqual({ ...terminal, cancellationRequested: true });
+});
+for (const change of ['entity', 'profile', 'session', 'roundtrip'] as const) {
+  it(`does not submit a stale context after ${change} changes during deferred validation`, async () => {
+    const response = deferred<validation.InputDiagnostic[]>();
+    const { store, requests } = setup(() => response.promise);
+    await store.bootstrap();
+    store.selectEntity(novel.id);
+    store.selectSession('session-a');
+    const request = store.submit(novel.inputExample);
+    if (change === 'entity') store.selectEntity('unavailable');
+    if (change === 'profile') await store.selectProfile('fast');
+    if (change === 'session') store.selectSession(null);
+    if (change === 'roundtrip') {
+      store.selectSession(null);
+      store.selectSession('session-a');
+    }
+    response.resolve([]);
+    await request;
+    expect(requests.filter((item) => item.url.endsWith('/runs') && item.body)).toEqual([]);
+    expect(store.error()).toContain('selection');
+  });
+}
+it.each([false, true])(
+  'uses selected profile availability instead of default availability=%s',
+  async (defaultAvailable) => {
+    const { store, api, requests } = setup();
+    api.entities = async (profile?: string) => [
+      { ...novel, isAvailable: profile === 'fast' ? !defaultAvailable : defaultAvailable },
+    ];
+    await store.bootstrap();
+    store.selectEntity(novel.id);
+    expect(store.entity()?.isAvailable).toBe(defaultAvailable);
+    await store.selectProfile('fast');
+    expect(store.entity()?.isAvailable).toBe(!defaultAvailable);
+    await store.submit(novel.inputExample);
+    expect(requests.filter((item) => item.url.endsWith('/runs') && item.body)).toHaveLength(
+      defaultAvailable ? 0 : 1,
+    );
+  },
+);
+it('discards a late profile catalog response after selection moved to a different profile', async () => {
+  const { store, api } = setup();
+  await store.bootstrap();
+  store.selectEntity(novel.id);
+  const response = deferred<(typeof novel)[]>();
+  api.entities = async (profile?: string) =>
+    profile === 'fast' ? response.promise : [{ ...novel, isAvailable: true }];
+  const pending = store.selectProfile('fast');
+  await store.selectProfile('balanced');
+  response.resolve([{ ...novel, isAvailable: false }]);
+  await pending;
+  expect(store.selectedProfileId()).toBe('balanced');
+  expect(store.entity()?.isAvailable).toBe(true);
+});
+it('blocks creation and submission until the selected profile availability completes', async () => {
+  const { store, api, requests } = setup();
+  await store.bootstrap();
+  store.selectEntity(novel.id);
+  const response = deferred<(typeof novel)[]>();
+  api.entities = () => response.promise;
+  const pending = store.selectProfile('fast');
+  expect(store.availabilityLoading()).toBe(true);
+  await store.newSession();
+  await store.submit(novel.inputExample);
+  expect(requests.filter((item) => item.body)).toEqual([]);
+  response.resolve([{ ...novel, isAvailable: true }]);
+  await pending;
+  expect(store.availabilityLoading()).toBe(false);
+  await store.newSession();
+  expect(
+    requests.find((item) => item.url.endsWith('/sessions') && item.body)?.body?.['profileId'],
+  ).toBe('fast');
 });

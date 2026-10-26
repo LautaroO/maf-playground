@@ -1,3 +1,4 @@
+import { InjectionToken } from '@angular/core';
 import { getLanguageService, type JSONSchema } from 'vscode-json-languageservice';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 export interface InputDiagnostic {
@@ -30,3 +31,8 @@ export async function validateJson(text: string, schema: unknown): Promise<Input
     column: item.range.start.character + 1,
   }));
 }
+
+export const STUDIO_JSON_VALIDATOR = new InjectionToken<typeof validateJson>(
+  'Studio JSON validator',
+  { providedIn: 'root', factory: () => validateJson },
+);

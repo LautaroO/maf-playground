@@ -65,7 +65,7 @@ internal sealed class RunHarness(ServiceProvider provider, StudioRunService serv
     }
     private sealed class TestCatalog : IStudioCatalog
     {
-        public ValueTask<IReadOnlyList<StudioEntityDescriptor>> ListAsync(CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyList<StudioEntityDescriptor>>([]);
+        public ValueTask<IReadOnlyList<StudioEntityDescriptor>> ListAsync(CancellationToken cancellationToken, string? profileId = null) => ValueTask.FromResult<IReadOnlyList<StudioEntityDescriptor>>([]);
         public ValueTask<StudioTopology> GetTopologyAsync(string entityId, string profileId, CancellationToken cancellationToken) => ValueTask.FromResult(new StudioTopology(entityId, profileId, StudioTopologyStatus.Unavailable, "test", null, [], [], null, null));
     }
 }

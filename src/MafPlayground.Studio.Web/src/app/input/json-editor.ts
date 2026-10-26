@@ -12,7 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { validateJson, type InputDiagnostic } from './schema-validation';
+import { STUDIO_JSON_VALIDATOR, type InputDiagnostic } from './schema-validation';
 @Component({
   selector: 'studio-json-editor',
   template: ` <div class="editor-shell">
@@ -108,6 +108,7 @@ export class JsonEditor {
   private destroyed = false;
   private revision = 0;
   private readonly pending = inject(PendingTasks);
+  private readonly validateJson = inject(STUDIO_JSON_VALIDATOR);
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;
@@ -121,7 +122,7 @@ export class JsonEditor {
       this.checking.set(true);
       this.valid.emit(false);
       void this.pending.run(() =>
-        validateJson(value, schema)
+        this.validateJson(value, schema)
           .then((diagnostics) => {
             if (this.destroyed || revision !== this.revision) return;
             this.diagnostics.set(diagnostics);

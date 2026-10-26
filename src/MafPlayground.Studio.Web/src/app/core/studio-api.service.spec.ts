@@ -52,3 +52,25 @@ describe('Studio HTTP boundary', () => {
     await expect(TestBed.inject(StudioApiService).cancel('run-a')).resolves.toBeUndefined();
   });
 });
+it.each(['unregistered-in-ui/stellar-survey-9', 'literal%2Fsurvey%25name'])(
+  'transports opaque topology IDs in the query without ambiguous path decoding: %s',
+  async (id) => {
+    const urls: string[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: STUDIO_FETCH,
+          useValue: async (url: string) => {
+            urls.push(url);
+            return Response.json({});
+          },
+        },
+      ],
+    });
+    await TestBed.inject(StudioApiService).topology(id, 'balanced');
+    const url = new URL(urls[0], 'http://localhost');
+    expect(url.pathname).toBe('/api/studio/v1/topology');
+    expect(url.searchParams.get('entityId')).toBe(id);
+    expect(url.searchParams.get('profileId')).toBe('balanced');
+  },
+);
