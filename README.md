@@ -503,7 +503,8 @@ to execute. Build-time Node/npm are not needed by the compiled or published host
 Without assets, Studio prints build instructions and still supports authenticated
 API/MCP access. See [Studio operations](src/MafPlayground.Studio/README.md#build-publish-and-start),
 [frontend development](src/MafPlayground.Studio.Web/README.md), and
-[verification](tests/README.md#studio-verification).
+[verification](tests/README.md#studio-verification). For a reproducible hands-on review,
+follow the [manual Studio walkthrough](docs/studio-testing.md).
 
 The independent ASP.NET Core example remains a separate host. Its explicit Basic
 and Translation registration preserves its original behavior; it does not host or

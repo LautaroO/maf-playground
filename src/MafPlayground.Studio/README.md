@@ -411,6 +411,10 @@ JSON and do not expose original private execution input or infer secret markers.
 
 ## Build, publish and start
 
+For concrete inputs and expected outcomes, start with the
+[manual test walkthrough](../../docs/studio-testing.md), including a credential-free
+deterministic fixture and separate configured-provider/MCP checks.
+
 From the repository root, with the pinned .NET SDK and Node 24/npm 11 available:
 
 ```sh
