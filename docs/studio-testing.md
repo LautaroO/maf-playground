@@ -54,20 +54,25 @@ or provider/exporter validation.
    invocation choices: the retry must not overwrite the first attempt. A completed
    executor means its method returned; the run's domain outcome can still be partial.
 6. Select `validate-fr`. The most recent captured invocation opens automatically.
-   In **Validation result**, click **Load content**. Expect `Findings` containing
-   `Code: MissingData` and a description concerning `247`, plus `IsValid: false`.
-   Choose an earlier invocation to inspect a previous attempt. Payloads load only
-   when requested. A simple greeting such as `Hello, how are you?` has no required
-   number and can finish without findings; `MissingData` is not expected for every run.
-7. Click a `model_call` in the timeline and load its captured attributes/content.
-   Real trace/span/parent IDs and any missing correlation should remain explicit.
-8. Try zoom, drag-to-pan and **Fit graph**. Resize **Inspector width**. Selection
-   should remain stable; resizing should preserve the viewport until you use Fit.
+   In the inspector's **Output** tab, expect **Validation result** containing
+   `Findings` with `Code: MissingData` and a description concerning `247`, plus
+   `IsValid: false`. Content loads automatically for the visible tab. Choose an
+   earlier invocation to inspect a previous attempt. A simple greeting such as
+   `Hello, how are you?` has no required number and can finish without findings;
+   `MissingData` is not expected for every run.
+7. Select a **Model** operation in the timeline. Use **Input** and **Output** for
+   captured model messages, and **Details** for recorded span identity, attributes
+   and original events. Missing capture or correlation must remain explicit.
+8. Try zoom, drag-to-pan and **Fit graph**. Drag the divider between the graph and
+   inspector, or focus **Resize inspector** and use the arrow keys. Selection and
+   graph viewport should remain stable. Click **Hide graph**: the inspector should
+   use the full workspace width, with timeline/output still available below it.
+   **Show graph** should restore the graph and the same selected operation.
 9. Check at 1440x900 and 1024x768: graph, inspector and controls should be usable
-   without horizontal document overflow. With **Technical details** expanded and
-   **Step output** loaded, the right column should have one vertical scrollbar.
-   Its JSON/event bodies should not add nested vertical scrollbars; scroll the
-   inspector to reach **Run inspector** / **Input** at the bottom.
+   without horizontal document overflow. The right column should own one vertical
+   scrollbar; its JSON/event bodies should not add nested vertical scrollbars.
+   Switch between **Input**, **Output** and **Details** without a separate run
+   inspector or manual content-loading button.
 
 ## 3. Narrow and reset the timeline
 
@@ -78,10 +83,11 @@ or provider/exporter validation.
    `model_call`. Remove a bound if the filter produces no matching spans.
 3. Click **Reset timeline filters**. It clears the controls and the selection-driven
    filter, restoring the full retained timeline.
-4. In the inspector, expand **Technical details**, then **Run / unmatched events**.
+4. In the inspector's **Details** tab, find **Run / unmatched events** and expand
+   an event to inspect its captured content.
    These events remain accessible even when another executor is selected; Studio
-   must not invent ownership. Uncorrelated failures appear separately under
-   **Run diagnostics**, without opening the technical panel.
+   must not invent ownership. Uncorrelated failures remain identified as run
+   diagnostics instead of being attributed to the selected operation.
 
 The inspector separates evidence by purpose:
 
@@ -94,10 +100,13 @@ The inspector separates evidence by purpose:
 - **Workflow runtime notification / data**: engine scheduling, lifecycle and
   routing observations. These are not additional workflow steps.
 
-Original event names and invocation IDs remain available in **Technical details**.
-The event search filters retained event text; use **Load content** and the payload
-viewer search to inspect a payload. New runs expose a compact validation summary;
-previously captured full-state feedback remains readable in the same card. Restart
+Original event names and invocation IDs remain available in **Details**.
+The event search filters retained event text; opening an event loads its captured
+content automatically, and the payload viewer search filters that loaded content.
+Only visible tab/event content is fetched; switching selection discards stale
+responses. With no operation selected, the same inspector shows the run's input,
+output and metadata. New runs expose a compact validation summary; previously
+captured full-state feedback remains readable in the same card. Restart
 the local host to load backend changes, remembering that its runs are in memory.
 
 ## 4. Rerun with a different profile and compare
@@ -138,9 +147,10 @@ the local host to load backend changes, remembering that its runs are in memory.
    **Later (time)** links show non-overlapping sibling order. In this fixture,
    expect the first model call, then the tool, then the next model call down the
    graph. Overlapping operations must not be forced into that sequence. Select the
-   **Tool · get_current_date_time** node to open its actual span in the inspector;
-   **Load content** retrieves its attributes explicitly. The timeline selects the
-   same span. Try zoom, pan, Fit and collapse at 1440 and 1024 px. The graph is
+   **Tool · get_current_date_time** node to open its actual span in the inspector.
+   In **Details**, open **Span attributes** to load that content automatically.
+   The timeline selects the same span. Try zoom, pan, Fit, divider resizing and **Hide graph** /
+   **Show graph** at 1440 and 1024 px. The graph is
    observed evidence, not a declared workflow; repeated operations stay distinct,
    and missing parent connections remain explicit. Return to the Basic workspace and
    select the original session if necessary.
@@ -175,7 +185,7 @@ the local host to load backend changes, remembering that its runs are in memory.
    during validation; new validation output uses `ValidationCallFailed`.
 6. Inspect `basic-agent` and run `{ "message": "fixture-fail" }`. Expect **Failed**.
    Read **Execution issues** for the sanitized diagnostic. Original unmatched
-   observations remain accessible in the inspector's **Technical details**.
+   observations remain accessible in the inspector's **Details** tab.
 
 The graph should populate automatically as capture arrives, including after opening
 an execution. Selecting a node or pressing Refresh must not be required to draw it.

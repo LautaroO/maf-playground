@@ -116,10 +116,10 @@ test('executes native agent tool, continues session and resets it', async ({
   await expect(operations.getByRole('button')).toHaveCount(4);
   await expect(tool).toHaveAttribute('aria-pressed', 'true');
 
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
   await page
-    .locator('studio-payload-viewer')
-    .first()
-    .getByRole('button', { name: 'Load content', exact: true })
+    .locator('studio-span-inspector summary')
+    .filter({ hasText: /^Span attributes$/ })
     .click();
   await expect(page.locator('studio-payload-viewer pre').first()).toContainText(
     'get_current_date_time',

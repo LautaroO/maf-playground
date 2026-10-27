@@ -120,10 +120,26 @@ import { StatusBadge } from '../shared/ui/status-badge';
           {{ store.showTechnicalSpans() ? 'spans' : 'operations' }} ·
           {{ store.spans().length }} captured spans</span
         >
+        <span class="spacer"></span>
+        <button
+          class="button"
+          aria-controls="execution-graph"
+          [attr.aria-expanded]="!graphHidden()"
+          (click)="graphHidden.set(!graphHidden())"
+        >
+          {{ graphHidden() ? 'Show graph' : 'Hide graph' }}
+        </button>
       </div>
-      <div #investigation class="investigation" [style.--inspector-width]="inspectorWidth() + 'px'">
+      <div
+        #investigation
+        class="investigation"
+        [class.graph-hidden]="graphHidden()"
+        [style.--inspector-width]="inspectorWidth() + 'px'"
+      >
         <section class="investigation-main">
-          <studio-execution-graph [observed]="!workflow()" />
+          <div id="execution-graph" [hidden]="graphHidden()">
+            <studio-execution-graph [observed]="!workflow()" />
+          </div>
           <studio-trace-timeline />
           <div class="panel-head">
             <h2>Execution output</h2>
@@ -150,54 +166,26 @@ import { StatusBadge } from '../shared/ui/status-badge';
             }
           </div>
         </section>
-        <aside class="inspector">
-          <label class="width-control"
-            ><span>Inspector width</span
-            ><input
-              aria-label="Inspector width"
-              type="range"
-              min="280"
-              [max]="maxInspectorWidth()"
-              step="10"
-              [value]="inspectorWidth()"
-              (input)="resizeInspector(+$any($event.target).value)"
-            /><output>{{ inspectorWidth() }} px</output></label
-          >
+        <div
+          class="inspector-divider"
+          role="separator"
+          aria-label="Resize inspector"
+          aria-orientation="vertical"
+          aria-controls="context-inspector"
+          tabindex="0"
+          [hidden]="graphHidden()"
+          [attr.aria-valuemin]="320"
+          [attr.aria-valuemax]="maxInspectorWidth()"
+          [attr.aria-valuenow]="inspectorWidth()"
+          (keydown)="resizeWithKeyboard($event)"
+          (pointerdown)="startResize($event)"
+          (pointermove)="dragResize($event)"
+          (pointerup)="stopResize($event)"
+          (pointercancel)="stopResize($event)"
+          (lostpointercapture)="stopResize($event)"
+        ></div>
+        <aside id="context-inspector" class="inspector" aria-label="Context inspector">
           <studio-span-inspector />
-          <div class="panel-head"><h2>Run inspector</h2></div>
-          <div class="inspector-tabs" role="group" aria-label="Run details">
-            <button
-              [attr.aria-pressed]="tab() === 'input'"
-              [class.active]="tab() === 'input'"
-              (click)="tab.set('input')"
-            >
-              Input</button
-            ><button
-              [attr.aria-pressed]="tab() === 'metadata'"
-              [class.active]="tab() === 'metadata'"
-              (click)="tab.set('metadata')"
-            >
-              Metadata
-            </button>
-          </div>
-          <div class="panel-body">
-            @if (tab() === 'input') {
-              <studio-json label="input.json" [value]="run.request.input" />
-            } @else {
-              <dl>
-                <dt>Run ID</dt>
-                <dd>{{ run.runId }}</dd>
-                <dt>Host instance</dt>
-                <dd>{{ run.hostInstanceId }}</dd>
-                <dt>Profile</dt>
-                <dd>{{ run.request.profileId }}</dd>
-                <dt>Session</dt>
-                <dd>{{ run.request.sessionId || 'Single execution' }}</dd>
-                <dt>Capture</dt>
-                <dd>{{ run.captureComplete ? 'Complete' : 'Incomplete' }}</dd>
-              </dl>
-            }
-          </div>
         </aside>
       </div>
     } @else {
@@ -274,14 +262,13 @@ import { StatusBadge } from '../shared/ui/status-badge';
     }
     .investigation {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) var(--inspector-width, 320px);
+      grid-template-columns: minmax(0, 1fr) 9px var(--inspector-width, 440px);
       border-top: 1px solid var(--border);
       min-height: 500px;
       align-items: start;
     }
     .investigation-main {
       min-width: 0;
-      border-right: 1px solid var(--border);
     }
     .inspector {
       --json-max-height: none;
@@ -293,41 +280,46 @@ import { StatusBadge } from '../shared/ui/status-badge';
       background: var(--surface);
       min-width: 0;
     }
-    .width-control {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
+    .inspector-divider {
+      align-self: stretch;
+      position: relative;
+      cursor: col-resize;
+      touch-action: none;
+      background: var(--base);
+      border-inline: 1px solid var(--border);
+    }
+    .inspector-divider::after {
+      content: '';
+      position: absolute;
+      width: 3px;
+      border-radius: 3px;
+      height: 40px;
+      top: 180px;
+      left: 2px;
+      background: var(--muted);
+      opacity: 0.5;
+    }
+    .inspector-divider:hover,
+    .inspector-divider:focus-visible {
+      background: var(--accent-surface);
+      outline: 1px solid var(--accent);
+      outline-offset: -1px;
+    }
+    .inspector-divider[hidden] {
+      display: none;
+    }
+    .investigation.graph-hidden {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .graph-hidden .inspector {
+      grid-row: 1;
+      position: static;
+      max-height: none;
+      overflow: visible;
       border-bottom: 1px solid var(--border);
-      font-size: 11px;
-      color: var(--muted);
     }
-    .width-control input {
-      min-width: 60px;
-      flex: 1;
-      width: 80px;
-      accent-color: var(--accent);
-    }
-    .width-control output {
-      font: 11px var(--mono);
-    }
-    .inspector-tabs {
-      display: flex;
-      gap: 16px;
-      padding: 0 16px;
-      border-bottom: 1px solid var(--border);
-    }
-    .inspector-tabs button {
-      background: none;
-      border: 0;
-      border-bottom: 2px solid transparent;
-      padding: 12px 0;
-      color: var(--muted);
-    }
-    .inspector-tabs .active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
+    .graph-hidden .investigation-main {
+      grid-row: 2;
     }
     .capture-note {
       margin: 0 24px 20px;
@@ -341,23 +333,10 @@ import { StatusBadge } from '../shared/ui/status-badge';
       font: 13px/1.8 var(--sans);
       margin: 0 0 24px;
     }
-    .inspector dt {
-      color: var(--muted);
-      font-size: 11px;
-      margin: 14px 0 6px;
-    }
-    .inspector dd {
-      font: 11px/1.6 var(--mono);
-      margin: 0;
-      overflow-wrap: anywhere;
-    }
     @media (max-width: 1100px) {
       .run-heading {
         align-items: flex-start;
         flex-wrap: wrap;
-      }
-      .investigation {
-        grid-template-columns: minmax(0, 1fr) var(--inspector-width, 280px);
       }
       .metrics > div {
         padding: 12px;
@@ -367,17 +346,17 @@ import { StatusBadge } from '../shared/ui/status-badge';
       }
     }
     @media (max-width: 950px) {
-      .width-control {
+      .inspector-divider {
         display: none;
       }
       .investigation {
         grid-template-columns: minmax(0, 1fr);
       }
       .inspector {
+        position: static;
+        max-height: none;
+        overflow: visible;
         border-top: 1px solid var(--border);
-      }
-      .investigation-main {
-        border-right: 0;
       }
     }
   `,
@@ -422,13 +401,48 @@ export class RunWorkspace {
           (entity) => entity.id === this.store.selectedRun()?.request.entityId && entity.kind === 1,
         ),
   );
-  readonly inspectorWidth = signal(320);
-  readonly maxInspectorWidth = signal(480);
+  readonly graphHidden = signal(false);
+  readonly inspectorWidth = signal(440);
+  readonly maxInspectorWidth = signal(880);
+  private drag?: { pointerId: number; x: number; width: number };
   private readonly investigation = viewChild<ElementRef<HTMLElement>>('investigation');
   resizeInspector(width: number) {
-    this.inspectorWidth.set(Math.min(this.maxInspectorWidth(), Math.max(280, width)));
+    this.inspectorWidth.set(Math.min(this.maxInspectorWidth(), Math.max(320, width)));
   }
-  readonly tab = signal<'input' | 'metadata'>('input');
+  resizeWithKeyboard(event: KeyboardEvent) {
+    const width = this.inspectorWidth();
+    const next =
+      event.key === 'ArrowLeft'
+        ? width + 20
+        : event.key === 'ArrowRight'
+          ? width - 20
+          : event.key === 'Home'
+            ? 320
+            : event.key === 'End'
+              ? this.maxInspectorWidth()
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    this.resizeInspector(next);
+  }
+  startResize(event: PointerEvent) {
+    if (event.button !== 0) return;
+    const divider = event.currentTarget as HTMLElement;
+    divider.focus();
+    divider.setPointerCapture(event.pointerId);
+    this.drag = { pointerId: event.pointerId, x: event.clientX, width: this.inspectorWidth() };
+    event.preventDefault();
+  }
+  dragResize(event: PointerEvent) {
+    if (!this.drag || this.drag.pointerId !== event.pointerId) return;
+    this.resizeInspector(this.drag.width + this.drag.x - event.clientX);
+  }
+  stopResize(event: PointerEvent) {
+    if (this.drag?.pointerId !== event.pointerId) return;
+    this.drag = undefined;
+    const divider = event.currentTarget as HTMLElement;
+    if (divider.hasPointerCapture(event.pointerId)) divider.releasePointerCapture(event.pointerId);
+  }
   readonly duration = computed(() => {
     const run = this.store.selectedRun();
     if (!run?.startedAt) return 'Not started';
@@ -443,9 +457,7 @@ export class RunWorkspace {
       const resize = () => {
         const available = host.clientWidth;
         if (available > 0) {
-          this.maxInspectorWidth.set(
-            Math.max(280, Math.min(480, Math.floor((available - 360) / 10) * 10)),
-          );
+          this.maxInspectorWidth.set(Math.max(320, Math.min(880, available - 369)));
           this.resizeInspector(this.inspectorWidth());
         }
       };

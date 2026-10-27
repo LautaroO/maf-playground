@@ -196,9 +196,12 @@ Native workflow topology retains actual IDs,
 branches and cycles; agent views use observed parent-span hierarchy. Dagre places
 native topology in directed layers while preserving declared backward connections
 and cycles; only native fan-in/fan-out needs junctions.
-Event updates change data/styles without relayout or viewport reset. Explicit Fit and
-collapse controls and a bounded keyboard/pointer inspector-width control support narrow
-desktop inspection. The sticky inspector owns its column's vertical scrolling;
+Event updates change data/styles without relayout or viewport reset. Explicit Fit,
+collapse and **Hide graph** / **Show graph** controls support desktop inspection.
+A draggable, keyboard-accessible divider resizes the inspector within workspace
+bounds. Hiding the graph gives the inspector the full workspace width while leaving
+the timeline and execution output below it; restoring the graph preserves selection
+and its viewport. The sticky inspector owns its column's vertical scrolling;
 its event body and JSON content expand inside that one scroll container. JSON
 viewers elsewhere retain their bounded defaults.
 
@@ -217,16 +220,19 @@ SSE spans/topology updates render without a manual selection or refresh.
 `selectSpan` coordinate all panels. `selectedEvents`, `spans`, `invocations`, and
 `metrics` project the bounded retained journal. Correlation comes only from recorded
 IDs, never labels or timestamps. Embedded PascalCase capture DTO fields are normalized
-without rewriting captured user keys. Payload IDs load through the existing HTTP API
-on demand; Angular text bindings render captured data safely. Selecting an executor
-opens its latest retained invocation automatically, without replacing an explicit
-selection when new events arrive. Input/output, validation and failure evidence are
-shown before a collapsed technical panel containing span links, original event names
-and a glossary. Presentation uses protocol event kinds, never entity IDs or domain
-fields; unknown observations remain available in technical details. Uncorrelated
-failures stay visible outside that panel. Search is explicitly
-limited to the selected retained invocation/span or the loaded payload. Missing parents,
-truncation, eviction, missing metrics and incomplete history stay explicit.
+without rewriting captured user keys. The unified inspector follows the selected
+operation with **Input**, **Output** and **Details** tabs; with no operation selected,
+it shows the run's input, result and metadata. Visible payload IDs load automatically
+through the existing HTTP API, without loading the whole retained journal. Angular
+text bindings render captured data safely. Selecting an executor opens its latest
+retained invocation automatically, without replacing an explicit selection when new
+events arrive. Validation and failure evidence stay with the relevant result;
+recorded span metadata and expandable original events belong to **Details**.
+Presentation uses protocol event kinds, never entity IDs or domain fields; unknown
+observations and uncorrelated run diagnostics remain accessible with explicit scope.
+Search is limited to the selected retained invocation/span or the loaded payload.
+Missing parents, truncation, eviction, missing metrics and incomplete history stay
+explicit.
 
 Captured model attempts count only `MafPlayground.Studio.Model` spans. These may include
 attempts rejected by guards before provider execution. Token/cost totals stay unknown

@@ -6,7 +6,7 @@ import { GRAPH_DRIVER } from '../graph/graph-adapter';
 import { snapshot, novel } from '../core/testing.fixture';
 import { STUDIO_FETCH } from '../core/studio-api.service';
 import { StudioEventClient } from '../core/studio-event-client';
-it('resizes the inspector within bounds while retaining the selected captured identity', async () => {
+function workspace() {
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
@@ -22,23 +22,51 @@ it('resizes the inspector within bounds while retaining the selected captured id
   store.selectExecutor('opaque/selection');
   const fixture = TestBed.createComponent(RunWorkspace);
   fixture.detectChanges();
+  return { fixture, store };
+}
+
+it('resizes with a keyboard splitter within bounds without changing the inspected operation', async () => {
+  const { fixture, store } = workspace();
   await fixture.whenStable();
-  const slider = fixture.nativeElement.querySelector(
-    'input[aria-label="Inspector width"]',
-  ) as HTMLInputElement;
-  expect(slider).not.toBeNull();
-  slider.value = '420';
-  slider.dispatchEvent(new Event('input'));
+  const divider = fixture.nativeElement.querySelector('[role="separator"]') as HTMLElement;
+  expect(divider).not.toBeNull();
+  divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
   fixture.detectChanges();
   expect(
     fixture.nativeElement
       .querySelector('.investigation')
       .style.getPropertyValue('--inspector-width'),
-  ).toBe('420px');
+  ).toBe('460px');
   expect(store.inspectionSelection().executorId).toBe('opaque/selection');
-  fixture.componentInstance.resizeInspector(9999);
+  divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }));
   fixture.detectChanges();
-  expect(Number(slider.value)).toBeLessThanOrEqual(Number(slider.max));
+  expect(divider.getAttribute('aria-valuenow')).toBe(divider.getAttribute('aria-valuemax'));
+  divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
+  fixture.detectChanges();
+  expect(divider.getAttribute('aria-valuenow')).toBe(divider.getAttribute('aria-valuemin'));
+});
+
+it('hides the graph without recreating it or losing the selected operation and restores the split layout', async () => {
+  const { fixture, store } = workspace();
+  await fixture.whenStable();
+  const root = fixture.nativeElement as HTMLElement;
+  const graph = root.querySelector('studio-execution-graph');
+  const toggle = root.querySelector('[aria-controls="execution-graph"]') as HTMLButtonElement;
+  expect(toggle).not.toBeNull();
+  toggle.click();
+  fixture.detectChanges();
+  expect(root.querySelector('.investigation')?.classList.contains('graph-hidden')).toBe(true);
+  expect(root.querySelector('#execution-graph')?.hasAttribute('hidden')).toBe(true);
+  expect(root.querySelector('[role="separator"]')?.hasAttribute('hidden')).toBe(true);
+  expect(store.inspectionSelection().executorId).toBe('opaque/selection');
+  expect(root.querySelector('studio-span-inspector')).not.toBeNull();
+  expect(root.querySelector('studio-trace-timeline')).not.toBeNull();
+  toggle.click();
+  fixture.detectChanges();
+  expect(root.querySelector('studio-execution-graph')).toBe(graph);
+  expect(root.querySelector('#execution-graph')?.hasAttribute('hidden')).toBe(false);
+  expect(root.querySelector('.investigation')?.classList.contains('graph-hidden')).toBe(false);
+  expect(store.inspectionSelection().executorId).toBe('opaque/selection');
 });
 
 function pendingValue<T>() {

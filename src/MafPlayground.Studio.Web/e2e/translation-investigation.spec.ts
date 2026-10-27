@@ -102,10 +102,35 @@ test('investigates real translation validation, retry cycle and partial branch',
   expect((await view()).pan).not.toEqual(initial.pan);
   const preserved = await view();
   const beforeWidth = (await graph.boundingBox())!.width;
-  const widthControl = page.getByLabel('Inspector width');
-  await widthControl.press('ArrowRight');
-  await expect(widthControl).toHaveValue('330');
+  const divider = page.getByRole('separator', { name: 'Resize inspector', exact: true });
+  const initialInspectorWidth = Number(await divider.getAttribute('aria-valuenow'));
+  await divider.press('ArrowLeft');
+  await expect(divider).toHaveAttribute('aria-valuenow', String(initialInspectorWidth + 20));
   await expect.poll(async () => (await graph.boundingBox())!.width).toBeLessThan(beforeWidth);
+  expect(await view()).toEqual(preserved);
+  await graph.scrollIntoViewIfNeeded();
+  const dividerBox = (await divider.boundingBox())!;
+  const dragY = Math.max(dividerBox.y, 0) + 24;
+  await page.mouse.move(dividerBox.x + dividerBox.width / 2, dragY);
+  await page.mouse.down();
+  await page.mouse.move(dividerBox.x + dividerBox.width / 2 - 24, dragY, { steps: 5 });
+  await page.mouse.up();
+  await expect
+    .poll(async () => Number(await divider.getAttribute('aria-valuenow')))
+    .toBeGreaterThan(initialInspectorWidth + 20);
+  expect(await view()).toEqual(preserved);
+  await expect(page.getByLabel('Select invocation')).toHaveValue(invocation);
+  await page.getByRole('button', { name: 'Hide graph', exact: true }).click();
+  await expect(graph).toBeHidden();
+  await expect(divider).toBeHidden();
+  const expandedInspector = (await page.locator('aside.inspector').boundingBox())!;
+  const investigation = (await page.locator('.investigation').boundingBox())!;
+  expect(Math.abs(expandedInspector.width - investigation.width)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole('heading', { name: 'Trace timeline', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Select invocation')).toHaveValue(invocation);
+  await page.screenshot({ path: testInfo.outputPath('inspector-graph-hidden-1440.png') });
+  await page.getByRole('button', { name: 'Show graph', exact: true }).click();
+  await expect(graph).toBeVisible();
   expect(await view()).toEqual(preserved);
   await expect(page.getByLabel('Select invocation')).toHaveValue(invocation);
   await page.getByRole('button', { name: 'Fit graph' }).click();
@@ -122,16 +147,16 @@ test('investigates real translation validation, retry cycle and partial branch',
     'true',
   );
   await expect(page.getByLabel('Select invocation')).not.toHaveValue('');
+  await expect(page.getByRole('tab', { name: 'Output', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   const validation = page.getByRole('region', { name: 'Validation result', exact: true });
-  await validation.getByRole('button', { name: 'Load content', exact: true }).click();
   await expect(validation.locator('pre')).toContainText('MissingData');
   await expect(validation.locator('pre')).toContainText('247');
-  await expect(page.locator('details[data-technical-events]')).not.toHaveAttribute('open', '');
-  // The inspector owns vertical scrolling; expanded event/JSON content must not
-  // create a second scroll container inside the same right-hand panel.
-  await page.locator('details[data-technical-events] > summary').click();
+  // Visible evidence loads automatically. The inspector owns vertical scrolling;
+  // loaded event/JSON content must not create another scroll container inside it.
   const stepOutput = page.getByRole('region', { name: 'Step output', exact: true });
-  await stepOutput.getByRole('button', { name: 'Load content', exact: true }).click();
   await expect(stepOutput.locator('pre')).toContainText('247');
   for (const width of [1440, 1024]) {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 768 });
@@ -147,18 +172,17 @@ test('investigates real translation validation, retry cycle and partial branch',
           .map((child) => child.tagName + '.' + child.className),
       ),
     ).toEqual([]);
-    await page.getByRole('button', { name: 'Input', exact: true }).scrollIntoViewIfNeeded();
-    await expect(page.getByRole('button', { name: 'Input', exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Input', exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('tab', { name: 'Input', exact: true })).toBeVisible();
   }
-  await page.locator('details[data-technical-events] > summary').click();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: testInfo.outputPath('translation-investigation-1440.png') });
   const span = page.locator('[data-span]').filter({ hasText: 'Model' }).first();
   await span.click();
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
   await page
-    .locator('studio-payload-viewer')
-    .first()
-    .getByRole('button', { name: 'Load content' })
+    .locator('studio-span-inspector summary')
+    .filter({ hasText: /^Span attributes$/ })
     .click();
   await expect(page.locator('studio-payload-viewer pre').first()).toBeVisible();
   await page.setViewportSize({ width: 1024, height: 768 });

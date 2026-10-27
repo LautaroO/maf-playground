@@ -1,14 +1,25 @@
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { StudioApiService } from '../core/studio-api.service';
 import type { StudioPayload } from '../core/studio-api.generated';
 @Component({
   selector: 'studio-payload-viewer',
   template: `
     <div class="payload-heading">
-      <strong>{{ label() }}</strong
-      ><button class="button" [disabled]="loading()" (click)="load()">
-        {{ loading() ? 'Loading…' : payload() ? 'Reload content' : 'Load content' }}
-      </button>
+      @if (loading()) {
+        <span class="meta" role="status">Loading content…</span>
+      }
+      @if (error()) {
+        <button class="button" (click)="load()">Retry content</button>
+      }
     </div>
     @if (error()) {
       <p class="notice warning" role="status">{{ error() }}</p>
@@ -18,7 +29,7 @@ import type { StudioPayload } from '../core/studio-api.generated';
         {{ states[item.state] || 'Unavailable' }}{{ item.reason ? ' · ' + item.reason : '' }}
       </p>
       <label class="meta"
-        >Search this loaded payload<input
+        >Search captured content<input
           type="search"
           aria-label="Search loaded payload"
           [value]="query()"
@@ -29,7 +40,7 @@ import type { StudioPayload } from '../core/studio-api.generated';
           {{ matching().length }} matching lines · captured content only
         </p>
       }
-      <pre>{{
+      <pre [attr.aria-label]="label()">{{
         query()
           ? matching().join(
               '
@@ -50,9 +61,6 @@ import type { StudioPayload } from '../core/studio-api.generated';
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-    }
-    .payload-heading strong {
-      font-size: 12px;
     }
     .button {
       padding: 6px 8px;
@@ -86,7 +94,9 @@ export class PayloadViewer {
   readonly payloadId = input.required<string>();
   readonly label = input('Captured payload');
   private readonly api = inject(StudioApiService);
+  private readonly destroyRef = inject(DestroyRef);
   private revision = 0;
+  private controller?: AbortController;
   readonly payload = signal<StudioPayload | null>(null);
   readonly loading = signal(false);
   readonly error = signal('');
@@ -99,25 +109,32 @@ export class PayloadViewer {
       .filter((line) => line.toLocaleLowerCase().includes(this.query().toLocaleLowerCase())),
   );
   constructor() {
+    this.destroyRef.onDestroy(() => {
+      this.revision++;
+      this.controller?.abort();
+    });
     effect(() => {
       this.runId();
       this.payloadId();
-      this.revision++;
       this.payload.set(null);
       this.error.set('');
       this.query.set('');
-      this.loading.set(false);
+      untracked(() => void this.load());
     });
   }
   async load() {
+    this.controller?.abort();
+    const controller = new AbortController();
+    this.controller = controller;
     const revision = ++this.revision;
     this.loading.set(true);
     this.error.set('');
     try {
-      const payload = await this.api.payload(this.runId(), this.payloadId());
-      if (revision === this.revision) this.payload.set(payload);
+      const payload = await this.api.payload(this.runId(), this.payloadId(), controller.signal);
+      if (revision === this.revision && !controller.signal.aborted) this.payload.set(payload);
     } catch {
-      if (revision === this.revision) this.error.set('Captured content is unavailable or evicted.');
+      if (revision === this.revision && !controller.signal.aborted)
+        this.error.set('Captured content is unavailable or evicted.');
     } finally {
       if (revision === this.revision) this.loading.set(false);
     }

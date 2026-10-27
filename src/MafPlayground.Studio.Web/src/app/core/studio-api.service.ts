@@ -94,9 +94,11 @@ export class StudioApiService {
       `/runs/${encodeURIComponent(id)}/event-page?after=${after}&limit=${limit}`,
     );
   }
-  payload(run: string, id: string) {
+  payload(run: string, id: string, signal?: AbortSignal) {
     return this.request<D.StudioPayload>(
       `/runs/${encodeURIComponent(run)}/payloads/${encodeURIComponent(id)}`,
+      undefined,
+      signal,
     );
   }
   span(run: string, id: string) {

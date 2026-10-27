@@ -102,13 +102,22 @@ it('surfaces one failed invocation above the graph, loads its cause explicitly a
   inspect.click();
   fixture.detectChanges();
   expect(store.inspectionSelection().invocationId).toBe('attempt-a');
+  await vi.waitFor(() => {
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('studio-span-inspector pre')?.textContent).toContain(
+      '429',
+    );
+  });
   const show = Array.from(overview.querySelectorAll('button')).find((button) =>
     button.textContent!.includes('Show cause'),
   )!;
   show.click();
   await fixture.whenStable();
   fixture.detectChanges();
-  expect(urls).toEqual(['/api/studio/v1/runs/run-a/payloads/cause']);
+  expect(urls).toEqual([
+    '/api/studio/v1/runs/run-a/payloads/cause', // Selected Output loads automatically.
+    '/api/studio/v1/runs/run-a/payloads/cause', // Overview cause is opened independently.
+  ]);
   expect(overview.textContent).toContain('429');
   expect(overview.textContent).toContain('Rate or quota limit');
   expect(overview.textContent).not.toContain('raw-detail-marker');
