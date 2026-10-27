@@ -1,4 +1,9 @@
 using System.CommandLine;
+using MafPlayground.AI;
+using MafPlayground.AI.Runtime;
+using MafPlayground.AI.Workflows.Translation;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using MafPlayground.CLI.Inspection;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Hosting;
@@ -78,9 +83,17 @@ public sealed class InspectCommand : ICliCommand
         using ILoggerFactory loggerFactory = CommandLogging.CreateLoggerFactory();
         ILogger logger = loggerFactory.CreateLogger(typeof(InspectCommand));
 
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(
+            new HostApplicationBuilderSettings { ContentRootPath = AppContext.BaseDirectory });
+        builder.Logging.ClearProviders();
+        AIBuilder entities = builder.Services.AddAIRuntime(builder.Configuration).AddMafPlaygroundSampleEntities();
+        builder.Services.Configure<TranslationWorkflowOptions>(builder.Configuration.GetSection("AI:Workflows:Translation"));
+        using IHost host = builder.Build();
+        IReadOnlyList<LocalEntityDescriptor> catalog = LocalEntityCatalog.Create(entities.Registrations);
+
         if (commandOptions.List)
         {
-            foreach (LocalEntityDescriptor entity in LocalEntityCatalog.All)
+            foreach (LocalEntityDescriptor entity in catalog)
             {
                 Console.WriteLine(
                     $"{entity.Kind.ToString().ToLowerInvariant(),-8} {entity.Id,-24} {entity.Description}");
@@ -97,6 +110,7 @@ public sealed class InspectCommand : ICliCommand
         }
 
         LocalEntityDescriptor? descriptor = LocalEntityCatalog.Find(
+            catalog,
             kind,
             commandOptions.EntityId);
         if (descriptor is null)
@@ -128,25 +142,21 @@ public sealed class InspectCommand : ICliCommand
 
         return await RenderWorkflowDiagramAsync(
             descriptor,
+            host.Services,
             logger,
             cancellationToken);
     }
 
     private static async Task<int> RenderWorkflowDiagramAsync(
         LocalEntityDescriptor descriptor,
+        IServiceProvider services,
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        HostApplicationBuilder builder = Host.CreateApplicationBuilder(
-            new HostApplicationBuilderSettings
-            {
-                ContentRootPath = AppContext.BaseDirectory,
-            });
-        builder.Logging.ClearProviders();
-
         try
         {
-            Workflow workflow = descriptor.CreateWorkflowDiagram?.Invoke(builder.Configuration)
+            using IServiceScope scope = services.CreateScope();
+            Workflow workflow = descriptor.CreateWorkflowDiagram?.Invoke(scope.ServiceProvider)
                 ?? throw new InvalidOperationException(
                     $"Entity '{descriptor.Id}' does not provide a workflow graph.");
             Console.WriteLine(WorkflowVisualizer.ToMermaidString(workflow));

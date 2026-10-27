@@ -1,0 +1,272 @@
+import { Component, computed, inject, signal } from '@angular/core';
+import { StudioRunStore } from '../core/studio-run.store';
+import { durationMs, timelineRows } from './inspection';
+@Component({
+  selector: 'studio-trace-timeline',
+  template: `
+    <div class="panel-head">
+      <h2>
+        {{
+          store.selectedRun()?.topology?.status === 0 ? 'Trace timeline' : 'Observed call hierarchy'
+        }}
+      </h2>
+      <span class="spacer"></span
+      ><span class="meta"
+        >{{ rows().length }} {{ store.showTechnicalSpans() ? 'spans' : 'operations' }}</span
+      >
+    </div>
+    <p class="meta note">
+      {{
+        store.showTechnicalSpans()
+          ? 'Recorded span hierarchy.'
+          : 'Primary operations; technical wrappers are grouped.'
+      }}
+      Bars show captured start and duration; missing parents remain explicit.
+    </p>
+    <div class="filters">
+      <label
+        >Operation<input
+          aria-label="Filter operation"
+          [value]="operation()"
+          (input)="operation.set($any($event.target).value)"
+      /></label>
+      <label
+        >Branch / executor<input
+          aria-label="Filter branch"
+          [value]="branch()"
+          (input)="branch.set($any($event.target).value)"
+      /></label>
+      <label
+        >Status<select
+          aria-label="Filter span status"
+          [value]="status()"
+          (change)="status.set($any($event.target).value)"
+        >
+          <option value="">All</option>
+          <option>Ok</option>
+          <option>Error</option>
+          <option>Unset</option>
+        </select></label
+      >
+      <label
+        >From (ms)<input
+          type="number"
+          min="0"
+          aria-label="Filter start time"
+          [value]="from()"
+          (input)="from.set($any($event.target).value)"
+      /></label>
+      <label
+        >To (ms)<input
+          type="number"
+          min="0"
+          aria-label="Filter end time"
+          [value]="to()"
+          (input)="to.set($any($event.target).value)"
+      /></label>
+      <button class="button" (click)="reset()">Reset timeline filters</button>
+    </div>
+    @if (store.inspectionSelection().executorId || store.inspectionSelection().invocationId) {
+      <p class="meta note">
+        Filtered by recorded selection. Uncorrelated evidence and parent context remain visible.
+      </p>
+    }
+    <div class="timeline" aria-label="Captured span timeline">
+      @for (row of rows(); track row.span.spanId) {
+        <button
+          class="trace-row"
+          data-span
+          [attr.data-span-id]="row.span.spanId"
+          [attr.aria-pressed]="store.selectedPresentedSpanId() === row.span.spanId"
+          (click)="store.selectSpan(row.span.spanId)"
+        >
+          <span class="trace-name" [style.padding-left.px]="Math.min(row.depth, 8) * 12"
+            ><strong>{{ row.span.name }}</strong
+            ><small
+              >{{
+                (contextIds().has(row.span.spanId) ? 'Parent context · ' : '') +
+                  (row.span.executorId ||
+                    (store.showTechnicalSpans() ? 'Unknown executor' : row.span.role))
+              }}{{ row.missingParent ? ' · parent not captured' : '' }}</small
+            ></span
+          ><span class="track"
+            ><span
+              class="bar"
+              [class.error]="row.span.status === 'Error'"
+              [style.left.%]="row.left"
+              [style.width.%]="Math.max(row.width, 0.5)"
+            ></span></span
+          ><span class="duration mono">{{ duration(row.span.duration) }} ms</span>
+        </button>
+      } @empty {
+        <div class="empty">
+          <strong>No spans captured yet</strong
+          ><span>Completed span observations appear as execution progresses.</span>
+        </div>
+      }
+    </div>
+  `,
+  styles: `
+    :host {
+      display: block;
+      border-bottom: 1px solid var(--border);
+    }
+    .note {
+      padding: 0 16px;
+      line-height: 1.6;
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 16px 12px;
+      align-items: end;
+    }
+    .filters label {
+      display: grid;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 70px;
+      flex: 1;
+    }
+    .filters input,
+    .filters select {
+      width: 100%;
+      min-width: 0;
+      background: var(--base);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px;
+      border-radius: 4px;
+    }
+    .timeline {
+      max-height: 340px;
+      overflow: auto;
+    }
+    .trace-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 40%) minmax(60px, 1fr) 75px;
+      width: 100%;
+      gap: 10px;
+      align-items: center;
+      text-align: left;
+      border: 0;
+      border-top: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      padding: 9px 16px;
+    }
+    .trace-row:hover {
+      background: var(--hover);
+    }
+    .trace-row[aria-pressed='true'] {
+      background: var(--accent-surface);
+      box-shadow: inset 3px 0 var(--accent);
+    }
+    .trace-name {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .trace-name strong {
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .trace-name small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    .track {
+      position: relative;
+      height: 20px;
+      border-left: 1px solid var(--border);
+      background: repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent calc(25% - 1px),
+        var(--border) 25%
+      );
+    }
+    .bar {
+      position: absolute;
+      top: 5px;
+      height: 10px;
+      border-radius: 2px;
+      background: var(--accent);
+      min-width: 2px;
+    }
+    .bar.error {
+      background: var(--error);
+    }
+    .duration {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+    }
+  `,
+})
+export class TraceTimeline {
+  readonly store = inject(StudioRunStore);
+  readonly operation = signal('');
+  readonly branch = signal('');
+  readonly status = signal('');
+  readonly from = signal('');
+  readonly to = signal('');
+  reset() {
+    this.operation.set('');
+    this.branch.set('');
+    this.status.set('');
+    this.from.set('');
+    this.to.set('');
+    this.store.clearInspectionSelection();
+  }
+  readonly filtered = computed(() => {
+    const spans = this.store.presentedSpans();
+    const selected = this.store.inspectionSelection();
+    const origin = Math.min(...spans.map((x) => Date.parse(x.startedAt)));
+    const direct = spans.filter((span) => {
+      const correlated = selected.invocationId
+        ? span.invocationId === selected.invocationId
+        : !selected.executorId || span.executorId === selected.executorId;
+      const unknown = selected.invocationId ? !span.invocationId : !span.executorId;
+      const time = Date.parse(span.startedAt) - origin;
+      return (
+        (correlated || unknown) &&
+        (span.name + ' ' + span.originalName)
+          .toLowerCase()
+          .includes(this.operation().toLowerCase()) &&
+        (!span.executorId || span.executorId.toLowerCase().includes(this.branch().toLowerCase())) &&
+        (!this.status() || span.status === this.status()) &&
+        (!this.from() || time >= Number(this.from())) &&
+        (!this.to() || time <= Number(this.to()))
+      );
+    });
+    const ids = new Set(direct.map((x) => x.spanId));
+    const context = new Set<string>();
+    for (const span of direct) {
+      let child = span;
+      const visited = new Set<string>();
+      while (child.parentSpanId && !visited.has(child.parentSpanId)) {
+        visited.add(child.parentSpanId);
+        const parent = spans.find(
+          (x) => x.spanId === child.parentSpanId && x.traceId === child.traceId,
+        );
+        if (!parent) break;
+        if (!ids.has(parent.spanId)) {
+          ids.add(parent.spanId);
+          context.add(parent.spanId);
+        }
+        child = parent;
+      }
+    }
+    return { spans: spans.filter((x) => ids.has(x.spanId)), context };
+  });
+  readonly contextIds = computed(() => this.filtered().context);
+  readonly rows = computed(() => timelineRows(this.filtered().spans));
+  readonly Math = Math;
+  duration(value: string) {
+    return durationMs(value).toFixed(1);
+  }
+}

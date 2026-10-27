@@ -28,6 +28,7 @@ maf-playground
 │   ├── list
 │   ├── agent <id>
 │   └── workflow <id>
+├── studio
 └── devui
 ```
 
@@ -142,3 +143,37 @@ propagate so they are not confused with grounded no-evidence answers.
 Parser, commands, interactive streaming, entity input rendering, workflow event
 rendering, DevUI trace translation, and composition are covered in
 [`MafPlayground.Tests`](../../tests/MafPlayground.Tests/README.md).
+
+## Local Agent Studio
+
+```bash
+dotnet run --project src/MafPlayground.CLI -- studio --no-open
+dotnet run --project src/MafPlayground.CLI -- studio --model ollama:llama3.1:8b --url http://localhost:5051
+dotnet run --project src/MafPlayground.CLI -- studio --export-contracts /tmp/studio-contracts.json
+```
+
+Studio runs inside this CLI and never starts the example backend. Its access/error
+middleware precedes endpoint binding, service activation and additional transport
+handlers, so Development exceptions cannot expose credentials in HTTP responses. `--model`
+falls back to `AI_MODEL`; no model is needed to inspect disabled entities. The
+browser exchanges the console-displayed one-time code at `/studio/login` for an
+HttpOnly cookie. `--no-open` leaves browser launch to the user. A separate console
+bearer token authorizes API clients; never put it in a URL or browser storage.
+Build the Angular assets with `./scripts/build-studio.sh` before building/publishing
+this CLI. The project copies them to `studio/`; published execution needs .NET but
+no Node runtime. Without assets, an actionable build message appears and API/MCP
+remain available with `--no-open`; no browser is launched automatically. See
+[build/publish operations](../MafPlayground.Studio/README.md#build-publish-and-start).
+
+Studio explicitly opts into `AIStartupValidationMode.LocalInspection`. This defers
+model/provider readiness to availability and execution while retaining structural
+DI/options validation. Other commands retain strict startup checks. Retrieval is
+disabled by default for Studio only; set `STUDIO__ENABLERETRIEVAL=true` to use the
+existing configured knowledge bases and store adapter. Without retrieval, grounded
+entities remain visible with an unavailable reason. This setting does not change
+RAG, DevUI, or example-host composition.
+
+The offline export path uses normal entity registration metadata and transport
+DTOs. It ignores model/URL runtime options and performs no provider, retrieval or
+model calls. See [Studio HTTP contracts](../MafPlayground.Studio/README.md#local-http-host)
+for routes, profiles, limits, SSE reconnects and retained-data semantics.

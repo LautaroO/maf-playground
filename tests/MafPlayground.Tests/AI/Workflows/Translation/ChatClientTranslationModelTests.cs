@@ -1,10 +1,42 @@
 using MafPlayground.AI.Workflows.Translation;
+using MafPlayground.AI.Runtime.Providers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.AI;
 
 namespace MafPlayground.Tests;
 
 public sealed class ChatClientTranslationModelTests
 {
+    [Fact]
+    public async Task DefaultRegistration_DefersClientUntilUncancelledModelExecution()
+    {
+        using FakeChatClient chatClient = new("""{"translatedText":"Hola"}""");
+        chatClient.EnqueueResponse("""{"isValid":true,"confidence":0.95,"issues":[]}""");
+        RecordingClientFactory factory = new(chatClient);
+        ServiceCollection services = new();
+        services.AddSingleton<IAIChatClientFactory>(factory);
+        services.AddTranslationWorkflow();
+        using ServiceProvider provider = services.BuildServiceProvider();
+        ITranslationModel model = provider.GetRequiredService<ITranslationModel>();
+        TranslationDraftRequest draft = new("Hello", "es", null, null);
+        TranslationValidationRequest review = new("Hello", "es", "Hola", null, []);
+
+        Assert.Empty(factory.EntityIds);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            model.TranslateAsync(draft, new CancellationToken(canceled: true)));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            model.ValidateAsync(review, new CancellationToken(canceled: true)));
+        Assert.Empty(factory.EntityIds);
+
+        string translated = await model.TranslateAsync(draft, CancellationToken.None);
+        TranslationValidation validation = await model.ValidateAsync(review, CancellationToken.None);
+
+        Assert.Equal("Hola", translated);
+        Assert.True(validation.IsValid);
+        Assert.Equal(["translation-workflow"], factory.EntityIds);
+        Assert.Equal(2, chatClient.Requests.Count);
+    }
+
     [Fact]
     public async Task TranslateAsync_RequestsAndReadsStructuredOutput()
     {
@@ -100,5 +132,16 @@ public sealed class ChatClientTranslationModelTests
         Assert.Contains("\"previousBlockingIssues\"", requestText, StringComparison.Ordinal);
         Assert.Contains("\"previousTranslatedText\":\"Hello\"", requestText, StringComparison.Ordinal);
         Assert.Contains("\"issue-1\"", requestText, StringComparison.Ordinal);
+    }
+
+    private sealed class RecordingClientFactory(IChatClient client) : IAIChatClientFactory
+    {
+        public List<string> EntityIds { get; } = [];
+
+        public IChatClient Create(string entityId)
+        {
+            EntityIds.Add(entityId);
+            return client;
+        }
     }
 }

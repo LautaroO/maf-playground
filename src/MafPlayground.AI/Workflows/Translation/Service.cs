@@ -148,7 +148,8 @@ public sealed class TranslationService(
             return FailedState(
                 state,
                 "The translation validation call failed.",
-                exception.GetType().FullName ?? exception.GetType().Name);
+                exception.GetType().FullName ?? exception.GetType().Name,
+                TranslationIssueCode.ValidationCallFailed);
         }
 
         IReadOnlyList<TrackedTranslationIssue> previousIssues =
@@ -246,7 +247,8 @@ public sealed class TranslationService(
     private static TranslationBranchState FailedState(
         TranslationBranchState state,
         string error,
-        string errorType) =>
+        string errorType,
+        TranslationIssueCode? issueCode = null) =>
         state with
         {
             IsValid = false,
@@ -255,7 +257,7 @@ public sealed class TranslationService(
             ValidationIssues =
             [
                 TranslationWorkflowHelpers.Blocking(
-                    MapErrorCode(errorType),
+                    issueCode ?? MapErrorCode(errorType),
                     error),
             ],
             ShouldRetry = false,

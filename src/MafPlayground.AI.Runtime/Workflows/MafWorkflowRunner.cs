@@ -1,3 +1,6 @@
+using System.Text.Json;
+using MafPlayground.AI.Runtime.Execution;
+using MafPlayground.AI.Abstractions;
 using Microsoft.Agents.AI.Workflows;
 
 namespace MafPlayground.AI.Runtime.Workflows;
@@ -7,7 +10,8 @@ public interface IMafWorkflowRunner
     ValueTask<TOutput> RunAsync<TInput, TOutput>(
         Workflow workflow,
         TInput input,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IAIExecutionObserver? observer = null)
         where TInput : notnull;
 }
 
@@ -23,10 +27,38 @@ internal sealed class MafWorkflowRunner : IMafWorkflowRunner
     public async ValueTask<TOutput> RunAsync<TInput, TOutput>(
         Workflow workflow,
         TInput input,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IAIExecutionObserver? observer = null)
         where TInput : notnull
     {
         ArgumentNullException.ThrowIfNull(workflow);
+        if (observer is not null)
+        {
+            await using StreamingRun stream = await InProcessExecution.RunStreamingAsync(workflow, input,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            TOutput? result = default;
+            bool hasOutput = false;
+            await foreach (WorkflowEvent item in stream.WatchStreamAsync(cancellationToken).ConfigureAwait(false))
+            {
+                string? executorId = item switch
+                {
+                    ExecutorInvokedEvent invoked => invoked.ExecutorId,
+                    ExecutorCompletedEvent completed => completed.ExecutorId,
+                    ExecutorFailedEvent failed => failed.ExecutorId,
+                    WorkflowOutputEvent output => output.ExecutorId,
+                    _ => null,
+                };
+                AIExecutionObservation.Record("workflow_payload", new { eventType = item.GetType().Name, executorId, data = item.Data }, executorId);
+                observer.Record(new("workflow_event", JsonSerializer.SerializeToElement(new { eventType = item.GetType().Name }), executorId));
+                if (item is WorkflowOutputEvent streamedOutput && streamedOutput.Is<TOutput>())
+                {
+                    result = streamedOutput.As<TOutput>();
+                    hasOutput = true;
+                }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return hasOutput ? result! : throw new InvalidOperationException("The workflow completed without producing the expected output.");
+        }
         await using Run run = await InProcessExecution.RunAsync(
             workflow,
             input,

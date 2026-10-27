@@ -30,9 +30,12 @@ public static class AIServiceExtensions
 
     public static AIBuilder AddAIRuntime(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        AIStartupValidationMode validationMode = AIStartupValidationMode.Strict)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        if (!Enum.IsDefined(validationMode)) throw new ArgumentOutOfRangeException(nameof(validationMode));
+        services.AddSingleton(new AIStartupValidationOptions(validationMode));
         services.AddOptions<AIRuntimeOptions>()
             .Bind(configuration.GetSection(AIRuntimeOptions.ConfigurationSectionName))
             .Validate(
@@ -93,8 +96,11 @@ public static class AIServiceExtensions
         services.TryAddSingleton<IMafAgentPipeline, MafAgentPipeline>();
         services.TryAddSingleton<IMafAgentFactory, MafAgentFactory>();
         services.TryAddSingleton<IMafWorkflowRunner, MafWorkflowRunner>();
+        services.TryAddScoped<AIEntityExecutionScope>();
         services.TryAddScoped<AIEntityRegistry>();
         services.TryAddScoped<IAIEntityRegistry>(provider =>
+            provider.GetRequiredService<AIEntityRegistry>());
+        services.TryAddScoped<IAIEntityInspection>(provider =>
             provider.GetRequiredService<AIEntityRegistry>());
         services.TryAddScoped<IAIEntityInvoker, AIEntityInvoker>();
         services.TryAddEnumerable(

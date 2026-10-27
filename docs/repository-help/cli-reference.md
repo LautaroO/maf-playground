@@ -22,6 +22,7 @@ Subcommands:
 | `workflow` | Run and test workflows. |
 | `rag` | Manage the local RAG knowledge base. |
 | `devui` | Run the local Agent Framework DevUI. |
+| `studio` | Run Local Agent Studio in this CLI process. |
 | `docs` | Generate repository documentation artifacts. |
 | `inspect` | Inspect local agents and workflows. |
 
@@ -211,6 +212,25 @@ Options:
 | --- | --- | --- |
 | `--model`, `-m` | no | Model selector in provider:model format. Falls back to AI_MODEL. |
 | `--url` | no | HTTP URL for DevUI. Falls back to DEVUI_URL. |
+
+### `maf-playground studio`
+
+Run Local Agent Studio in this CLI process.
+
+Usage:
+
+```text
+dotnet run --project src/MafPlayground.CLI -- studio [options]
+```
+
+Options:
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `--model`, `-m` | no | Model selector in provider:model format. Falls back to AI_MODEL. |
+| `--url` | no | Loopback HTTP URL for Studio. |
+| `--no-open` | no | Do not open the browser; print local access instructions. |
+| `--export-contracts` | no | Export transport and entity JSON schemas offline and exit. |
 
 ### `maf-playground docs`
 

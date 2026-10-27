@@ -4,12 +4,18 @@ using System.Text.Json;
 using MafPlayground.AI.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using MafPlayground.AI.Observability;
+using MafPlayground.AI.Runtime.Agents;
+using MafPlayground.AI.Runtime.Workflows;
+using MafPlayground.AI.Runtime.Configuration;
+using MafPlayground.AI.Runtime.Sessions;
+using MafPlayground.AI.Guards;
 
 namespace MafPlayground.AI.Runtime.Registry;
 
 internal sealed class AIEntityRegistry(
     IEnumerable<AIEntityRegistration> registrations,
-    IServiceProvider services) : IAIEntityRegistry
+    IServiceProvider services,
+    AIEntityExecutionScope executionScope) : IAIEntityRegistry, IAIEntityInspection
 {
     private readonly IReadOnlyDictionary<string, AIEntityRegistration> _registrations =
         BuildMap(registrations);
@@ -38,16 +44,75 @@ internal sealed class AIEntityRegistry(
                 $"{registration.Descriptor.InputType.Name} -> {registration.Descriptor.OutputType.Name}.");
         }
 
-        return (IAIEntity<TInput, TOutput>)services.GetRequiredService(
-            registration.ImplementationType);
+        return (IAIEntity<TInput, TOutput>)ResolveInstance(registration);
     }
 
-    internal AIEntityRegistration GetRequired(string entityId) =>
-        _registrations.TryGetValue(entityId, out AIEntityRegistration? registration)
+    internal object ResolveInstance(AIEntityRegistration registration) =>
+        executionScope.ProfileId is not null && registration.ProfileFactory is not null
+            ? executionScope.Resolve(registration, services)
+            : services.GetRequiredService(registration.ImplementationType);
+
+    public AIEntityRegistrationInfo GetRegistration(string entityId) => GetRequired(entityId).Info;
+
+    public AIEntityAvailability GetAvailability(string entityId)
+    {
+        AIEntityRegistration registration = GetRequired(entityId);
+        AIEntityAvailability availability = registration.Availability?.Invoke(services) ?? AIEntityAvailability.Available;
+        if (!availability.IsAvailable || registration.ProfileFactory is null ||
+            services.GetService<AIStartupValidationOptions>()?.Mode != AIStartupValidationMode.LocalInspection) return availability;
+        try
+        {
+            var options = executionScope.ProfileId is null
+                ? services.GetRequiredService<IAIEntityRuntimeOptionsResolver>().Resolve(entityId)
+                : executionScope.GetRuntimeOptions(entityId);
+            if (!services.GetRequiredService<AIProviderRegistry>().ProviderNames.Contains(options.Model.Provider, StringComparer.OrdinalIgnoreCase))
+                return AIEntityAvailability.Unavailable("The configured model provider is unavailable.");
+            _ = services.GetRequiredService<GuardProfileResolver>().Resolve(options.GuardProfile);
+            if (registration.Descriptor.SupportsSessions && services.GetService<IAgentSessionStore>() is null)
+                return AIEntityAvailability.Unavailable("Session storage is not configured.");
+            return availability;
+        }
+        catch (InvalidOperationException)
+        {
+            return AIEntityAvailability.Unavailable("Model, guard, or timeout configuration is unavailable.");
+        }
+    }
+
+    public IMafAgentSource? GetAgentSource(string entityId, AIEntityInspectionContext context)
+    {
+        ValidateContext(context);
+        AIEntityRegistration registration = GetRequired(entityId);
+        return executionScope.ProfileId is not null && registration.ProfileFactory is not null
+            ? ResolveInstance(registration) as IMafAgentSource
+            : registration.AgentSourceFactory?.Invoke(services, context);
+    }
+
+    public IMafWorkflowSource? GetWorkflowSource(string entityId, AIEntityInspectionContext context)
+    {
+        ValidateContext(context);
+        AIEntityRegistration registration = GetRequired(entityId);
+        return executionScope.ProfileId is not null && registration.ProfileFactory is not null
+            ? ResolveInstance(registration) as IMafWorkflowSource
+            : registration.WorkflowSourceFactory?.Invoke(services, context);
+    }
+
+    private void ValidateContext(AIEntityInspectionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(context.ProfileId);
+        if (executionScope.ProfileId is not null && executionScope.ProfileId != context.ProfileId)
+            throw new InvalidOperationException("Native inspection must use the bound execution profile.");
+    }
+
+    internal AIEntityRegistration GetRequired(string entityId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entityId);
+        return _registrations.TryGetValue(entityId, out AIEntityRegistration? registration)
             ? registration
             : throw new AIEntityNotFoundException(entityId);
+    }
 
-    private static IReadOnlyDictionary<string, AIEntityRegistration> BuildMap(
+    internal static IReadOnlyDictionary<string, AIEntityRegistration> BuildMap(
         IEnumerable<AIEntityRegistration> registrations)
     {
         Dictionary<string, AIEntityRegistration> result =
@@ -66,8 +131,7 @@ internal sealed class AIEntityRegistry(
 }
 
 internal sealed class AIEntityInvoker(
-    AIEntityRegistry registry,
-    IServiceProvider services) : IAIEntityInvoker
+    AIEntityRegistry registry) : IAIEntityInvoker
 {
     private static readonly ActivitySource ActivitySource = new(AITelemetry.RuntimeSourceName);
     private static readonly MethodInfo InvokeTypedMethod = typeof(AIEntityInvoker)
@@ -106,7 +170,17 @@ internal sealed class AIEntityInvoker(
                 context.ExecutionId,
                 registration.Descriptor.Id,
                 context.SessionId,
-                output);
+                output, registration.OutcomeClassifier?.Invoke(output) ?? AIOutcomeClassification.Unclassified);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            AITelemetry.RecordOperation(
+                "execute",
+                registration.Descriptor.Kind.ToString(),
+                registration.Descriptor.Id,
+                "cancelled",
+                Stopwatch.GetElapsedTime(started));
+            throw;
         }
         catch (Exception exception)
         {
@@ -143,8 +217,7 @@ internal sealed class AIEntityInvoker(
             throw new AISessionNotSupportedException(registration.Descriptor.Id);
         }
 
-        var entity = (IAIEntity<TInput, TOutput>)services.GetRequiredService(
-            registration.ImplementationType);
+        var entity = (IAIEntity<TInput, TOutput>)registry.ResolveInstance(registration);
         return await entity.ExecuteAsync(value, context, cancellationToken).ConfigureAwait(false);
     }
 }

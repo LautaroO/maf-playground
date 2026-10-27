@@ -18,11 +18,15 @@ public sealed record MafAgentDefinition(
 public interface IMafAgentFactory
 {
     AIAgent Create(string entityId, MafAgentDefinition definition);
+
+    AIAgent Create(string entityId, MafAgentDefinition definition, ResolvedAIEntityRuntimeOptions options, Action<IDisposable>? registerResource = null);
 }
 
 public interface IMafAgentPipeline
 {
     AIAgent Apply(string entityId, AIAgent agent);
+
+    AIAgent Apply(string entityId, AIAgent agent, ResolvedAIEntityRuntimeOptions options);
 }
 
 public interface IMafAgentSource
@@ -38,8 +42,23 @@ internal sealed class MafAgentFactory(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(entityId);
         ArgumentNullException.ThrowIfNull(definition);
-        IChatClient chatClient = chatClients.Create(entityId);
-        AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
+        return pipeline.Apply(entityId, CreateAgent(chatClients.Create(entityId), definition));
+    }
+
+    public AIAgent Create(string entityId, MafAgentDefinition definition, ResolvedAIEntityRuntimeOptions options, Action<IDisposable>? registerResource = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entityId);
+        ArgumentNullException.ThrowIfNull(definition);
+        IChatClient chatClient = chatClients.Create(options);
+        registerResource?.Invoke(chatClient);
+        AIAgent agent = CreateAgent(chatClient, definition);
+        AIAgent result = pipeline.Apply(entityId, agent, options);
+        if (result is IDisposable disposable) registerResource?.Invoke(disposable);
+        return result;
+    }
+
+    private static AIAgent CreateAgent(IChatClient chatClient, MafAgentDefinition definition) =>
+        chatClient.AsAIAgent(new ChatClientAgentOptions
         {
             Name = definition.Name,
             Description = definition.Description,
@@ -50,8 +69,6 @@ internal sealed class MafAgentFactory(
             },
             AIContextProviders = definition.ContextProviders?.ToList(),
         });
-        return pipeline.Apply(entityId, agent);
-    }
 }
 
 internal sealed class MafAgentPipeline(
@@ -61,7 +78,11 @@ internal sealed class MafAgentPipeline(
 {
     public AIAgent Apply(string entityId, AIAgent agent)
     {
-        ResolvedAIEntityRuntimeOptions options = runtimeOptions.Resolve(entityId);
+        return Apply(entityId, agent, runtimeOptions.Resolve(entityId));
+    }
+
+    public AIAgent Apply(string entityId, AIAgent agent, ResolvedAIEntityRuntimeOptions options)
+    {
         AIAgent guarded = guards.Apply(agent, options.GuardProfile);
         return guarded.AsBuilder()
             .UseOpenTelemetry(

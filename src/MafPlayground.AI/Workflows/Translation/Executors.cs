@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MafPlayground.AI.Runtime.Execution;
 using System.Text;
 using System.Text.Json;
 using MafPlayground.AI.Guards;
@@ -21,18 +22,30 @@ internal sealed class TranslationInputExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken = default)
     {
-        TranslationWorkflowRequest request = TranslationWorkflowHelpers.ValidateRequest(
-            new TranslationWorkflowRequest(
-                message.Text,
-                message.TargetLanguages),
-            options);
-        GuardedWorkflowInput guarded = await guards.StartAsync(
-            guardProfile,
-            request.Text,
-            cancellationToken);
-        return new GuardedTranslationRequest(
-            request with { Text = guarded.Content },
-            guarded.ExecutionId);
+        using var observation = AIExecutionObservation.BeginInvocation(Id, message);
+        try
+        {
+            TranslationWorkflowRequest request = TranslationWorkflowHelpers.ValidateRequest(
+                new TranslationWorkflowRequest(
+                    message.Text,
+                    message.TargetLanguages),
+                options);
+            GuardedWorkflowInput guarded = await guards.StartAsync(
+                guardProfile,
+                request.Text,
+                cancellationToken);
+            var result = new GuardedTranslationRequest(
+                request with { Text = guarded.Content },
+                guarded.ExecutionId);
+            observation.Output(result);
+            return result;
+        }
+        catch (Exception exception)
+        {
+            observation.Failed(exception);
+            throw;
+        }
+        finally { observation.Complete(); }
     }
 }
 
@@ -47,20 +60,32 @@ internal sealed class TranslationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
-        TranslationWorkflowRequest request = guardedRequest.Request;
-        Stopwatch elapsed = Stopwatch.StartNew();
-        TranslationBranchState state = await translationService.TranslateAsync(
-            new TranslationBranchState(
-                request.Text,
-                request.TargetLanguages,
-                targetLanguage,
-                guardedRequest.GuardExecutionId),
-            cancellationToken);
-        TranslationWorkflowHelpers.RecordBranchOperation(
-            "translation.translate",
-            state,
-            elapsed.Elapsed);
-        await context.SendMessageAsync(state, cancellationToken);
+        using var observation = AIExecutionObservation.BeginInvocation(Id, guardedRequest);
+        try
+        {
+            TranslationWorkflowRequest request = guardedRequest.Request;
+            Stopwatch elapsed = Stopwatch.StartNew();
+            TranslationBranchState state = await translationService.TranslateAsync(
+                new TranslationBranchState(
+                    request.Text,
+                    request.TargetLanguages,
+                    targetLanguage,
+                    guardedRequest.GuardExecutionId),
+                cancellationToken);
+            TranslationWorkflowHelpers.RecordBranchOperation(
+                "translation.translate",
+                state,
+                elapsed.Elapsed);
+            observation.Output(state);
+            observation.Send(state);
+            await context.SendMessageAsync(state, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            observation.Failed(exception);
+            throw;
+        }
+        finally { observation.Complete(); }
     }
 
     private async ValueTask HandleRetryAsync(
@@ -68,15 +93,27 @@ internal sealed class TranslationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
-        Stopwatch elapsed = Stopwatch.StartNew();
-        TranslationBranchState translatedState = await translationService.TranslateAsync(
-            state,
-            cancellationToken);
-        TranslationWorkflowHelpers.RecordBranchOperation(
-            "translation.translate",
-            translatedState,
-            elapsed.Elapsed);
-        await context.SendMessageAsync(translatedState, cancellationToken);
+        using var observation = AIExecutionObservation.BeginInvocation(Id, state);
+        try
+        {
+            Stopwatch elapsed = Stopwatch.StartNew();
+            TranslationBranchState translatedState = await translationService.TranslateAsync(
+                state,
+                cancellationToken);
+            TranslationWorkflowHelpers.RecordBranchOperation(
+                "translation.translate",
+                translatedState,
+                elapsed.Elapsed);
+            observation.Output(translatedState);
+            observation.Send(translatedState);
+            await context.SendMessageAsync(translatedState, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            observation.Failed(exception);
+            throw;
+        }
+        finally { observation.Complete(); }
     }
 
     protected override ProtocolBuilder ConfigureProtocol(ProtocolBuilder protocolBuilder) =>
@@ -100,33 +137,58 @@ internal sealed class TranslationValidationExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken)
     {
-        bool skippedForUpstreamError = state.ErrorType is not null;
-        Stopwatch elapsed = Stopwatch.StartNew();
-        TranslationBranchState validatedState = await translationService.ValidateAsync(
-            state,
-            cancellationToken);
-        TranslationWorkflowHelpers.RecordBranchOperation(
-            "translation.validate",
-            validatedState,
-            elapsed.Elapsed,
-            skippedForUpstreamError);
-        if (validatedState.ShouldRetry)
+        using var observation = AIExecutionObservation.BeginInvocation(Id, state);
+        try
         {
-            await context.SendMessageAsync(
-                validatedState,
-                translatorId,
+            bool skippedForUpstreamError = state.ErrorType is not null;
+            Stopwatch elapsed = Stopwatch.StartNew();
+            TranslationBranchState validatedState = await translationService.ValidateAsync(
+                state,
                 cancellationToken);
-            return;
-        }
+            TranslationWorkflowHelpers.RecordBranchOperation(
+                "translation.validate",
+                validatedState,
+                elapsed.Elapsed,
+                skippedForUpstreamError);
+            observation.Output(validatedState);
+            AIExecutionObservation.Record("validation_feedback", new
+            {
+                validatedState.TargetLanguage,
+                Attempt = validatedState.Attempts,
+                Skipped = skippedForUpstreamError,
+                IsValid = skippedForUpstreamError ? (bool?)null : validatedState.IsValid,
+                Findings = validatedState.ValidationIssues ?? [],
+                validatedState.ShouldRetry,
+                validatedState.TranslatedText,
+                validatedState.ErrorType,
+                validatedState.Error
+            });
+            if (validatedState.ShouldRetry)
+            {
+                observation.Send(validatedState, translatorId);
+                await context.SendMessageAsync(
+                    validatedState,
+                    translatorId,
+                    cancellationToken);
+                return;
+            }
 
-        await context.SendMessageAsync(
-            new ValidatedTranslationMessage(
-                validatedState.SourceText,
-                validatedState.RequestedTargetLanguages,
-                TranslationService.Complete(validatedState),
-                validatedState.GuardExecutionId),
-            TranslationAggregatorExecutor.ExecutorId,
-            cancellationToken);
+            var completed = new ValidatedTranslationMessage(
+                    validatedState.SourceText,
+                    validatedState.RequestedTargetLanguages,
+                    TranslationService.Complete(validatedState),
+                    validatedState.GuardExecutionId);
+            observation.Send(completed, TranslationAggregatorExecutor.ExecutorId);
+            await context.SendMessageAsync(completed,
+                TranslationAggregatorExecutor.ExecutorId,
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            observation.Failed(exception);
+            throw;
+        }
+        finally { observation.Complete(); }
     }
 
     protected override ProtocolBuilder ConfigureProtocol(ProtocolBuilder protocolBuilder) =>
@@ -358,83 +420,94 @@ internal sealed class TranslationAggregatorExecutor(
         IWorkflowContext context,
         CancellationToken cancellationToken = default)
     {
-        if (!_translations.TryAdd(message.Translation.TargetLanguage, message))
-        {
-            throw new InvalidOperationException(
-                $"Translation '{message.Translation.TargetLanguage}' completed more than once.");
-        }
-
-        if (_translations.Count < message.RequestedTargetLanguages.Count)
-        {
-            return;
-        }
-
-        string guardExecutionId = message.GuardExecutionId;
-        if (_translations.Values.Any(value =>
-                !string.Equals(
-                    value.GuardExecutionId,
-                    guardExecutionId,
-                    StringComparison.Ordinal)))
-        {
-            throw new InvalidOperationException(
-                "Translations from different guarded executions cannot be aggregated.");
-        }
-
-        ValidatedTranslation[] orderedTranslations = message.RequestedTargetLanguages
-            .Select(language => _translations[language].Translation)
-            .ToArray();
-        ValidatedTranslationMessage firstTranslation = _translations.Values.First();
-        string sourceText = firstTranslation.SourceText;
-        _translations.Clear();
-
+        using var observation = AIExecutionObservation.BeginInvocation(Id, message);
         try
         {
-            for (int index = 0; index < orderedTranslations.Length; index++)
+            if (!_translations.TryAdd(message.Translation.TargetLanguage, message))
             {
-                ValidatedTranslation translation = orderedTranslations[index];
-                orderedTranslations[index] = translation with
-                {
-                    TranslatedText = await guards.GuardOutputAsync(
-                        guardExecutionId,
-                        translation.TranslatedText,
-                        cancellationToken),
-                    Issues = await GuardIssuesAsync(
-                        guardExecutionId,
-                        translation.Issues,
-                        guards,
-                        cancellationToken),
-                    Error = await guards.GuardOutputAsync(
-                        guardExecutionId,
-                        translation.Error,
-                        cancellationToken),
-                };
+                throw new InvalidOperationException(
+                    $"Translation '{message.Translation.TargetLanguage}' completed more than once.");
             }
 
-            TranslationWorkflowResult result = new(sourceText, orderedTranslations);
-            await context.YieldOutputAsync(result, cancellationToken);
-
-            if (emitAgentResponse)
+            if (_translations.Count < message.RequestedTargetLanguages.Count)
             {
-                string json = JsonSerializer.Serialize(result, JsonSerializerOptions.Web);
-                string responseId = $"translation-{Guid.NewGuid():N}";
-                AgentResponseUpdate update = new(ChatRole.Assistant, json)
+                return;
+            }
+
+            string guardExecutionId = message.GuardExecutionId;
+            if (_translations.Values.Any(value =>
+                    !string.Equals(
+                        value.GuardExecutionId,
+                        guardExecutionId,
+                        StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException(
+                    "Translations from different guarded executions cannot be aggregated.");
+            }
+
+            ValidatedTranslation[] orderedTranslations = message.RequestedTargetLanguages
+                .Select(language => _translations[language].Translation)
+                .ToArray();
+            ValidatedTranslationMessage firstTranslation = _translations.Values.First();
+            string sourceText = firstTranslation.SourceText;
+            _translations.Clear();
+
+            try
+            {
+                for (int index = 0; index < orderedTranslations.Length; index++)
                 {
-                    AgentId = "translation-workflow",
-                    ResponseId = responseId,
-                    MessageId = responseId,
-                };
-                await context.AddEventAsync(
-                    new AgentResponseUpdateEvent("translation-aggregate", update),
-                    cancellationToken);
-                await context.YieldOutputAsync(
-                    new ChatMessage(ChatRole.Assistant, json),
-                    cancellationToken);
+                    ValidatedTranslation translation = orderedTranslations[index];
+                    orderedTranslations[index] = translation with
+                    {
+                        TranslatedText = await guards.GuardOutputAsync(
+                            guardExecutionId,
+                            translation.TranslatedText,
+                            cancellationToken),
+                        Issues = await GuardIssuesAsync(
+                            guardExecutionId,
+                            translation.Issues,
+                            guards,
+                            cancellationToken),
+                        Error = await guards.GuardOutputAsync(
+                            guardExecutionId,
+                            translation.Error,
+                            cancellationToken),
+                    };
+                }
+
+                TranslationWorkflowResult result = new(sourceText, orderedTranslations);
+                observation.Output(result);
+                await context.YieldOutputAsync(result, cancellationToken);
+
+                if (emitAgentResponse)
+                {
+                    string json = JsonSerializer.Serialize(result, JsonSerializerOptions.Web);
+                    string responseId = $"translation-{Guid.NewGuid():N}";
+                    AgentResponseUpdate update = new(ChatRole.Assistant, json)
+                    {
+                        AgentId = "translation-workflow",
+                        ResponseId = responseId,
+                        MessageId = responseId,
+                    };
+                    await context.AddEventAsync(
+                        new AgentResponseUpdateEvent("translation-aggregate", update),
+                        cancellationToken);
+                    await context.YieldOutputAsync(
+                        new ChatMessage(ChatRole.Assistant, json),
+                        cancellationToken);
+                }
+            }
+            finally
+            {
+                guards.Complete(guardExecutionId);
             }
         }
-        finally
+        catch (Exception exception)
         {
-            guards.Complete(guardExecutionId);
+            observation.Failed(exception);
+            throw;
         }
+        finally { observation.Complete(); }
     }
 
     private static async ValueTask<IReadOnlyList<TranslationIssue>> GuardIssuesAsync(

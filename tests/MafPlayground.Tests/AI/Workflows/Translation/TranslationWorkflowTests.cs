@@ -16,6 +16,21 @@ namespace MafPlayground.Tests;
 public sealed class TranslationWorkflowTests
 {
     [Fact]
+    public async Task RunAsync_ClassifiesProviderFailureDuringValidationAsValidationCallFailed()
+    {
+        ConsistentValidationModel model = new(_ => throw new MafPlayground.AI.Abstractions.AIProviderFailureException(
+            "The AI provider call failed.", new HttpRequestException("private provider response")));
+        TranslationWorkflowResult result = await CreateRunner(model).RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.False(translation.IsValid);
+        Assert.Equal("The translation validation call failed.", translation.Error);
+        Assert.Contains(translation.Issues, issue => issue.Code == TranslationIssueCode.ValidationCallFailed);
+        Assert.DoesNotContain(translation.Issues, issue => issue.Code == TranslationIssueCode.ModelCallFailed);
+    }
+
+    [Fact]
     public async Task RunAsync_TranslatesLanguagesInParallelAndAggregatesInRequestedOrder()
     {
         ParallelTranslationModel model = new(["es", "fr", "pt-BR"]);

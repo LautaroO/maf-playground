@@ -9,7 +9,8 @@ public sealed record AgentSessionKey(
     string EntityId,
     string? TenantId,
     string SubjectId,
-    string SessionId);
+    string SessionId,
+    string? ProfileId = null);
 
 public sealed record StoredAgentSession(
     AgentSessionKey Key,
@@ -21,6 +22,10 @@ public sealed record StoredAgentSession(
 
 public interface IAgentSessionStore
 {
+    IDisposable Acquire(AgentSessionKey key);
+
+    ValueTask ResetAsync(AgentSessionKey key, CancellationToken cancellationToken);
+
     ValueTask<StoredAgentSession?> LoadAsync(
         AgentSessionKey key,
         CancellationToken cancellationToken);
@@ -48,6 +53,42 @@ internal sealed class InMemoryAgentSessionStore(
     private readonly ConcurrentDictionary<string, AgentSessionKey> _owners =
         new(StringComparer.Ordinal);
     private readonly object _gate = new();
+    private readonly HashSet<string> _active = new(StringComparer.Ordinal);
+
+    public IDisposable Acquire(AgentSessionKey key)
+    {
+        ValidateKey(key);
+        lock (_gate)
+        {
+            RemoveExpired();
+            string identity = OwnerIdentity(key.EntityId, key.SessionId);
+            if (_owners.TryGetValue(identity, out AgentSessionKey? owner)) EnsureOwner(owner, key);
+            if (!_active.Add(identity)) throw new AISessionConcurrencyException(key.SessionId);
+            return new Lease(() => { lock (_gate) _active.Remove(identity); });
+        }
+    }
+
+    public ValueTask ResetAsync(AgentSessionKey key, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateKey(key);
+        lock (_gate)
+        {
+            string identity = OwnerIdentity(key.EntityId, key.SessionId);
+            if (_active.Contains(identity)) throw new AISessionConcurrencyException(key.SessionId);
+            if (_owners.TryGetValue(identity, out AgentSessionKey? owner)) EnsureOwner(owner, key);
+            _sessions.TryRemove(CompositeIdentity(key), out _);
+            _owners.TryRemove(identity, out _);
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    private sealed class Lease(Action release) : IDisposable
+    {
+        private Action? release = release;
+        public void Dispose() => Interlocked.Exchange(ref release, null)?.Invoke();
+    }
+
 
     public ValueTask<StoredAgentSession?> LoadAsync(
         AgentSessionKey key,
@@ -119,7 +160,9 @@ internal sealed class InMemoryAgentSessionStore(
 
             if (_sessions.Count >= options.Value.Capacity)
             {
-                StoredAgentSession oldest = _sessions.Values.MinBy(item => item.UpdatedAt)!;
+                StoredAgentSession oldest = _sessions.Values
+                    .Where(item => !_active.Contains(OwnerIdentity(item.Key.EntityId, item.Key.SessionId)))
+                    .MinBy(item => item.UpdatedAt) ?? throw new InvalidOperationException("All session capacity is active.");
                 _sessions.TryRemove(CompositeIdentity(oldest.Key), out _);
                 _owners.TryRemove(
                     OwnerIdentity(oldest.Key.EntityId, oldest.Key.SessionId),
@@ -144,7 +187,7 @@ internal sealed class InMemoryAgentSessionStore(
         DateTimeOffset now = timeProvider.GetUtcNow();
         foreach ((string key, StoredAgentSession value) in _sessions)
         {
-            if (value.ExpiresAt <= now)
+            if (value.ExpiresAt <= now && !_active.Contains(OwnerIdentity(value.Key.EntityId, value.Key.SessionId)))
             {
                 _sessions.TryRemove(key, out _);
                 _owners.TryRemove(
@@ -161,6 +204,8 @@ internal sealed class InMemoryAgentSessionStore(
         {
             throw new AISessionOwnershipException(requested.SessionId);
         }
+        if (!string.Equals(actual.ProfileId, requested.ProfileId, StringComparison.Ordinal))
+            throw new InvalidOperationException("A session cannot continue with a different execution profile.");
     }
 
     private static void ValidateKey(AgentSessionKey key)
