@@ -175,7 +175,9 @@ native topology in directed layers while preserving declared backward connection
 and cycles; only native fan-in/fan-out needs junctions.
 Event updates change data/styles without relayout or viewport reset. Explicit Fit and
 collapse controls and a bounded keyboard/pointer inspector-width control support narrow
-desktop inspection, with bounded scrolling panels.
+desktop inspection. The sticky inspector owns its column's vertical scrolling;
+its event body and JSON content expand inside that one scroll container. JSON
+viewers elsewhere retain their bounded defaults.
 
 `StudioRunStore.inspectionSelection`, `selectExecutor`, `selectInvocation`, and
 `selectSpan` coordinate all panels. `selectedEvents`, `spans`, `invocations`, and

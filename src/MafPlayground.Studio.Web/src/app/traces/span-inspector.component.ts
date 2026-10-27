@@ -276,8 +276,6 @@ import { PayloadViewer } from './payload-viewer.component';
     }
     .body {
       padding: 16px;
-      max-height: 920px;
-      overflow: auto;
     }
     .identity {
       display: block;

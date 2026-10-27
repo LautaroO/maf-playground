@@ -35,8 +35,8 @@ import { Component, computed, input, signal } from '@angular/core';
       background: var(--base);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      max-height: 560px;
-      overflow: auto;
+      max-height: var(--json-max-height, 560px);
+      overflow: var(--json-overflow, auto);
     }
     button {
       font: 11px var(--sans);

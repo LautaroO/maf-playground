@@ -64,7 +64,10 @@ or provider/exporter validation.
 8. Try zoom, drag-to-pan and **Fit graph**. Resize **Inspector width**. Selection
    should remain stable; resizing should preserve the viewport until you use Fit.
 9. Check at 1440x900 and 1024x768: graph, inspector and controls should be usable
-   without horizontal document overflow. The inspector and internal content may scroll.
+   without horizontal document overflow. With **Technical details** expanded and
+   **Step output** loaded, the right column should have one vertical scrollbar.
+   Its JSON/event bodies should not add nested vertical scrollbars; scroll the
+   inspector to reach **Run inspector** / **Input** at the bottom.
 
 ## 3. Narrow and reset the timeline
 

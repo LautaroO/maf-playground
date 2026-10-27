@@ -258,6 +258,8 @@ import { StatusBadge } from '../shared/ui/status-badge';
       border-right: 1px solid var(--border);
     }
     .inspector {
+      --json-max-height: none;
+      --json-overflow: visible;
       position: sticky;
       top: 0;
       max-height: 100vh;

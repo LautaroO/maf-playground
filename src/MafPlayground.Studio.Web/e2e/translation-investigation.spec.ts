@@ -127,6 +127,31 @@ test('investigates real translation validation, retry cycle and partial branch',
   await expect(validation.locator('pre')).toContainText('MissingData');
   await expect(validation.locator('pre')).toContainText('247');
   await expect(page.locator('details[data-technical-events]')).not.toHaveAttribute('open', '');
+  // The inspector owns vertical scrolling; expanded event/JSON content must not
+  // create a second scroll container inside the same right-hand panel.
+  await page.locator('details[data-technical-events] > summary').click();
+  const stepOutput = page.getByRole('region', { name: 'Step output', exact: true });
+  await stepOutput.getByRole('button', { name: 'Load content', exact: true }).click();
+  await expect(stepOutput.locator('pre')).toContainText('247');
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: width === 1440 ? 900 : 768 });
+    const inspector = page.locator('aside.inspector');
+    expect(
+      await inspector.evaluate((element) =>
+        Array.from(element.querySelectorAll('*'))
+          .filter(
+            (child) =>
+              /(auto|scroll)/.test(getComputedStyle(child).overflowY) &&
+              child.scrollHeight > child.clientHeight + 1,
+          )
+          .map((child) => child.tagName + '.' + child.className),
+      ),
+    ).toEqual([]);
+    await page.getByRole('button', { name: 'Input', exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('button', { name: 'Input', exact: true })).toBeVisible();
+  }
+  await page.locator('details[data-technical-events] > summary').click();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: testInfo.outputPath('translation-investigation-1440.png') });
   const span = page.locator('[data-span]').filter({ hasText: 'model_call' }).first();
   await span.click();
