@@ -90,3 +90,91 @@ it('reuses geometry for nonstructural observations and rebuilds it when a missin
   project([span('late-parent'), child]);
   expect(layout).toHaveBeenCalledTimes(2);
 });
+
+function timed(id: string, parent: string, start: string, duration: string, trace = 'trace') {
+  return { ...span(id, parent, trace), startedAt: '2026-10-27T12:00:' + start + 'Z', duration };
+}
+it('shows nonoverlapping sibling operations in order, after the earlier operation subtree', () => {
+  const items = [
+    timed('root', '', '00.0000000', '00:00:10'),
+    timed('first', 'root', '00.1000000', '00:00:05'),
+    timed('nested', 'first', '00.1001000', '00:00:04.9990000'),
+    timed('tool', 'root', '05.2000000', '00:00:00.0038000'),
+    timed('second', 'root', '05.2040000', '00:00:01'),
+  ];
+  const elements = observedGraphElements(items);
+  const point = (id: string) => elements.find((item) => item.data['actualId'] === id)!.position!;
+  const temporal = elements.filter((item) => String(item.classes).includes('temporal'));
+  expect(temporal.map((item) => [item.data.source, item.data.target])).toEqual([
+    ['node:first', 'node:tool'],
+    ['node:tool', 'node:second'],
+  ]);
+  expect(point('nested').y).toBeLessThan(point('tool').y);
+  expect(point('tool').y).toBeLessThan(point('second').y);
+  expect(elements.filter((item) => item.data.id?.startsWith('parent:'))).toHaveLength(4);
+});
+it('does not serialize overlapping spans, equal instants, unknown timing or separate traces', () => {
+  const items = [
+    timed('root', '', '00.0000000', '00:00:10'),
+    timed('a', 'root', '00.1000000', '00:00:05'),
+    timed('b', 'root', '00.2000000', '00:00:05'),
+    timed('instant-a', 'root', '05.3000000', '00:00:00'),
+    timed('instant-b', 'root', '05.3000000', '00:00:00'),
+    timed('foreign', 'root', '06.0000000', '00:00:01', 'foreign'),
+    { ...span('unknown', 'root'), startedAt: 'bad' },
+    { ...span('bad-duration', 'root'), duration: 'unknown' },
+  ];
+  const elements = observedGraphElements(items);
+  const links = elements.filter((item) => String(item.classes).includes('temporal'));
+  expect(links.some((item) => item.data.source === 'node:a' && item.data.target === 'node:b')).toBe(
+    false,
+  );
+  expect(
+    links.some(
+      (item) => item.data.source?.includes('instant') && item.data.target?.includes('instant'),
+    ),
+  ).toBe(false);
+  expect(
+    links.some((item) =>
+      [item.data.source, item.data.target].some((id) =>
+        ['node:foreign', 'node:unknown', 'node:bad-duration'].includes(id!),
+      ),
+    ),
+  ).toBe(false);
+  expect(links).toHaveLength(4);
+});
+it('uses submillisecond timestamps to distinguish overlap from a genuine boundary', () => {
+  const items = [
+    timed('root', '', '00.0000000', '00:00:01'),
+    timed('a', 'root', '00.0009000', '00:00:00.0010000'),
+    timed('overlap', 'root', '00.0011000', '00:00:00.0010000'),
+    timed('after', 'root', '00.0021000', '00:00:00.0010000'),
+  ];
+  const links = observedGraphElements(items).filter((item) =>
+    String(item.classes).includes('temporal'),
+  );
+  expect(
+    links.some((item) => item.data.source === 'node:a' && item.data.target === 'node:overlap'),
+  ).toBe(false);
+  expect(links.map((item) => [item.data.source, item.data.target])).toEqual([
+    ['node:a', 'node:after'],
+    ['node:overlap', 'node:after'],
+  ]);
+});
+
+it('updates geometry when corrected child timing changes only hidden layout constraints', () => {
+  const items = [
+    timed('root', '', '00.0000000', '00:00:10'),
+    timed('first', 'root', '00.1000000', '00:00:01'),
+    timed('child', 'first', '00.1000000', '00:00:05'),
+    timed('next', 'root', '02.0000000', '00:00:01'),
+  ];
+  const initial = observedGraphElements(items);
+  items[2].duration = '00:00:00.9000000';
+  const corrected = observedGraphElements(items);
+  expect(corrected.map((item) => item.data.id)).toEqual(initial.map((item) => item.data.id));
+  const point = (elements: typeof initial, id: string) =>
+    elements.find((item) => item.data['actualId'] === id)!.position!;
+  expect(point(initial, 'next').y).toBe(point(initial, 'child').y);
+  expect(point(corrected, 'next').y).toBeGreaterThan(point(corrected, 'child').y);
+});

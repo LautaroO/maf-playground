@@ -2,6 +2,7 @@ import type { ElementDefinition } from 'cytoscape';
 import type { StudioSpan } from '../core/studio-api.generated';
 import { durationMs } from '../traces/inspection';
 import { elementGeometry } from './graph-layout';
+import { observedChronology } from './observed-chronology';
 
 export function missingParent(span: StudioSpan, spans: StudioSpan[]): boolean {
   return (
@@ -10,10 +11,12 @@ export function missingParent(span: StudioSpan, spans: StudioSpan[]): boolean {
     !spans.some((parent) => parent.spanId === span.parentSpanId && parent.traceId === span.traceId)
   );
 }
-// This is captured parentage, not a declared workflow or a sequence inferred from time.
+// Parentage and observed non-overlap order remain different edge kinds; time is not causality.
 // Never read attributes/events/links: their content remains behind explicit payload loading.
 export function createObservedGraphProjector(layout = elementGeometry) {
   let structure = '';
+  let timingSignature = '';
+  let chronology: ReturnType<typeof observedChronology> = { edges: [], constraints: [] };
   let geometry: ReturnType<typeof elementGeometry> | undefined;
   return (spans: StudioSpan[]): ElementDefinition[] => {
     const elements: ElementDefinition[] = spans.map((span) => ({
@@ -43,13 +46,30 @@ export function createObservedGraphProjector(layout = elementGeometry) {
           },
         });
     }
+    const timing = JSON.stringify(
+      spans
+        .map((span) => [
+          span.spanId,
+          span.traceId,
+          span.parentSpanId,
+          span.startedAt,
+          span.duration,
+        ])
+        .sort((a, b) => a[0].localeCompare(b[0])),
+    );
+    if (timing !== timingSignature) {
+      chronology = observedChronology(spans);
+      timingSignature = timing;
+    }
+    elements.push(...chronology.edges);
+    const layoutElements = [...elements, ...chronology.constraints];
     const signature = JSON.stringify(
-      elements
+      layoutElements
         .map((item) => [item.data.id, item.data.source ?? null, item.data.target ?? null])
         .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
     );
     if (!geometry || signature !== structure) {
-      geometry = layout(elements);
+      geometry = layout(layoutElements);
       structure = signature;
     }
     return elements.map((item) =>

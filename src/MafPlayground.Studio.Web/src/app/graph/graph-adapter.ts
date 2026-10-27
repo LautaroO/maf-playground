@@ -139,6 +139,19 @@ export function createGraphDriver(
       },
       { selector: 'edge.conditional', style: { 'line-style': 'dashed' } },
       {
+        selector: 'edge.temporal',
+        style: {
+          'line-style': 'dotted',
+          'line-color': '#a7afff',
+          'target-arrow-color': '#a7afff',
+          color: '#a7afff',
+          width: 2,
+          'curve-style': 'unbundled-bezier',
+          'control-point-distances': [130, 130],
+          'control-point-weights': [0.15, 0.85],
+        },
+      },
+      {
         selector: 'edge.feedback',
         style: {
           'curve-style': 'unbundled-bezier',
@@ -190,6 +203,7 @@ export function createGraphDriver(
   };
   return {
     update(elements, selected) {
+      const previousPositions = positions;
       positions = new Map(
         elements.filter((item) => item.position).map((item) => [item.data.id!, item.position!]),
       );
@@ -218,6 +232,13 @@ export function createGraphDriver(
             }
             if (existing.isNode() && existing.data('isStart') !== item.data['isStart'])
               changed = true;
+            const previous = previousPositions.get(item.data.id!);
+            if (
+              existing.isNode() &&
+              item.position &&
+              (previous?.x !== item.position.x || previous?.y !== item.position.y)
+            )
+              changed = true;
             existing.data(item.data);
             existing.classes(item.classes ?? '');
           }
@@ -225,7 +246,7 @@ export function createGraphDriver(
         cy.nodes().unselect();
         if (selected !== null) cy.getElementById('node:' + selected).select();
       });
-      // Event/style updates never touch viewport or positions.
+      // Unchanged geometry preserves manually moved nodes and the viewport.
       if (changed) {
         layoutPending = true;
         scheduleLayout();

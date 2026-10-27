@@ -35,8 +35,9 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
     </div>
     @if (observed()) {
       <p class="legend meta">
-        Captured spans · edges show recorded parent → child relationships within the same trace.
-        Sibling placement does not imply execution order. Content loads only in the inspector.
+        Solid links: recorded parent/child. Dotted links: an earlier sibling ended before the next
+        started (timing order, not causality). Overlapping siblings have no temporal link. Layout is
+        not a time scale; the timeline shows durations.
       </p>
       @if (!spans().length) {
         <p class="notice">
@@ -45,8 +46,8 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
       }
       @if (missingParents()) {
         <p class="notice">
-          Missing parent for {{ missingParents() }} captured spans. These remain separate roots; no
-          connection is inferred.
+          Missing parent for {{ missingParents() }} captured spans. No parent connection is
+          inferred.
         </p>
       }
     } @else if (topology()?.status === 0) {

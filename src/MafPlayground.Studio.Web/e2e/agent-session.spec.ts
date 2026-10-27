@@ -45,11 +45,42 @@ test('executes native agent tool, continues session and resets it', async ({
   );
   const box = (await graph.boundingBox())!;
   await page.mouse.click(box.x + point.x, box.y + point.y);
+  await expect
+    .poll(() =>
+      graph.evaluate((element: any, id) => {
+        const node = element._cyreg.cy.getElementById('node:' + id);
+        const before = node.incomers('edge.temporal');
+        const after = node.outgoers('edge.temporal');
+        return (
+          before.length > 0 &&
+          after.length > 0 &&
+          before.every((edge: any) => edge.source().position().y < node.position().y) &&
+          after.every((edge: any) => node.position().y < edge.target().position().y)
+        );
+      }, spanId),
+    )
+    .toBe(true);
   await expect(tool).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('studio-span-inspector h3').first()).toHaveText(
     'execute_tool get_current_date_time',
   );
   await expect(page.locator('[data-span][aria-pressed=true]')).toHaveCount(1);
+  const nodePosition = () =>
+    graph.evaluate(
+      (element: any, id) => element._cyreg.cy.getElementById('node:' + id).position(),
+      spanId,
+    );
+  const originalPosition = await nodePosition();
+  await page.mouse.move(box.x + point.x, box.y + point.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + point.x + 24, box.y + point.y, { steps: 5 });
+  await page.mouse.up();
+  const movedPosition = await nodePosition();
+  expect(movedPosition).not.toEqual(originalPosition);
+  await tool.click();
+  await expect(tool).toHaveAttribute('aria-pressed', 'true');
+  expect(await nodePosition()).toEqual(movedPosition);
+
   await page
     .locator('studio-payload-viewer')
     .first()
