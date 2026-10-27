@@ -21,6 +21,7 @@ export function invocationState(items: Invocation[]): string {
 export function graphElements(
   topology: StudioTopology,
   invocations: Invocation[],
+  issues: ReadonlySet<string> = new Set(),
 ): ElementDefinition[] {
   const nodes: ElementDefinition[] = topology.nodes.map((node) => ({
     data: {
@@ -31,13 +32,16 @@ export function graphElements(
         (node.isStart || node.id === topology.startNodeId ? 'Entry\n' : '') +
         node.label +
         '\n' +
-        invocationState(invocations.filter((x) => x.executorId === node.id)),
+        invocationState(invocations.filter((x) => x.executorId === node.id)) +
+        (issues.has(node.id) ? '\nIssue recorded' : ''),
       count: invocations.filter((x) => x.executorId === node.id).length,
     },
-    classes: invocations.some((x) => x.executorId === node.id)
-      ? 'observed ' +
-        invocationState(invocations.filter((x) => x.executorId === node.id)).toLowerCase()
-      : 'unobserved',
+    classes:
+      (issues.has(node.id) ? 'has-issue ' : '') +
+      (invocations.some((x) => x.executorId === node.id)
+        ? 'observed ' +
+          invocationState(invocations.filter((x) => x.executorId === node.id)).toLowerCase()
+        : 'unobserved'),
   }));
   for (const edge of topology.edges) {
     const id = 'edge:' + edge.id;
@@ -110,6 +114,7 @@ export function createGraphDriver(
       { selector: 'node.failed', style: { 'border-color': '#f5a3a7' } },
       { selector: 'node.cancelled', style: { 'border-color': '#edbf7b' } },
       { selector: 'node.unknown', style: { 'border-color': '#98a4b6' } },
+      { selector: 'node.has-issue', style: { 'border-color': '#f5a3a7', 'border-width': 2 } },
       { selector: 'node.unobserved', style: { 'border-style': 'dashed' } },
       {
         selector: 'node.junction',

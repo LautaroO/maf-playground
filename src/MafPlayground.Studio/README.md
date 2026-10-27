@@ -106,6 +106,17 @@ native workflow events are stored as bounded journal events. Tool records descri
 the exchanged content, including history; call IDs allow consumers to distinguish
 those observations from native tool-execution spans. No content enters metric labels.
 
+Exception payloads keep the sanitized outer type/message and optional HTTP status.
+Up to eight inner cause types/statuses are retained; inner messages, response
+bodies/headers, URLs, stack traces and arbitrary exception data are excluded.
+`causesTruncated` marks a longer chain. Provider adapters can contribute safe
+`AIProviderFailureDetails` through `IAIProviderExceptionDiagnostics`; the runtime
+keeps its original exception, cancellation and retry behavior. Readers are best
+effort and cannot mask the original failure. Google-specific SDK status access
+stays inside its adapter. Older captures cannot recover omitted causes or status.
+Requested model cancellation emits `model_cancelled` rather than `model_failed`;
+an unsolicited `OperationCanceledException` remains a failure.
+
 `StudioPayloadStore.Capture` creates sanitized `StudioPayload` values; it retains no
 separate dictionary. Payload records and `StudioSpan` records live in the existing
 bounded run journal and share its eviction, gap, byte and completeness accounting.

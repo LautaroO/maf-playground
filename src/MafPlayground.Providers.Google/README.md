@@ -47,3 +47,11 @@ The SDK maps Gemini usage metadata into Microsoft.Extensions.AI usage objects,
 so shared token budgets and telemetry remain active. No Google pricing source is
 registered yet; monetary estimates remain unavailable until prices are supplied
 through the repository's `IModelPricingSource` boundary.
+
+Provider failures expose only neutral HTTP status metadata through
+`IAIProviderExceptionDiagnostics`. The Google SDK 1.18.0 `ClientError` and
+`ServerError` types hide `HttpRequestException.StatusCode`, leaving the base
+property null; the adapter reads their status without changing the original
+exception, cancellation, or retry behavior. Studio records this status and bounded
+cause types, excluding inner messages, response bodies, headers, URLs and stacks.
+Previously captured failures cannot recover diagnostics that were not retained.

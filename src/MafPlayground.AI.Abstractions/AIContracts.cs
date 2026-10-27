@@ -89,7 +89,10 @@ public sealed class AIEntityInputException(string message, Exception? innerExcep
     : ArgumentException(message, innerException);
 
 public sealed class AIProviderFailureException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+    : Exception(message, innerException)
+{
+    public AIProviderFailureDetails? Details { get; init; }
+}
 
 public sealed class AISessionConcurrencyException(string sessionId)
     : InvalidOperationException($"AI session '{sessionId}' was updated concurrently.")

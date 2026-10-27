@@ -173,6 +173,35 @@ describe('Generic workflow graph', () => {
     child.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
     expect(document.activeElement).toBe(fixture.nativeElement.querySelector('[data-node]'));
   });
+  it('updates the renderer when spans arrive after the initially empty graph without changing selection', async () => {
+    const store = TestBed.inject(StudioRunStore);
+    store.runs.set([snapshot()]);
+    store.selectedRunId.set('run-a');
+    const fixture = TestBed.createComponent(ExecutionGraph);
+    fixture.componentRef.setInput('observed', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(updates.at(-1)).toEqual([]);
+
+    store.applyEvent(
+      event(1, 'span', {
+        SpanId: 'late-span',
+        TraceId: 'trace-a',
+        ParentSpanId: '',
+        Name: 'Late operation',
+        Source: 'custom-source',
+        StartedAt: '2026-10-25T12:00:02Z',
+        Duration: '00:00:00.010',
+        Status: 'Unset',
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('[role="img"]').hidden).toBe(false);
+    expect(store.inspectionSelection().spanId).toBeNull();
+    expect(updates.at(-1)!.map((item) => item.data.id)).toEqual(['node:late-span']);
+  });
   it('keeps absent agent capture explicit instead of inventing a topology', () => {
     const store = TestBed.inject(StudioRunStore);
     store.runs.set([snapshot()]);

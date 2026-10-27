@@ -39,6 +39,21 @@ test('executes native agent tool, continues session and resets it', async ({
   await expect(tool).toHaveCount(1);
   const operations = page.getByRole('group', { name: 'Captured operations' });
   await expect(operations.getByRole('button')).toHaveCount(4);
+  // Renderer must follow late replay/live spans without selecting, fitting or refreshing first.
+  const expectedNodes = await operations
+    .locator('[data-span-node-id]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-span-node-id')).sort());
+  await expect
+    .poll(() =>
+      graph.evaluate((element: any) =>
+        element._cyreg.cy
+          .nodes()
+          .map((node: any) => node.data('actualId'))
+          .sort(),
+      ),
+    )
+    .toEqual(expectedNodes);
+
   await expect(operations.getByRole('button').filter({ hasText: /Model(?: ·| call)/ })).toHaveCount(
     2,
   );

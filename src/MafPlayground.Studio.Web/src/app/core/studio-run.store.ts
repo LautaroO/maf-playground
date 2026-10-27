@@ -1,3 +1,4 @@
+import { runIssues } from '../traces/run-failures';
 import { presentSpans } from '../traces/span-presentation';
 import {
   projectInvocations,
@@ -76,6 +77,10 @@ export class StudioRunStore {
   });
   readonly selectedEvents = computed(() => this.eventHistory()[this.selectedRunId() ?? ''] ?? []);
   readonly spans = computed(() => projectSpans(this.selectedEvents()));
+  readonly issues = computed(() => runIssues(this.selectedEvents(), this.spans()));
+  readonly issueExecutors = computed(
+    () => new Set(this.issues().flatMap((issue) => (issue.executorId ? [issue.executorId] : []))),
+  );
   readonly showTechnicalSpans = signal(false);
   readonly presentedSpans = computed(() => presentSpans(this.spans(), this.showTechnicalSpans()));
   readonly selectedPresentedSpanId = computed(() => {

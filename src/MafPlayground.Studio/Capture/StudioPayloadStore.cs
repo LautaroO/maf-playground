@@ -1,4 +1,5 @@
 using System.Buffers;
+using MafPlayground.AI.Abstractions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MafPlayground.Studio.Contracts;
@@ -47,7 +48,33 @@ public sealed class StudioPayloadStore(StudioOptions options)
             writer.WriteStartObject();
             writer.WriteString("errorType", value.GetType().FullName);
             writer.WriteString("message", value.Message);
+            WriteStatus(writer, value);
+            if (value.InnerException is { } cause)
+            {
+                // Inner messages, Data, response bodies, URLs and stacks are deliberately
+                // excluded. Preserve only bounded metadata from neutral runtime types.
+                writer.WriteStartArray("causes");
+                int count = 0;
+                while (cause is not null && count++ < 8)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("errorType", cause.GetType().FullName);
+                    WriteStatus(writer, cause);
+                    writer.WriteEndObject();
+                    cause = cause.InnerException;
+                }
+                writer.WriteEndArray();
+                if (cause is not null) writer.WriteBoolean("causesTruncated", true);
+            }
             writer.WriteEndObject();
+        }
+
+        private static void WriteStatus(Utf8JsonWriter writer, Exception exception)
+        {
+            int? status = exception is AIProviderFailureException providerFailure
+                ? providerFailure.Details?.HttpStatusCode
+                : exception is HttpRequestException httpFailure ? (int?)httpFailure.StatusCode : null;
+            if (status is >= 100 and <= 599) writer.WriteNumber("statusCode", status.Value);
         }
     }
 

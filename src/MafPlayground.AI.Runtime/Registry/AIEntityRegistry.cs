@@ -172,6 +172,16 @@ internal sealed class AIEntityInvoker(
                 context.SessionId,
                 output, registration.OutcomeClassifier?.Invoke(output) ?? AIOutcomeClassification.Unclassified);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            AITelemetry.RecordOperation(
+                "execute",
+                registration.Descriptor.Kind.ToString(),
+                registration.Descriptor.Id,
+                "cancelled",
+                Stopwatch.GetElapsedTime(started));
+            throw;
+        }
         catch (Exception exception)
         {
             AITelemetry.RecordOperation(

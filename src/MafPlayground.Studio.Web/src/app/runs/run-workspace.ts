@@ -1,3 +1,4 @@
+import { RunIssues } from './run-issues.component';
 import { ExecutionGraph } from '../graph/execution-graph.component';
 import { TraceTimeline } from '../traces/trace-timeline.component';
 import { SpanInspector } from '../traces/span-inspector.component';
@@ -27,6 +28,7 @@ import { StatusBadge } from '../shared/ui/status-badge';
     ExecutionGraph,
     TraceTimeline,
     SpanInspector,
+    RunIssues,
   ],
   template: `
     @if (store.selectedRun(); as run) {
@@ -100,6 +102,7 @@ import { StatusBadge } from '../shared/ui/status-badge';
           Execution ended · {{ run.errorCategory }}
         </p>
       }
+      <studio-run-issues />
       <div class="trace-view">
         <label class="row"
           >Trace view

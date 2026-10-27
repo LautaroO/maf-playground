@@ -11,6 +11,81 @@ namespace MafPlayground.Studio.Tests.Unit;
 
 public sealed class StudioCapturePrivacyTests
 {
+    [Theory]
+    [InlineData(401)]
+    [InlineData(429)]
+    [InlineData(503)]
+    public void Wrapped_provider_failures_preserve_safe_cause_types_and_http_status_only(int status)
+    {
+        Exception cause = new HttpRequestException(
+            "https://private.example/?key=hidden-provider-value response: confidential", null,
+            (System.Net.HttpStatusCode)status);
+        cause.Data["responseBody"] = "confidential-provider-body";
+        Exception failure = new MafPlayground.AI.Abstractions.AIProviderFailureException(
+            "The AI provider call failed.", new InvalidOperationException("private-inner-message", cause));
+
+        var payload = new StudioPayloadStore(new()).Capture(failure, "application/json");
+
+        Assert.Equal(StudioCaptureState.Available, payload.State);
+        Assert.Equal("The AI provider call failed.", payload.Value.GetProperty("message").GetString());
+        JsonElement[] causes = payload.Value.GetProperty("causes").EnumerateArray().ToArray();
+        Assert.Equal(typeof(InvalidOperationException).FullName, causes[0].GetProperty("errorType").GetString());
+        Assert.False(causes[0].TryGetProperty("statusCode", out _));
+        Assert.Equal(typeof(HttpRequestException).FullName, causes[1].GetProperty("errorType").GetString());
+        Assert.Equal(status, causes[1].GetProperty("statusCode").GetInt32());
+        Assert.All(causes, item => Assert.False(item.TryGetProperty("message", out _)));
+        string captured = payload.Value.ToString();
+        Assert.DoesNotContain("private.example", captured);
+        Assert.DoesNotContain("hidden-provider-value", captured);
+        Assert.DoesNotContain("confidential", captured);
+        Assert.DoesNotContain("private-inner-message", captured);
+        Assert.DoesNotContain("stackTrace", captured, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Provider_neutral_status_metadata_is_captured_without_raw_provider_details()
+    {
+        var failure = new MafPlayground.AI.Abstractions.AIProviderFailureException(
+            "The AI provider call failed.", new InvalidOperationException("private provider response"))
+        { Details = new MafPlayground.AI.Abstractions.AIProviderFailureDetails(429) };
+        var payload = new StudioPayloadStore(new()).Capture(failure, "application/json");
+
+        Assert.Equal(429, payload.Value.GetProperty("statusCode").GetInt32());
+        Assert.Equal("The AI provider call failed.", payload.Value.GetProperty("message").GetString());
+        Assert.DoesNotContain("private provider response", payload.Value.ToString());
+    }
+
+    [Fact]
+    public async Task Model_failure_events_preserve_sanitized_http_causes_through_runtime_wrapping()
+    {
+        await using StudioExecutionFixture fixture = new();
+        fixture.Client.Reply = (_, _) => throw new HttpRequestException(
+            "private-provider-body", null, System.Net.HttpStatusCode.TooManyRequests);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => fixture.RunAsync(new { message = "hello" }));
+
+        StudioEvent failure = Assert.Single(fixture.Events.Items, item => item.Kind == "model_failed");
+        JsonElement details = failure.Data.GetProperty("Value");
+        Assert.Equal("The AI provider streaming call failed.", details.GetProperty("message").GetString());
+        Assert.Equal(429, Assert.Single(details.GetProperty("causes").EnumerateArray()).GetProperty("statusCode").GetInt32());
+        Assert.DoesNotContain("private-provider-body", JsonSerializer.Serialize(fixture.Events.Items));
+    }
+
+    [Fact]
+    public void Exception_cause_capture_is_bounded_and_does_not_read_inner_messages()
+    {
+        Exception cause = new BrokenException();
+        for (int index = 0; index < 12; index++) cause = new InvalidOperationException("hidden", cause);
+        var payload = new StudioPayloadStore(new()).Capture(new Exception("safe", cause), "application/json");
+
+        Assert.Equal(StudioCaptureState.Available, payload.State);
+        Assert.Equal(8, payload.Value.GetProperty("causes").GetArrayLength());
+        Assert.True(payload.Value.GetProperty("causesTruncated").GetBoolean());
+        var broken = new StudioPayloadStore(new()).Capture(new Exception("safe", new BrokenException()), "application/json");
+        Assert.Equal(StudioCaptureState.Available, broken.State);
+        Assert.Single(broken.Value.GetProperty("causes").EnumerateArray());
+    }
+
     [Fact]
     public void Benign_timestamps_are_available_even_when_json_writer_escapes_the_offset()
     {

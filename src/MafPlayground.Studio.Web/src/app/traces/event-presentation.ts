@@ -71,6 +71,15 @@ const catalog = new Map<string, EventPresentation>([
     },
   ],
   [
+    'model_cancelled',
+    {
+      title: 'Model call cancelled',
+      description: 'The model boundary observed a cancellation requested by its caller.',
+      keyEvidence: false,
+      error: false,
+    },
+  ],
+  [
     'model_incomplete',
     {
       title: 'Model response incomplete',

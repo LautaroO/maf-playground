@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using MafPlayground.AI.Observability;
 using System.Text.Json;
 using MafPlayground.AI;
 using MafPlayground.AI.Abstractions;
@@ -16,6 +18,82 @@ namespace MafPlayground.Tests.AI.Foundation;
 
 public sealed class AIEntityRuntimeTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Invoker_telemetry_distinguishes_requested_and_unsolicited_cancellation(bool requested)
+    {
+        AIExecutionContext context = AIExecutionContext.Create(new AICallerContext("subject"));
+        Activity? stopped = null;
+        using ActivityListener listener = new()
+        {
+            ShouldListenTo = source => source.Name == AITelemetry.RuntimeSourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.GetTagItem("maf_playground.execution.id") as string == context.ExecutionId)
+                    stopped = activity;
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        ServiceCollection services = new();
+        services.AddSingleton<IChatClientProvider>(new RecordingProvider("fake"));
+        services.AddAIRuntime(CreateConfiguration())
+            .AddAgent<CancelledEntity, EchoInput, EchoOutput>("cancelled", entity => entity.WithDescription("Cancellation fixture.").AllowAnonymousAccess());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        using IServiceScope scope = provider.CreateScope();
+        using CancellationTokenSource cancellation = new();
+        if (requested) cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await scope.ServiceProvider
+            .GetRequiredService<IAIEntityInvoker>().InvokeAsync("cancelled",
+                JsonSerializer.SerializeToElement(new EchoInput("hello")), context, cancellation.Token));
+
+        Assert.NotNull(stopped);
+        Assert.Equal(requested ? "cancelled" : "error", stopped.GetTagItem(AITelemetry.OutcomeTag));
+        Assert.Equal(requested ? ActivityStatusCode.Unset : ActivityStatusCode.Error, stopped.Status);
+        if (requested) Assert.Null(stopped.GetTagItem(AITelemetry.ErrorTypeTag));
+        else Assert.Equal(typeof(OperationCanceledException).FullName, stopped.GetTagItem(AITelemetry.ErrorTypeTag));
+    }
+
+    private sealed class CancelledEntity : IAIEntity<EchoInput, EchoOutput>
+    {
+        public ValueTask<EchoOutput> ExecuteAsync(EchoInput input, AIExecutionContext context, CancellationToken cancellationToken) =>
+            throw new OperationCanceledException("Synthetic cancellation.", cancellationToken);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Provider_failure_diagnostics_are_best_effort_and_preserve_original_exception(bool streaming)
+    {
+        Exception original = new InvalidOperationException("provider secret");
+        ServiceCollection services = new();
+        services.AddSingleton<IChatClientProvider>(new RecordingProvider("fake", new FailingChatClient(original)));
+        services.AddSingleton<IAIProviderExceptionDiagnostics>(new BrokenDiagnostics());
+        services.AddSingleton<IAIProviderExceptionDiagnostics>(new FixedDiagnostics());
+        services.AddAIRuntime(CreateConfiguration());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IChatClient client = provider.GetRequiredService<IAIChatClientFactory>().Create("entity");
+
+        AIProviderFailureException exception = await Assert.ThrowsAsync<AIProviderFailureException>(() => streaming
+            ? ConsumeAsync(client.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "hello")]))
+            : client.GetResponseAsync([new ChatMessage(ChatRole.User, "hello")]));
+
+        Assert.Same(original, exception.InnerException);
+        Assert.Equal(429, exception.Details!.HttpStatusCode);
+        Assert.DoesNotContain("provider secret", exception.Message, StringComparison.Ordinal);
+    }
+
+    private sealed class BrokenDiagnostics : IAIProviderExceptionDiagnostics
+    {
+        public AIProviderFailureDetails? Describe(Exception exception) => throw new InvalidOperationException("diagnostic failure");
+    }
+    private sealed class FixedDiagnostics : IAIProviderExceptionDiagnostics
+    {
+        public AIProviderFailureDetails? Describe(Exception exception) => new(429);
+    }
+
     [Fact]
     public async Task Default_startup_still_rejects_an_unconfigured_model()
     {

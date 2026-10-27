@@ -66,6 +66,8 @@ internal sealed class FixtureClient(string model) : IChatClient
     JsonElement root = json.RootElement;
     string language = root.GetProperty("targetLanguage").GetString()!;
     object reply;
+    if (language == "fr" && root.TryGetProperty("translatedText", out _) && root.GetProperty("sourceText").GetString()!.Contains("fixture-validation-fail", StringComparison.Ordinal))
+      throw new HttpRequestException("Deterministic provider limit.", null, System.Net.HttpStatusCode.TooManyRequests);
     if (!root.TryGetProperty("translatedText", out _))
       reply = new { translatedText = language == "fr" ? model == "reviewed" ? "Votre commande 247 est prête maintenant." : "Votre commande est prête." : "Su pedido 247 está listo." };
     else if (root.TryGetProperty("previousBlockingIssues", out var issues) && issues.GetArrayLength() > 0)

@@ -202,6 +202,17 @@ desktop inspection. The sticky inspector owns its column's vertical scrolling;
 its event body and JSON content expand inside that one scroll container. JSON
 viewers elsewhere retain their bounded defaults.
 
+**Execution issues** indexes retained failure observations and Error spans using
+recorded invocation/span IDs only, without reading payload bodies. It identifies
+the affected executor, keeps unknown correlation explicit, and opens its recorded
+evidence. **Show cause** explicitly fetches a sanitized exception summary; HTTP
+status and bounded cause metadata render as readable fields, with raw JSON behind
+**Technical diagnostic**. Historical provider failures explicitly report missing
+underlying cause metadata. The workflow graph's **Issue recorded** marker is
+separate from executor lifecycle: a completed method may return rejected data.
+The graph effect reads its dependencies before renderer initialization so later
+SSE spans/topology updates render without a manual selection or refresh.
+
 `StudioRunStore.inspectionSelection`, `selectExecutor`, `selectInvocation`, and
 `selectSpan` coordinate all panels. `selectedEvents`, `spans`, `invocations`, and
 `metrics` project the bounded retained journal. Correlation comes only from recorded

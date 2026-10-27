@@ -161,12 +161,28 @@ the local host to load backend changes, remembering that its runs are in memory.
 2. Expect **Running** and an **Active** `translate-es` node. The fake provider waits
    cooperatively for cancellation; do not wait for a natural result.
 3. Click **Cancel run**. Expect terminal **Cancelled** and the observed executor
-   cancellation. Untaken nodes must not all become cancelled.
+   cancellation. Untaken nodes must not all become cancelled. A requested
+   cancellation should not create a provider-failure issue or **Issue recorded**
+   marker on the cancelled step.
 4. Run `{ "text": "fresh-after-cancel", "targetLanguages": ["es"] }`.
    Expect **Completed**, proving cancellation did not leave the next execution blocked.
-5. Inspect `basic-agent` and run `{ "message": "fixture-fail" }`. Expect **Failed**.
-   In **Run / unmatched events**, open `execution_error` to inspect the sanitized
-   diagnostic; the run-level category alone is not the full debugging evidence.
+5. Run translation with
+   `{ "text": "fixture-validation-fail", "targetLanguages": ["es", "fr"] }`.
+   Expect **Partial result**. In **Execution issues**, find `validate-fr`, click
+   **Show cause**, and expect **Rate or quota limit · HTTP 429**. This status is
+   simulated by the test fixture. **Inspect evidence** opens the exact invocation;
+   the graph shows **Completed** plus **Issue recorded**. The exception happened
+   during validation; new validation output uses `ValidationCallFailed`.
+6. Inspect `basic-agent` and run `{ "message": "fixture-fail" }`. Expect **Failed**.
+   Read **Execution issues** for the sanitized diagnostic. Original unmatched
+   observations remain accessible in the inspector's **Technical details**.
+
+The graph should populate automatically as capture arrives, including after opening
+an execution. Selecting a node or pressing Refresh must not be required to draw it.
+Cause payloads still load only on request. Existing captures can contain only a
+generic provider failure: missing historical cause metadata is explicit and cannot
+be reconstructed. New backend diagnostics require restarting the CLI; its in-memory
+history clears on restart, so inspect existing runs first.
 
 ## 7. Check validation and host lifetime
 

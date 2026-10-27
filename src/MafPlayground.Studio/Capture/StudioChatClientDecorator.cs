@@ -31,7 +31,7 @@ internal sealed class StudioChatClientDecorator : IChatClientDecorator
                 AIExecutionObservation.Record("model_completed", new { response.Usage });
                 return response;
             }
-            catch (Exception exception) { Failure(activity, exception); throw; }
+            catch (Exception exception) { Failure(activity, exception, cancellationToken); throw; }
         }
         public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -53,7 +53,7 @@ internal sealed class StudioChatClientDecorator : IChatClientDecorator
                 {
                     bool next;
                     try { next = await enumerator.MoveNextAsync().ConfigureAwait(false); }
-                    catch (Exception exception) { Failure(activity, exception); throw; }
+                    catch (Exception exception) { Failure(activity, exception, cancellationToken); throw; }
                     if (!next) break;
                     ChatResponseUpdate update = enumerator.Current;
                     usage = update.Contents.OfType<UsageContent>().LastOrDefault()?.Details ?? usage;
@@ -87,8 +87,13 @@ internal sealed class StudioChatClientDecorator : IChatClientDecorator
             if (usage?.InputTokenCount is { } input) activity?.SetTag("gen_ai.usage.input_tokens", input);
             if (usage?.OutputTokenCount is { } output) activity?.SetTag("gen_ai.usage.output_tokens", output);
         }
-        private static void Failure(Activity? activity, Exception exception)
+        private static void Failure(Activity? activity, Exception exception, CancellationToken cancellationToken)
         {
+            if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+            {
+                AIExecutionObservation.Record("model_cancelled", new { reason = "caller_cancelled" });
+                return;
+            }
             activity?.SetStatus(ActivityStatusCode.Error);
             AIExecutionObservation.Record("model_failed", exception);
         }

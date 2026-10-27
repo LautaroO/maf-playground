@@ -121,8 +121,11 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
             (click)="store.selectExecutor(node.id)"
           >
             <strong>{{ node.label }}</strong
-            ><span class="meta">{{ state(node.id) }}</span
-            ><code>{{ node.id }}</code
+            ><span class="meta">{{ state(node.id) }}</span>
+            @if (store.issueExecutors().has(node.id)) {
+              <span class="issue-label">Issue recorded</span>
+            }
+            <code>{{ node.id }}</code
             ><span class="meta">{{
               count(node.id)
                 ? count(node.id) +
@@ -189,6 +192,11 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
     .panel-head .button {
       padding: 5px 9px;
     }
+    .issue-label {
+      color: #f5a3a7;
+      font-size: 11px;
+      margin-top: 4px;
+    }
     .notice {
       margin: 16px;
     }
@@ -215,7 +223,7 @@ export class ExecutionGraph implements AfterViewInit {
     this.observed()
       ? this.projectObserved(this.spans())
       : this.topology()?.status === 0
-        ? graphElements(this.topology()!, this.store.invocations())
+        ? graphElements(this.topology()!, this.store.invocations(), this.store.issueExecutors())
         : [],
   );
   readonly factory = inject(GRAPH_DRIVER);
@@ -241,10 +249,11 @@ export class ExecutionGraph implements AfterViewInit {
   }
   private update() {
     const selection = this.store.inspectionSelection();
-    this.driver?.update(
-      this.elements(),
-      this.observed() ? this.store.selectedPresentedSpanId() : selection.executorId,
-    );
+    // Subscribe before the driver exists: the initial effect runs before AfterViewInit.
+    // Optional-call arguments would skip these signal reads and miss later span updates.
+    const elements = this.elements();
+    const selected = this.observed() ? this.store.selectedPresentedSpanId() : selection.executorId;
+    this.driver?.update(elements, selected);
   }
 
   count(id: string) {
