@@ -45,6 +45,36 @@ test('investigates real translation validation, retry cycle and partial branch',
   await page.getByLabel('Select invocation').selectOption({ index: 2 });
   const invocation = await page.getByLabel('Select invocation').inputValue();
   const graph = page.getByRole('img', { name: 'Interactive workflow topology' });
+  const hierarchy = await graph.evaluate((element: any) => {
+    const cy = element._cyreg.cy;
+    const position = (id: string) => cy.getElementById('node:' + id).position();
+    const feedback = cy
+      .edges()
+      .filter(
+        (edge: any) =>
+          edge.source().data('actualId') === 'validate-fr' &&
+          edge.target().data('actualId') === 'translate-fr',
+      )[0];
+    const source = feedback.source().boundingBox(),
+      target = feedback.target().boundingBox();
+    const middle = feedback.midpoint();
+    return {
+      entry: position('translation-input'),
+      left: position('translate-es'),
+      right: position('translate-fr'),
+      leftCheck: position('validate-es'),
+      rightCheck: position('validate-fr'),
+      join: position('translation-aggregate'),
+      returnOutsideNodes:
+        middle.x < Math.min(source.x1, target.x1) || middle.x > Math.max(source.x2, target.x2),
+    };
+  });
+  expect(hierarchy.entry.y).toBeLessThan(hierarchy.left.y);
+  expect(hierarchy.left.y).toBe(hierarchy.right.y);
+  expect(hierarchy.leftCheck.y).toBe(hierarchy.rightCheck.y);
+  expect(hierarchy.left.y).toBeLessThan(hierarchy.leftCheck.y);
+  expect(hierarchy.leftCheck.y).toBeLessThan(hierarchy.join.y);
+  expect(hierarchy.returnOutsideNodes).toBe(true);
   const view = () =>
     graph.evaluate((element: any) => ({
       zoom: element._cyreg.cy.zoom(),

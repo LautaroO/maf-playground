@@ -112,6 +112,23 @@ validates nested constraints, produces editor locations and rejects external sch
 fetches. Input/schema text is capped at 2 MiB. `JsonView` renders output as escaped,
 selectable JSON; chat is escaped text. No model text is interpreted as HTML.
 
+## Workflow graph layout
+
+Cytoscape renders the interactive graph; pinned `@dagrejs/dagre` 3.1.3 (and its
+`@dagrejs/graphlib` dependency) supplies directed layered geometry. This dependency
+replaces the arbitrary grid and handles cycles, fan-out/fan-in and differently
+sized nodes without sample-specific positioning or a second workflow engine.
+Its MIT notice is included in the emitted third-party license bundle.
+
+Entry metadata is used when ordering layout input, parallel stages align and
+structural sinks appear downstream. All declared connections are retained.
+Amber `Return` links point back within the layout; they are not proof of a retry
+having executed. Actual invocation states and identities still come from capture.
+The geometry is cached per immutable declaration with weak ownership. Lifecycle
+updates do not recompute it or reset zoom/pan; structural changes apply new preset
+positions, and Fit is the explicit viewport reframe action. The canvas grows with
+the viewport to make the additional stages readable.
+
 ## Assets, visual system and packaging
 
 `src/styles/tokens.css` and `shared/ui` define Precision surfaces, readable 13px UI,

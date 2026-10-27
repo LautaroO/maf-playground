@@ -32,8 +32,8 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
     </div>
     @if (topology()?.status === 0) {
       <p class="legend meta">
-        Labels and borders show observed lifecycle; retries remain distinct · dashed edges:
-        conditional structure. Edge traversal is not inferred.
+        Top-to-bottom flow · dashed edges: conditional structure · amber: return links. Return links
+        describe topology, not evidence that a retry executed.
       </p>
     } @else {
       <p class="notice">
@@ -85,7 +85,7 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
       border-bottom: 1px solid var(--border);
     }
     .graph {
-      height: 260px;
+      height: clamp(400px, 60vh, 540px);
       width: 100%;
       background: var(--base);
     }

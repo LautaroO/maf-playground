@@ -47,7 +47,10 @@ or provider/exporter validation.
 4. Expect **Partial result**. The Spanish branch succeeds. The default fixture's
    French translation omits `247`, causing real validation feedback and a retry;
    the French result remains invalid. This partial outcome is intentional.
-5. In **Declared workflow topology**, select `translate-fr`. Inspect the distinct
+5. In **Declared workflow topology**, expect entry at the top, translation and
+   validation stages in aligned parallel branches, and aggregation below them.
+   Amber **Return** links show declared backward connections, not evidence that
+   an attempt executed. Select `translate-fr`. Inspect the distinct
    invocation choices: the retry must not overwrite the first attempt. A completed
    executor means its method returned; the run's domain outcome can still be partial.
 6. Select `validate-fr`, choose an invocation and search captured events for

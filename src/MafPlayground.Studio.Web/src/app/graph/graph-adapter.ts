@@ -2,6 +2,7 @@ import { InjectionToken } from '@angular/core';
 import cytoscape, { type ElementDefinition } from 'cytoscape';
 import type { StudioTopology } from '../core/studio-api.generated';
 import type { Invocation } from '../traces/inspection';
+import { topologyGeometry, NODE_WIDTH, NODE_HEIGHT, JUNCTION_SIZE } from './graph-layout';
 export interface GraphDriver {
   update(elements: ElementDefinition[], selected: string | null): void;
   resize(): void;
@@ -25,8 +26,12 @@ export function graphElements(
     data: {
       id: 'node:' + node.id,
       actualId: node.id,
+      isStart: node.isStart || node.id === topology.startNodeId,
       label:
-        node.label + '\n' + invocationState(invocations.filter((x) => x.executorId === node.id)),
+        (node.isStart || node.id === topology.startNodeId ? 'Entry\n' : '') +
+        node.label +
+        '\n' +
+        invocationState(invocations.filter((x) => x.executorId === node.id)),
       count: invocations.filter((x) => x.executorId === node.id).length,
     },
     classes: invocations.some((x) => x.executorId === node.id)
@@ -38,7 +43,12 @@ export function graphElements(
     const id = 'edge:' + edge.id;
     if (edge.sourceIds.length === 1 && edge.targetIds.length === 1) {
       nodes.push({
-        data: { id, source: 'node:' + edge.sourceIds[0], target: 'node:' + edge.targetIds[0] },
+        data: {
+          id,
+          source: 'node:' + edge.sourceIds[0],
+          target: 'node:' + edge.targetIds[0],
+          label: edge.label ?? '',
+        },
         classes: edge.isConditional ? 'conditional' : '',
       });
       continue;
@@ -55,7 +65,17 @@ export function graphElements(
         classes: edge.isConditional ? 'conditional' : '',
       });
   }
-  return nodes;
+  const geometry = topologyGeometry(topology, nodes);
+  return nodes.map((item) => {
+    if (!item.data.source)
+      return { ...item, position: { ...geometry.positions.get(item.data.id!)! } };
+    const feedback = geometry.feedback.has(item.data.id!);
+    return {
+      ...item,
+      data: { ...item.data, label: item.data['label'] || (feedback ? 'Return' : '') },
+      classes: [item.classes, feedback ? 'feedback' : ''].filter(Boolean).join(' '),
+    };
+  });
 }
 export function createGraphDriver(
   container: HTMLElement,
@@ -81,8 +101,8 @@ export function createGraphDriver(
           'text-max-width': '120px',
           'text-valign': 'center',
           shape: 'round-rectangle',
-          width: 140,
-          height: 48,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
         },
       },
       { selector: 'node.observed', style: { 'border-color': '#86d9b5' } },
@@ -95,8 +115,8 @@ export function createGraphDriver(
         selector: 'node.junction',
         style: {
           shape: 'diamond',
-          width: 12,
-          height: 12,
+          width: JUNCTION_SIZE,
+          height: JUNCTION_SIZE,
           label: '',
           'background-color': '#566379',
         },
@@ -108,10 +128,28 @@ export function createGraphDriver(
           'line-color': '#566379',
           'target-arrow-color': '#566379',
           'target-arrow-shape': 'triangle',
-          'curve-style': 'bezier',
+          'curve-style': 'taxi',
+          'taxi-direction': 'downward',
+          'font-size': 10,
+          label: 'data(label)',
+          'text-background-color': '#11141a',
+          'text-background-opacity': 1,
+          'text-background-padding': '2px',
         },
       },
       { selector: 'edge.conditional', style: { 'line-style': 'dashed' } },
+      {
+        selector: 'edge.feedback',
+        style: {
+          'curve-style': 'unbundled-bezier',
+          'control-point-distances': [100, 100],
+          'control-point-weights': [0.15, 0.85],
+          'line-style': 'dashed',
+          'line-color': '#edbf7b',
+          'target-arrow-color': '#edbf7b',
+          color: '#edbf7b',
+        },
+      },
       {
         selector: 'node:selected',
         style: { 'border-color': '#a7afff', 'border-width': 3, 'background-color': '#252b47' },
@@ -124,6 +162,7 @@ export function createGraphDriver(
   });
   let initialized = false;
   let layoutPending = false;
+  let positions = new Map<string, cytoscape.Position>();
   let frame: number | undefined;
   const scheduleLayout = () => {
     if (!layoutPending || frame !== undefined) return;
@@ -136,15 +175,11 @@ export function createGraphDriver(
       const pan = cy.pan(),
         zoom = cy.zoom();
       cy.layout({
-        name: 'grid',
+        name: 'preset',
+        positions: Object.fromEntries(positions),
         animate: false,
         fit: !initialized,
-        padding: 20,
-        cols: 3,
-        condense: true,
-        avoidOverlap: true,
-        avoidOverlapPadding: 20,
-        spacingFactor: 1.1,
+        padding: 24,
       }).run();
       if (initialized) {
         cy.zoom(zoom);
@@ -155,6 +190,9 @@ export function createGraphDriver(
   };
   return {
     update(elements, selected) {
+      positions = new Map(
+        elements.filter((item) => item.position).map((item) => [item.data.id!, item.position!]),
+      );
       const ids = new Set(elements.map((x) => x.data.id!));
       let changed = false;
       cy.batch(() => {
@@ -170,6 +208,16 @@ export function createGraphDriver(
             cy.add(item);
             changed = true;
           } else {
+            if (
+              existing.isEdge() &&
+              (existing.data('source') !== item.data.source ||
+                existing.data('target') !== item.data.target)
+            ) {
+              existing.move({ source: item.data.source, target: item.data.target });
+              changed = true;
+            }
+            if (existing.isNode() && existing.data('isStart') !== item.data['isStart'])
+              changed = true;
             existing.data(item.data);
             existing.classes(item.classes ?? '');
           }
