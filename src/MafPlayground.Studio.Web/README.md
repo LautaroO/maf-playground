@@ -169,7 +169,13 @@ fixture's real `UseStudioFrontend` and production access/CSP pipeline. The devel
 server separately permits its loopback HMR WebSocket. No extra browser matrix is used.
 
 `RunWorkspace` includes a direct Cytoscape **3.34.4** adapter and coordinated
-executor/invocation/span selection. Native workflow topology retains actual IDs,
+executor/invocation/span selection. `ExecutionGraph` renders native workflow
+declarations or an observed execution graph for agents. Observed nodes are captured
+spans; edges use matching trace IDs and recorded parent span IDs only. They do not
+infer sequence from timestamps or merge repeated operations by name. Clicking a
+node selects the same span in the timeline and lazy inspector. Missing parents
+remain separate roots with an explicit notice; absent capture never creates a
+fabricated graph. Native workflow topology retains actual IDs,
 branches and cycles; agent views use observed parent-span hierarchy. Dagre places
 native topology in directed layers while preserving declared backward connections
 and cycles; only native fan-in/fan-out needs junctions.

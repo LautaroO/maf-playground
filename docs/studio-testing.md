@@ -129,9 +129,14 @@ the local host to load backend changes, remembering that its runs are in memory.
 
    Expect `Tool result:` in the response. The model response is scripted, but
    `get_current_date_time` executes as the real deterministic tool.
-3. Open that execution from Recent executions and inspect its observed call hierarchy
-   and tool argument/result evidence. Return to the Basic workspace and select the
-   original session if necessary.
+3. Open that execution from Recent executions. **Observed execution graph** shows
+   captured operations and their recorded parent/child connections. Select the
+   `execute_tool get_current_date_time` node to open its span in the inspector;
+   **Load content** retrieves its attributes explicitly. The timeline selects the
+   same span. Try zoom, pan, Fit and collapse at 1440 and 1024 px. The graph is
+   observed evidence, not a declared workflow; repeated operations stay distinct,
+   and missing parents remain separate roots. Return to the Basic workspace and
+   select the original session if necessary.
 4. Send `{ "message": "remember-first" }` in that same session. Expect
    `User turns: fixture-time | remember-first`.
 5. Click **Reset session**. Expect a replacement session ID. Send

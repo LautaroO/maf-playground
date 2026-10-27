@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { WorkflowGraph } from './workflow-graph.component';
+import { ExecutionGraph } from './execution-graph.component';
 import { GRAPH_DRIVER, type GraphDriver, graphElements } from './graph-adapter';
 import { StudioRunStore } from '../core/studio-run.store';
 import { novelTopology as topology, snapshot, event } from '../core/testing.fixture';
@@ -34,7 +34,7 @@ describe('Generic workflow graph', () => {
     const store = TestBed.inject(StudioRunStore);
     store.runs.set([snapshot('run-a', { topology })]);
     store.selectedRunId.set('run-a');
-    const fixture = TestBed.createComponent(WorkflowGraph);
+    const fixture = TestBed.createComponent(ExecutionGraph);
     fixture.detectChanges();
     await fixture.whenStable();
     select('b');
@@ -104,7 +104,7 @@ describe('Generic workflow graph', () => {
         },
       }),
     ]);
-    const fixture = TestBed.createComponent(WorkflowGraph);
+    const fixture = TestBed.createComponent(ExecutionGraph);
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Later branch');
@@ -123,5 +123,65 @@ describe('Generic workflow graph', () => {
     ]);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Capability unavailable');
+  });
+  it('renders an agent graph from recorded span parents and selects spans without loading payloads', async () => {
+    const store = TestBed.inject(StudioRunStore);
+    store.runs.set([snapshot()]);
+    store.selectedRunId.set('run-a');
+    for (const [index, id, parent, trace] of [
+      [1, 'parent', '', 't'],
+      [2, 'child', 'parent', 't'],
+      [3, 'orphan', 'absent', 't'],
+      [4, 'other-trace', 'parent', 'other'],
+    ] as const)
+      store.applyEvent(
+        event(index, 'span', {
+          SpanId: id,
+          TraceId: trace,
+          ParentSpanId: parent,
+          Name: id,
+          Source: 'custom-source',
+          StartedAt: '2026-10-25T12:00:02Z',
+          Duration: '00:00:00.010',
+          Status: 'Unset',
+          Attributes: { Id: 'attrs', Value: { privateMarker: 'not-a-node-label' } },
+          Events: { Id: 'events' },
+          Links: { Id: 'links' },
+        }),
+      );
+    const fixture = TestBed.createComponent(ExecutionGraph);
+    fixture.componentRef.setInput('observed', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Observed execution graph');
+    expect(fixture.nativeElement.textContent).not.toContain('not-a-node-label');
+    expect(fixture.nativeElement.textContent).toContain('Missing parent');
+    const elements = updates.at(-1)!;
+    expect(elements.filter((x) => !x.data.source)).toHaveLength(4);
+    expect(
+      elements.filter((x) => x.data.source).map((x) => [x.data.source, x.data.target]),
+    ).toEqual([['node:parent', 'node:child']]);
+    select('child');
+    fixture.detectChanges();
+    expect(store.inspectionSelection().spanId).toBe('child');
+    expect(store.inspectionSelection().executorId).toBeNull();
+    const child = fixture.nativeElement.querySelector(
+      '[data-span-node-id="child"]',
+    ) as HTMLButtonElement;
+    expect(child.getAttribute('aria-pressed')).toBe('true');
+    child.focus();
+    child.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('[data-node]'));
+  });
+  it('keeps absent agent capture explicit instead of inventing a topology', () => {
+    const store = TestBed.inject(StudioRunStore);
+    store.runs.set([snapshot()]);
+    store.selectedRunId.set('run-a');
+    const fixture = TestBed.createComponent(ExecutionGraph);
+    fixture.componentRef.setInput('observed', true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('No spans captured');
+    expect(updates.at(-1)).toEqual([]);
+    expect(fixture.nativeElement.querySelectorAll('[data-node]')).toHaveLength(0);
   });
 });

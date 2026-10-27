@@ -1,4 +1,4 @@
-import { WorkflowGraph } from '../graph/workflow-graph.component';
+import { ExecutionGraph } from '../graph/execution-graph.component';
 import { TraceTimeline } from '../traces/trace-timeline.component';
 import { SpanInspector } from '../traces/span-inspector.component';
 import {
@@ -24,7 +24,7 @@ import { StatusBadge } from '../shared/ui/status-badge';
     DatePipe,
     JsonView,
     StatusBadge,
-    WorkflowGraph,
+    ExecutionGraph,
     TraceTimeline,
     SpanInspector,
   ],
@@ -102,9 +102,7 @@ import { StatusBadge } from '../shared/ui/status-badge';
       }
       <div #investigation class="investigation" [style.--inspector-width]="inspectorWidth() + 'px'">
         <section class="investigation-main">
-          @if (workflow()) {
-            <studio-workflow-graph />
-          }
+          <studio-execution-graph [observed]="!workflow()" />
           <studio-trace-timeline />
           <div class="panel-head">
             <h2>Execution output</h2>

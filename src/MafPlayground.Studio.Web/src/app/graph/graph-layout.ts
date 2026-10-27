@@ -18,6 +18,11 @@ export function topologyGeometry(
 ): Geometry {
   const cached = layouts.get(topology);
   if (cached) return cached;
+  const result = elementGeometry(elements);
+  layouts.set(topology, result);
+  return result;
+}
+export function elementGeometry(elements: ElementDefinition[]): Geometry {
   const positions = new Map<string, Position>(),
     feedback = new Set<string>();
   if (elements.length) {
@@ -59,7 +64,5 @@ export function topologyGeometry(
         feedback.add(item.data.id!);
     }
   }
-  const result = { positions, feedback };
-  layouts.set(topology, result);
-  return result;
+  return { positions, feedback };
 }

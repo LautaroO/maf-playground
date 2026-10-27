@@ -8,14 +8,17 @@ import {
   effect,
   inject,
   signal,
+  input,
 } from '@angular/core';
 import { StudioRunStore } from '../core/studio-run.store';
+import { createObservedGraphProjector, missingParent } from './observed-graph';
+import { durationMs } from '../traces/inspection';
 import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from './graph-adapter';
 @Component({
-  selector: 'studio-workflow-graph',
+  selector: 'studio-execution-graph',
   template: `
     <div class="panel-head">
-      <h2>Declared workflow topology</h2>
+      <h2>{{ observed() ? 'Observed execution graph' : 'Declared workflow topology' }}</h2>
       <span class="spacer"></span>
       <div class="row">
         <button class="button" aria-label="Zoom out graph" (click)="driver?.zoom(0.8)">−</button
@@ -30,7 +33,23 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
         </button>
       </div>
     </div>
-    @if (topology()?.status === 0) {
+    @if (observed()) {
+      <p class="legend meta">
+        Captured spans · edges show recorded parent → child relationships within the same trace.
+        Sibling placement does not imply execution order. Content loads only in the inspector.
+      </p>
+      @if (!spans().length) {
+        <p class="notice">
+          No spans captured yet. Missing capture does not prove no work occurred.
+        </p>
+      }
+      @if (missingParents()) {
+        <p class="notice">
+          Missing parent for {{ missingParents() }} captured spans. These remain separate roots; no
+          connection is inferred.
+        </p>
+      }
+    } @else if (topology()?.status === 0) {
       <p class="legend meta">
         Top-to-bottom flow · dashed edges: conditional structure · amber: return links. Return links
         describe topology, not evidence that a retry executed.
@@ -44,10 +63,33 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
       #canvas
       class="graph"
       role="img"
-      aria-label="Interactive workflow topology"
-      [hidden]="topology()?.status !== 0 || !expanded()"
+      [attr.aria-label]="
+        observed() ? 'Interactive observed execution graph' : 'Interactive workflow topology'
+      "
+      [hidden]="!hasGraph() || !expanded()"
     ></div>
-    @if (topology()?.status === 0) {
+    @if (observed() && spans().length) {
+      <div
+        [hidden]="!expanded()"
+        class="node-list"
+        role="group"
+        aria-label="Captured operations"
+        (keydown)="navigate($event)"
+      >
+        @for (span of spans(); track span.spanId) {
+          <button
+            data-node
+            [attr.data-span-node-id]="span.spanId"
+            [attr.aria-pressed]="store.inspectionSelection().spanId === span.spanId"
+            (click)="store.selectSpan(span.spanId)"
+          >
+            <strong>{{ span.name }}</strong
+            ><span class="meta">{{ span.status }} · {{ milliseconds(span.duration) }} ms</span
+            ><code>{{ span.source }}</code>
+          </button>
+        }
+      </div>
+    } @else if (topology()?.status === 0) {
       <div
         [hidden]="!expanded()"
         class="node-list"
@@ -136,13 +178,30 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
     }
   `,
 })
-export class WorkflowGraph implements AfterViewInit {
+export class ExecutionGraph implements AfterViewInit {
+  readonly observed = input(false);
   readonly expanded = signal(true);
+  readonly milliseconds = (duration: string) => durationMs(duration).toFixed(1);
   state(id: string) {
     return invocationState(this.store.invocations().filter((x) => x.executorId === id));
   }
   readonly store = inject(StudioRunStore);
   readonly topology = computed(() => this.store.selectedRun()?.topology);
+  readonly spans = computed(() => this.store.spans());
+  readonly missingParents = computed(
+    () => this.spans().filter((span) => missingParent(span, this.spans())).length,
+  );
+  readonly hasGraph = computed(() =>
+    this.observed() ? this.spans().length > 0 : this.topology()?.status === 0,
+  );
+  private readonly projectObserved = createObservedGraphProjector();
+  readonly elements = computed(() =>
+    this.observed()
+      ? this.projectObserved(this.spans())
+      : this.topology()?.status === 0
+        ? graphElements(this.topology()!, this.store.invocations())
+        : [],
+  );
   readonly factory = inject(GRAPH_DRIVER);
   @ViewChild('canvas', { static: true }) canvas!: ElementRef<HTMLElement>;
   driver?: GraphDriver;
@@ -155,7 +214,9 @@ export class WorkflowGraph implements AfterViewInit {
   }
   private resizeObserver?: ResizeObserver;
   ngAfterViewInit() {
-    this.driver = this.factory(this.canvas.nativeElement, (id) => this.store.selectExecutor(id));
+    this.driver = this.factory(this.canvas.nativeElement, (id) =>
+      this.observed() ? this.store.selectSpan(id) : this.store.selectExecutor(id),
+    );
     this.update();
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.driver?.resize());
@@ -163,14 +224,10 @@ export class WorkflowGraph implements AfterViewInit {
     }
   }
   private update() {
-    const topology = this.topology();
-    const invocations = this.store.invocations();
-    const selected = this.store.inspectionSelection().executorId;
-    this.driver?.update(
-      topology?.status === 0 ? graphElements(topology, invocations) : [],
-      selected,
-    );
+    const selection = this.store.inspectionSelection();
+    this.driver?.update(this.elements(), this.observed() ? selection.spanId : selection.executorId);
   }
+
   count(id: string) {
     return this.store.invocations().filter((x) => x.executorId === id).length;
   }
