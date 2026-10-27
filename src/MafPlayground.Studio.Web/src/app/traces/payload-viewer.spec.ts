@@ -106,6 +106,12 @@ describe('Captured content investigation', () => {
     expect(urls).toEqual([]);
     expect(fixture.nativeElement.textContent).not.toContain('body-marker');
     expect(fixture.nativeElement.querySelector('studio-json')).toBeNull();
+    const technical = fixture.nativeElement.querySelector(
+      'details[data-technical-events]',
+    ) as HTMLDetailsElement;
+    technical.open = true;
+    technical.dispatchEvent(new Event('toggle'));
+    fixture.detectChanges();
     const inspect = fixture.nativeElement.querySelector(
       'button[data-inspect-span]',
     ) as HTMLButtonElement;
@@ -175,7 +181,7 @@ describe('Captured content investigation', () => {
     store.selectInvocation('retry-3');
     inspector.detectChanges();
     expect(inspector.nativeElement.textContent).toContain('Missing identifier: 247');
-    expect(inspector.nativeElement.textContent).toContain('tool_result');
+    expect(inspector.nativeElement.textContent).toContain('Tool result');
     expect(
       (inspector.nativeElement.querySelector('option[value=""]') as HTMLOptionElement).disabled,
     ).toBe(true);

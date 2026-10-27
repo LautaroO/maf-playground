@@ -151,7 +151,18 @@ internal sealed class TranslationValidationExecutor(
                 elapsed.Elapsed,
                 skippedForUpstreamError);
             observation.Output(validatedState);
-            AIExecutionObservation.Record("validation_feedback", validatedState);
+            AIExecutionObservation.Record("validation_feedback", new
+            {
+                validatedState.TargetLanguage,
+                Attempt = validatedState.Attempts,
+                Skipped = skippedForUpstreamError,
+                IsValid = skippedForUpstreamError ? (bool?)null : validatedState.IsValid,
+                Findings = validatedState.ValidationIssues ?? [],
+                validatedState.ShouldRetry,
+                validatedState.TranslatedText,
+                validatedState.ErrorType,
+                validatedState.Error
+            });
             if (validatedState.ShouldRetry)
             {
                 observation.Send(validatedState, translatorId);

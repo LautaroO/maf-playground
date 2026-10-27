@@ -53,9 +53,12 @@ or provider/exporter validation.
    an attempt executed. Select `translate-fr`. Inspect the distinct
    invocation choices: the retry must not overwrite the first attempt. A completed
    executor means its method returned; the run's domain outcome can still be partial.
-6. Select `validate-fr`, choose an invocation and search captured events for
-   `MissingData`. Open an `executor_output` and click **Load content**. Expect
-   evidence concerning `247`. Payload details load explicitly on demand.
+6. Select `validate-fr`. The most recent captured invocation opens automatically.
+   In **Validation result**, click **Load content**. Expect `Findings` containing
+   `Code: MissingData` and a description concerning `247`, plus `IsValid: false`.
+   Choose an earlier invocation to inspect a previous attempt. Payloads load only
+   when requested. A simple greeting such as `Hello, how are you?` has no required
+   number and can finish without findings; `MissingData` is not expected for every run.
 7. Click a `model_call` in the timeline and load its captured attributes/content.
    Real trace/span/parent IDs and any missing correlation should remain explicit.
 8. Try zoom, drag-to-pan and **Fit graph**. Resize **Inspector width**. Selection
@@ -72,8 +75,27 @@ or provider/exporter validation.
    `model_call`. Remove a bound if the filter produces no matching spans.
 3. Click **Reset timeline filters**. It clears the controls and the selection-driven
    filter, restoring the full retained timeline.
-4. In the inspector, expand **Run / unmatched events**. These events must remain
-   accessible even when another executor is selected; Studio must not invent ownership.
+4. In the inspector, expand **Technical details**, then **Run / unmatched events**.
+   These events remain accessible even when another executor is selected; Studio
+   must not invent ownership. Uncorrelated failures appear separately under
+   **Run diagnostics**, without opening the technical panel.
+
+The inspector separates evidence by purpose:
+
+- **Validation result**: captured findings and the retry decision. A completed
+  invocation means the method returned, not that its data passed validation.
+- **Step input / Step output**: data received and returned by that invocation.
+- **Model request / response**: content exchanged at the model boundary, before
+  subsequent validation or processing.
+- **Span**: a timed operation with its recorded parent relationship.
+- **Workflow runtime notification / data**: engine scheduling, lifecycle and
+  routing observations. These are not additional workflow steps.
+
+Original event names and invocation IDs remain available in **Technical details**.
+The event search filters retained event text; use **Load content** and the payload
+viewer search to inspect a payload. New runs expose a compact validation summary;
+previously captured full-state feedback remains readable in the same card. Restart
+the local host to load backend changes, remembering that its runs are in memory.
 
 ## 4. Rerun with a different profile and compare
 

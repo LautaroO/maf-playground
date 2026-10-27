@@ -132,6 +132,27 @@ public sealed class StudioCorrelationTests
     }
     private sealed class ThrowingSink : IStudioEventSink { public void Record(StudioEvent item) => throw new InvalidOperationException("sink failed"); }
 
+    [Theory]
+    [InlineData("Hello", false)]
+    [InlineData("Order 247", true)]
+    public async Task Validation_feedback_exposes_findings_and_retry_decision_without_requiring_internal_branch_state(string text, bool missingNumber)
+    {
+        await using StudioExecutionFixture fixture = new();
+        fixture.Client.Reply = (messages, _) => Task.FromResult(messages.Last().Text.Contains("translatedText", StringComparison.OrdinalIgnoreCase)
+            ? """{"isValid":true,"confidence":0.95,"issues":[]}"""
+            : """{"translatedText":"Hola"}""");
+        await fixture.RunAsync(new { text, targetLanguages = new[] { "es" } }, "translation-workflow");
+        var feedback = fixture.Events.Items.First(item => item.Kind == "validation_feedback");
+        var value = feedback.Data.GetProperty("Value");
+        Assert.Equal(!missingNumber, value.GetProperty("IsValid").GetBoolean());
+        Assert.Equal(missingNumber, value.GetProperty("ShouldRetry").GetBoolean());
+        Assert.False(value.GetProperty("Skipped").GetBoolean());
+        var findings = value.GetProperty("Findings").EnumerateArray().ToArray();
+        if (missingNumber)
+            Assert.Contains(findings, finding => finding.GetProperty("Code").GetString() == "MissingData" && finding.GetProperty("Description").GetString()!.Contains("247", StringComparison.Ordinal));
+        else Assert.Empty(findings);
+    }
+
     [Fact]
     public async Task Translation_RecordsRealBranchInputsOutputsAndValidation_WithNativeSpanIdentity()
     {

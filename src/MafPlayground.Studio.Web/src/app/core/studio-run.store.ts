@@ -81,7 +81,11 @@ export class StudioRunStore {
     this.inspectionSelection.set({ executorId: null, invocationId: null, spanId: null });
   }
   selectExecutor(executorId: string) {
-    this.inspectionSelection.set({ executorId, invocationId: null, spanId: null });
+    const invocationId =
+      this.invocations()
+        .filter((item) => item.executorId === executorId)
+        .at(-1)?.id ?? null;
+    this.inspectionSelection.set({ executorId, invocationId, spanId: null });
   }
   selectInvocation(id: string) {
     const item = this.invocations().find((x) => x.id === id);
@@ -382,6 +386,17 @@ export class StudioRunStore {
       );
     }
     this.retainCapture();
+    const selected = this.inspectionSelection();
+    if (
+      id === this.selectedRunId() &&
+      selected.executorId &&
+      !selected.invocationId &&
+      !selected.spanId &&
+      event.executorId === selected.executorId &&
+      event.invocationId &&
+      this.invocations().some((item) => item.id === event.invocationId)
+    )
+      this.inspectionSelection.set({ ...selected, invocationId: event.invocationId });
   }
   private retainCapture() {
     // Keep control records for active runs and the inspected run; capture bodies may be dropped.

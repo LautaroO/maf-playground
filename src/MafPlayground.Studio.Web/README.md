@@ -170,8 +170,9 @@ server separately permits its loopback HMR WebSocket. No extra browser matrix is
 
 `RunWorkspace` includes a direct Cytoscape **3.34.4** adapter and coordinated
 executor/invocation/span selection. Native workflow topology retains actual IDs,
-branches and cycles; agent views use observed parent-span hierarchy. Grid placement
-supports cycles without manufacturing a DAG; only native fan-in/fan-out needs junctions.
+branches and cycles; agent views use observed parent-span hierarchy. Dagre places
+native topology in directed layers while preserving declared backward connections
+and cycles; only native fan-in/fan-out needs junctions.
 Event updates change data/styles without relayout or viewport reset. Explicit Fit and
 collapse controls and a bounded keyboard/pointer inspector-width control support narrow
 desktop inspection, with bounded scrolling panels.
@@ -181,7 +182,13 @@ desktop inspection, with bounded scrolling panels.
 `metrics` project the bounded retained journal. Correlation comes only from recorded
 IDs, never labels or timestamps. Embedded PascalCase capture DTO fields are normalized
 without rewriting captured user keys. Payload IDs load through the existing HTTP API
-on demand; Angular text bindings render captured data safely. Search is explicitly
+on demand; Angular text bindings render captured data safely. Selecting an executor
+opens its latest retained invocation automatically, without replacing an explicit
+selection when new events arrive. Input/output, validation and failure evidence are
+shown before a collapsed technical panel containing span links, original event names
+and a glossary. Presentation uses protocol event kinds, never entity IDs or domain
+fields; unknown observations remain available in technical details. Uncorrelated
+failures stay visible outside that panel. Search is explicitly
 limited to the selected retained invocation/span or the loaded payload. Missing parents,
 truncation, eviction, missing metrics and incomplete history stay explicit.
 

@@ -121,17 +121,12 @@ test('investigates real translation validation, retry cycle and partial branch',
     'aria-pressed',
     'true',
   );
-  await page.getByLabel('Select invocation').selectOption({ index: 1 });
-  await page.getByLabel('Search selected events').fill('MissingData');
-  await page
-    .locator('studio-span-inspector summary')
-    .filter({ hasText: 'executor_output' })
-    .click();
-  await page
-    .locator('studio-span-inspector details[open]')
-    .getByRole('button', { name: 'Load content' })
-    .click();
-  await expect(page.locator('studio-span-inspector pre')).toContainText('247');
+  await expect(page.getByLabel('Select invocation')).not.toHaveValue('');
+  const validation = page.getByRole('region', { name: 'Validation result', exact: true });
+  await validation.getByRole('button', { name: 'Load content', exact: true }).click();
+  await expect(validation.locator('pre')).toContainText('MissingData');
+  await expect(validation.locator('pre')).toContainText('247');
+  await expect(page.locator('details[data-technical-events]')).not.toHaveAttribute('open', '');
   await page.screenshot({ path: testInfo.outputPath('translation-investigation-1440.png') });
   const span = page.locator('[data-span]').filter({ hasText: 'model_call' }).first();
   await span.click();

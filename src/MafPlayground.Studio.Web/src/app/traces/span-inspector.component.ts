@@ -1,5 +1,6 @@
 import { eventPayload } from './inspection';
-import { Component, computed, inject, signal } from '@angular/core';
+import { eventPresentation } from './event-presentation';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { StudioRunStore } from '../core/studio-run.store';
 import { JsonView } from '../shared/ui/json-view';
 import { PayloadViewer } from './payload-viewer.component';
@@ -19,12 +20,12 @@ import { PayloadViewer } from './payload-viewer.component';
             (change)="store.selectInvocation($any($event.target).value)"
           >
             <option value="" disabled>Choose a captured invocation</option>
-            @for (item of invocations(); track item.id) {
+            @for (item of invocations(); track item.id; let index = $index) {
               <option
                 [value]="item.id"
                 [selected]="store.inspectionSelection().invocationId === item.id"
               >
-                {{ item.state }} · {{ item.id }}
+                Invocation {{ index + 1 }} · {{ item.state }}
               </option>
             }
           </select></label
@@ -70,85 +71,194 @@ import { PayloadViewer } from './payload-viewer.component';
           }
         }
       }
-      @if (invocationSpans().length) {
-        <h3>Captured spans</h3>
-        <p class="meta">Select a span to inspect metadata and load its captured content.</p>
-        @for (item of invocationSpans(); track item.spanId) {
-          <button
-            class="button span-link"
-            data-inspect-span
-            (click)="store.selectSpan(item.spanId)"
-          >
-            {{ item.name }} · {{ item.spanId }}
-          </button>
-        }
-      }
-      @if (relatedEvents().length) {
-        <h3>Captured events</h3>
-        <label class="meta"
-          >Search selected invocation / span<input
-            type="search"
-            aria-label="Search selected events"
-            [value]="query()"
-            (input)="query.set($any($event.target).value)"
-        /></label>
+      @if (store.inspectionSelection().invocationId) {
         <p class="meta">
-          {{ filteredEvents().length }} of {{ relatedEvents().length }} retained events · captured
-          text only
+          Showing one recorded invocation. Choose an earlier invocation above to inspect its input
+          and result.
         </p>
-        <div class="event-list">
-          @for (item of filteredEvents(); track item.sequence) {
-            <details>
-              <summary>
-                {{ item.kind }} <span class="meta">#{{ item.sequence }}</span>
-              </summary>
-              @if (payloadOf(item); as payload) {
-                <studio-payload-viewer
-                  [runId]="store.selectedRunId()!"
-                  [payloadId]="payload.id"
-                  [label]="item.kind"
-                />
-              } @else {
-                <studio-json [label]="'event ' + item.sequence" [value]="item.data" />
-              }
-              @if (item.captureState) {
-                <p class="notice">
-                  Content redacted, truncated or unavailable ({{ item.captureState }}).
-                </p>
-              }
-            </details>
+      }
+      @for (item of keyEvents(); track item.sequence) {
+        <section class="evidence" [attr.aria-label]="present(item.kind).title">
+          <h3>{{ present(item.kind).title }}</h3>
+          <p class="meta">{{ present(item.kind).description }}</p>
+          @if (item.captureState) {
+            <p class="notice">
+              Content redacted, truncated or unavailable ({{ item.captureState }}).
+            </p>
           }
-        </div>
+          @if (payloadOf(item); as payload) {
+            <studio-payload-viewer
+              [runId]="store.selectedRunId()!"
+              [payloadId]="payload.id"
+              [label]="present(item.kind).title"
+            />
+          } @else {
+            <studio-json [label]="present(item.kind).title" [value]="item.data" />
+          }
+        </section>
       }
-      @if (unmatchedEvents().length) {
-        <h3>Run / unmatched events</h3>
-        <p class="meta">
-          Uncorrelated evidence · no executor ownership is inferred. Most recent 100 events.
+      @if (!keyEvents().length && !span() && store.inspectionSelection().invocationId) {
+        <p class="notice">
+          No step input, output or validation feedback is retained for this invocation. Technical
+          details may contain timed operations. Missing capture does not prove no work occurred.
         </p>
-        @for (item of unmatchedEvents(); track item.sequence) {
-          <details (toggle)="toggleEvent(item.sequence, $any($event.target).open)">
+      }
+      @if (unmatchedErrors().length) {
+        <h3>Run diagnostics</h3>
+        <p class="meta">Uncorrelated diagnostics remain visible independently of step selection.</p>
+        @for (item of unmatchedErrors(); track item.sequence) {
+          <details
+            [open]="opened().has(item.sequence)"
+            (toggle)="toggleEvent(item.sequence, $any($event.target).open)"
+          >
             <summary>
-              {{ item.kind }} <span class="meta">#{{ item.sequence }} · Uncorrelated</span>
+              {{ present(item.kind).title }}
+              <span class="meta">{{ item.kind }} #{{ item.sequence }} · Uncorrelated</span>
             </summary>
             @if (opened().has(item.sequence)) {
-              @if (payloadOf(item); as payload) {
-                <studio-payload-viewer
-                  [runId]="store.selectedRunId()!"
-                  [payloadId]="payload.id"
-                  [label]="item.kind"
-                />
-              } @else {
-                <studio-json [label]="'event ' + item.sequence" [value]="item.data" />
-              }
+              <p class="meta">{{ present(item.kind).description }}</p>
               @if (item.captureState) {
                 <p class="notice">
                   Content redacted, truncated or unavailable ({{ item.captureState }}).
                 </p>
+              }
+              @if (payloadOf(item); as payload) {
+                <studio-payload-viewer
+                  [runId]="store.selectedRunId()!"
+                  [payloadId]="payload.id"
+                  [label]="present(item.kind).title"
+                />
+              } @else {
+                <studio-json [label]="present(item.kind).title" [value]="item.data" />
               }
             }
           </details>
         }
       }
+      <details
+        data-technical-events
+        [open]="technicalOpen()"
+        (toggle)="technicalOpen.set($any($event.target).open)"
+      >
+        <summary>Technical details</summary>
+        <p class="meta">
+          Model calls, timing, routing and original events. These are debugging observations, not
+          additional workflow steps.
+        </p>
+        @if (technicalOpen()) {
+          <dl class="glossary">
+            <dt>Step invocation</dt>
+            <dd>
+              One execution of an executor. A retry or another input can invoke the same executor
+              again.
+            </dd>
+            <dt>Span</dt>
+            <dd>A timed operation and its recorded parent relationship.</dd>
+            <dt>Model request / response</dt>
+            <dd>Content exchanged with the model; it can differ from the final step output.</dd>
+            <dt>Runtime event</dt>
+            <dd>
+              Scheduling, lifecycle or message-routing evidence emitted by the workflow engine.
+            </dd>
+          </dl>
+          @if (store.inspectionSelection().invocationId; as id) {
+            <p class="meta">
+              Invocation ID <code>{{ id }}</code>
+            </p>
+          }
+          @if (invocationSpans().length) {
+            <h3>Captured spans</h3>
+            <p class="meta">
+              Select a timed operation to inspect its metadata and explicitly load its content.
+            </p>
+            @for (item of invocationSpans(); track item.spanId) {
+              <button
+                class="button span-link"
+                data-inspect-span
+                (click)="store.selectSpan(item.spanId)"
+              >
+                {{ item.name }} · {{ item.spanId }}
+              </button>
+            }
+          }
+          @if (relatedEvents().length) {
+            <h3>Original events for this selection</h3>
+            <label class="meta"
+              >Filter captured events<input
+                type="search"
+                aria-label="Search selected events"
+                [value]="query()"
+                (input)="query.set($any($event.target).value)"
+            /></label>
+            <p class="meta">
+              {{ filteredEvents().length }} of {{ relatedEvents().length }} retained events ·
+              captured text only
+            </p>
+            @for (item of filteredEvents(); track item.sequence) {
+              <details
+                [open]="opened().has(item.sequence)"
+                (toggle)="toggleEvent(item.sequence, $any($event.target).open)"
+              >
+                <summary>
+                  {{ present(item.kind).title }}
+                  <span class="meta">{{ item.kind }} #{{ item.sequence }}</span>
+                </summary>
+                @if (opened().has(item.sequence)) {
+                  <p class="meta">{{ present(item.kind).description }}</p>
+                  @if (item.captureState) {
+                    <p class="notice">
+                      Content redacted, truncated or unavailable ({{ item.captureState }}).
+                    </p>
+                  }
+                  @if (payloadOf(item); as payload) {
+                    <studio-payload-viewer
+                      [runId]="store.selectedRunId()!"
+                      [payloadId]="payload.id"
+                      [label]="item.kind"
+                    />
+                  } @else {
+                    <studio-json [label]="'event ' + item.sequence" [value]="item.data" />
+                  }
+                }
+              </details>
+            }
+          }
+          @if (runtimeEvents().length) {
+            <h3>Run / unmatched events</h3>
+            <p class="meta">
+              No executor ownership is inferred. Most recent retained events, up to 100.
+            </p>
+            @for (item of runtimeEvents(); track item.sequence) {
+              <details
+                [open]="opened().has(item.sequence)"
+                (toggle)="toggleEvent(item.sequence, $any($event.target).open)"
+              >
+                <summary>
+                  {{ present(item.kind).title }}
+                  <span class="meta">{{ item.kind }} #{{ item.sequence }} · Uncorrelated</span>
+                </summary>
+                @if (opened().has(item.sequence)) {
+                  <p class="meta">{{ present(item.kind).description }}</p>
+                  @if (item.captureState) {
+                    <p class="notice">
+                      Content redacted, truncated or unavailable ({{ item.captureState }}).
+                    </p>
+                  }
+                  @if (payloadOf(item); as payload) {
+                    <studio-payload-viewer
+                      [runId]="store.selectedRunId()!"
+                      [payloadId]="payload.id"
+                      [label]="item.kind"
+                    />
+                  } @else {
+                    <studio-json [label]="'event ' + item.sequence" [value]="item.data" />
+                  }
+                }
+              </details>
+            }
+          }
+        }
+      </details>
       @if (!span() && !store.inspectionSelection().executorId) {
         <div class="empty">
           <strong>Select an executor or span</strong
@@ -209,10 +319,6 @@ import { PayloadViewer } from './payload-viewer.component';
       text-align: left;
       overflow-wrap: anywhere;
     }
-    .event-list {
-      max-height: 420px;
-      overflow: auto;
-    }
     details {
       border-top: 1px solid var(--border);
       padding: 10px 0;
@@ -233,11 +339,27 @@ import { PayloadViewer } from './payload-viewer.component';
 })
 export class SpanInspector {
   readonly payloadOf = eventPayload;
+  readonly present = eventPresentation;
+  readonly technicalOpen = signal(false);
   readonly store = inject(StudioRunStore);
   readonly opened = signal(new Set<number>());
+  constructor() {
+    effect(() => {
+      this.store.selectedRunId();
+      this.technicalOpen.set(false);
+      this.opened.set(new Set());
+    });
+    effect(() => {
+      this.store.inspectionSelection();
+      this.opened.set(new Set());
+      this.query.set('');
+    });
+  }
   toggleEvent(sequence: number, open: boolean) {
     this.opened.update((previous) => {
-      const visible = new Set(this.unmatchedEvents().map((item) => item.sequence));
+      const visible = new Set(
+        [...this.unmatchedEvents(), ...this.relatedEvents()].map((item) => item.sequence),
+      );
       const next = new Set([...previous].filter((item) => visible.has(item)));
       if (open) next.add(sequence);
       else next.delete(sequence);
@@ -267,6 +389,21 @@ export class SpanInspector {
       )
       .slice(-100);
   });
+  readonly unmatchedErrors = computed(() =>
+    this.unmatchedEvents().filter((item) => this.present(item.kind).error),
+  );
+  readonly runtimeEvents = computed(() =>
+    this.unmatchedEvents().filter((item) => !this.present(item.kind).error),
+  );
+  readonly keyEvents = computed(() =>
+    this.relatedEvents()
+      .filter((item) => this.present(item.kind).keyEvidence)
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(b.kind === 'validation_feedback') - Number(a.kind === 'validation_feedback'),
+      ),
+  );
   readonly query = signal('');
   readonly span = computed(() =>
     this.store.spans().find((x) => x.spanId === this.store.inspectionSelection().spanId),
