@@ -38,7 +38,7 @@ import { PayloadViewer } from './payload-viewer.component';
         }
       }
       @if (span(); as selected) {
-        <h3>{{ selected.name }}</h3>
+        <h3>{{ selectedTitle() }}</h3>
         <dl>
           <dt>Span ID</dt>
           <dd>{{ selected.spanId }}</dd>
@@ -405,6 +405,14 @@ export class SpanInspector {
   readonly query = signal('');
   readonly span = computed(() =>
     this.store.spans().find((x) => x.spanId === this.store.inspectionSelection().spanId),
+  );
+  readonly selectedTitle = computed(
+    () =>
+      this.store
+        .presentedSpans()
+        .find((span) => span.spanId === this.store.selectedPresentedSpanId())?.name ??
+      this.span()?.name ??
+      '',
   );
   readonly invocations = computed(() =>
     this.store

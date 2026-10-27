@@ -129,12 +129,16 @@ the local host to load backend changes, remembering that its runs are in memory.
 
    Expect `Tool result:` in the response. The model response is scripted, but
    `get_current_date_time` executes as the real deterministic tool.
-3. Open that execution from Recent executions. **Observed execution graph** shows
-   captured operations. Solid links show recorded parent/child connections; dotted
+3. Open that execution from Recent executions. **Trace view** defaults to
+   **Operations**: expect one agent, two model calls and one tool, with readable
+   labels and no separate `chat` / `model_call` wrapper nodes. **Observed execution
+   graph** and the timeline use the same grouping. Switch to **Technical spans**
+   to inspect original spans, then return to Operations; selection and reported
+   metrics should remain consistent. Solid links show call hierarchy; dotted
    **Later (time)** links show non-overlapping sibling order. In this fixture,
    expect the first model call, then the tool, then the next model call down the
    graph. Overlapping operations must not be forced into that sequence. Select the
-   `execute_tool get_current_date_time` node to open its span in the inspector;
+   **Tool · get_current_date_time** node to open its actual span in the inspector;
    **Load content** retrieves its attributes explicitly. The timeline selects the
    same span. Try zoom, pan, Fit and collapse at 1440 and 1024 px. The graph is
    observed evidence, not a declared workflow; repeated operations stay distinct,

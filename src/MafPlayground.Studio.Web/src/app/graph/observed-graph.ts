@@ -1,10 +1,10 @@
 import type { ElementDefinition } from 'cytoscape';
-import type { StudioSpan } from '../core/studio-api.generated';
+import type { SpanMetadata } from '../traces/span-presentation';
 import { durationMs } from '../traces/inspection';
 import { elementGeometry } from './graph-layout';
 import { observedChronology } from './observed-chronology';
 
-export function missingParent(span: StudioSpan, spans: StudioSpan[]): boolean {
+export function missingParent(span: SpanMetadata, spans: SpanMetadata[]): boolean {
   return (
     !!span.parentSpanId &&
     !/^0+$/.test(span.parentSpanId) &&
@@ -18,7 +18,7 @@ export function createObservedGraphProjector(layout = elementGeometry) {
   let timingSignature = '';
   let chronology: ReturnType<typeof observedChronology> = { edges: [], constraints: [] };
   let geometry: ReturnType<typeof elementGeometry> | undefined;
-  return (spans: StudioSpan[]): ElementDefinition[] => {
+  return (spans: SpanMetadata[]): ElementDefinition[] => {
     const elements: ElementDefinition[] = spans.map((span) => ({
       data: {
         id: 'node:' + span.spanId,

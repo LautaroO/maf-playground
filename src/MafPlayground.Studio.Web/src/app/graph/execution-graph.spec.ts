@@ -184,4 +184,58 @@ describe('Generic workflow graph', () => {
     expect(updates.at(-1)).toEqual([]);
     expect(fixture.nativeElement.querySelectorAll('[data-node]')).toHaveLength(0);
   });
+  it('defaults to primary agent/model/tool operations while keeping raw spans and metrics intact', () => {
+    const store = TestBed.inject(StudioRunStore);
+    store.runs.set([snapshot()]);
+    store.selectedRunId.set('run-a');
+    const entries = [
+      ['runtime', '', 'MafPlayground.AI.Runtime', 'execute_ai_entity'],
+      [
+        'agent',
+        'runtime',
+        'MafPlayground.Agents',
+        'invoke_agent novel-agent(01234567890123456789012345678901)',
+      ],
+      ['chat', 'agent', 'MafPlayground.Agents', 'chat arbitrary-model'],
+      ['model', 'chat', 'MafPlayground.Studio.Model', 'model_call'],
+      ['tool', 'agent', 'MafPlayground.Agents', 'execute_tool arbitrary-tool'],
+    ];
+    entries.forEach(([id, parent, source, name], index) =>
+      store.applyEvent(
+        event(index + 1, 'span', {
+          SpanId: id,
+          ParentSpanId: parent,
+          TraceId: 't',
+          Source: source,
+          Name: name,
+          StartedAt: '2026-10-25T12:00:00Z',
+          Duration: '00:00:01',
+          Status: 'Unset',
+          InputTokens: source === 'MafPlayground.Studio.Model' ? 12 : null,
+          OutputTokens: source === 'MafPlayground.Studio.Model' ? 3 : null,
+        }),
+      ),
+    );
+    const fixture = TestBed.createComponent(ExecutionGraph);
+    fixture.componentRef.setInput('observed', true);
+    fixture.detectChanges();
+    const nodes = fixture.nativeElement.querySelectorAll('[data-span-node-id]');
+    expect(nodes).toHaveLength(3);
+    expect(fixture.nativeElement.textContent).toContain('Model · arbitrary-model');
+    expect(fixture.nativeElement.textContent).toContain('Tool · arbitrary-tool');
+    expect(fixture.nativeElement.textContent).not.toContain('execute_ai_entity');
+    expect(fixture.nativeElement.textContent).not.toContain('model_call');
+    expect(store.spans()).toHaveLength(5);
+    expect(store.metrics().attempts).toBe(1);
+    expect(store.metrics().inputTokens).toBe(12);
+    store.selectSpan('chat');
+    fixture.detectChanges();
+    expect(store.inspectionSelection().spanId).toBe('chat');
+    expect(store.selectedPresentedSpanId()).toBe('model');
+    store.showTechnicalSpans.set(true);
+    fixture.detectChanges();
+    expect(store.selectedPresentedSpanId()).toBe('chat');
+    expect(fixture.nativeElement.querySelectorAll('[data-span-node-id]')).toHaveLength(5);
+    expect(store.metrics().attempts).toBe(1);
+  });
 });

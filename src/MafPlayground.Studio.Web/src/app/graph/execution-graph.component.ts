@@ -35,9 +35,14 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
     </div>
     @if (observed()) {
       <p class="legend meta">
-        Solid links: recorded parent/child. Dotted links: an earlier sibling ended before the next
-        started (timing order, not causality). Overlapping siblings have no temporal link. Layout is
-        not a time scale; the timeline shows durations.
+        Solid links:
+        {{
+          store.showTechnicalSpans()
+            ? 'recorded parent/child'
+            : 'call hierarchy with technical wrappers grouped'
+        }}. Dotted links: an earlier sibling ended before the next started (timing order, not
+        causality). Overlapping siblings have no temporal link. Layout is not a time scale; the
+        timeline shows durations.
       </p>
       @if (!spans().length) {
         <p class="notice">
@@ -81,12 +86,22 @@ import { GRAPH_DRIVER, graphElements, invocationState, type GraphDriver } from '
           <button
             data-node
             [attr.data-span-node-id]="span.spanId"
-            [attr.aria-pressed]="store.inspectionSelection().spanId === span.spanId"
+            [attr.aria-pressed]="store.selectedPresentedSpanId() === span.spanId"
             (click)="store.selectSpan(span.spanId)"
           >
             <strong>{{ span.name }}</strong
-            ><span class="meta">{{ span.status }} · {{ milliseconds(span.duration) }} ms</span
-            ><code>{{ span.source }}</code>
+            ><span class="meta"
+              >{{
+                store.showTechnicalSpans()
+                  ? span.status + ' · '
+                  : span.status === 'Error'
+                    ? 'Error · '
+                    : ''
+              }}{{ milliseconds(span.duration) }} ms</span
+            >
+            @if (store.showTechnicalSpans()) {
+              <code>{{ span.source }}</code>
+            }
           </button>
         }
       </div>
@@ -188,7 +203,7 @@ export class ExecutionGraph implements AfterViewInit {
   }
   readonly store = inject(StudioRunStore);
   readonly topology = computed(() => this.store.selectedRun()?.topology);
-  readonly spans = computed(() => this.store.spans());
+  readonly spans = computed(() => this.store.presentedSpans());
   readonly missingParents = computed(
     () => this.spans().filter((span) => missingParent(span, this.spans())).length,
   );
@@ -226,7 +241,10 @@ export class ExecutionGraph implements AfterViewInit {
   }
   private update() {
     const selection = this.store.inspectionSelection();
-    this.driver?.update(this.elements(), this.observed() ? selection.spanId : selection.executorId);
+    this.driver?.update(
+      this.elements(),
+      this.observed() ? this.store.selectedPresentedSpanId() : selection.executorId,
+    );
   }
 
   count(id: string) {

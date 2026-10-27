@@ -153,7 +153,7 @@ test('investigates real translation validation, retry cycle and partial branch',
   await page.locator('details[data-technical-events] > summary').click();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: testInfo.outputPath('translation-investigation-1440.png') });
-  const span = page.locator('[data-span]').filter({ hasText: 'model_call' }).first();
+  const span = page.locator('[data-span]').filter({ hasText: 'Model' }).first();
   await span.click();
   await page
     .locator('studio-payload-viewer')

@@ -1,11 +1,11 @@
 import type { ElementDefinition } from 'cytoscape';
-import type { StudioSpan } from '../core/studio-api.generated';
+import type { SpanMetadata } from '../traces/span-presentation';
 interface Interval {
   start: bigint;
   end: bigint;
 }
 // Date.parse loses fractions below milliseconds; retain .NET's 100ns precision.
-function interval(span: StudioSpan): Interval | null {
+function interval(span: SpanMetadata): Interval | null {
   const date = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,7}))?(?:Z|[+-]\d{2}:\d{2})$/.exec(
     span.startedAt,
   );
@@ -27,11 +27,11 @@ function interval(span: StudioSpan): Interval | null {
     BigInt((duration[5] ?? '').padEnd(7, '0'));
   return { start, end: start + ticks };
 }
-export function observedChronology(spans: StudioSpan[]) {
+export function observedChronology(spans: SpanMetadata[]) {
   const times = new Map(spans.map((span) => [span.spanId, interval(span)]));
   const byId = new Map(spans.map((span) => [span.spanId, span]));
-  const peers = new Map<string, StudioSpan[]>();
-  const children = new Map<string, StudioSpan[]>();
+  const peers = new Map<string, SpanMetadata[]>();
+  const children = new Map<string, SpanMetadata[]>();
   for (const span of spans) {
     if (!span.traceId) continue;
     const key = JSON.stringify([span.traceId, span.parentSpanId]);
@@ -45,7 +45,7 @@ export function observedChronology(spans: StudioSpan[]) {
       children.set(parent.spanId, group);
     }
   }
-  const before = (a: StudioSpan, b: StudioSpan) => {
+  const before = (a: SpanMetadata, b: SpanMetadata) => {
     const first = times.get(a.spanId),
       second = times.get(b.spanId);
     return !!first && !!second && first.start < second.start && first.end <= second.start;

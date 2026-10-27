@@ -170,17 +170,29 @@ server separately permits its loopback HMR WebSocket. No extra browser matrix is
 
 `RunWorkspace` includes a direct Cytoscape **3.34.4** adapter and coordinated
 executor/invocation/span selection. `ExecutionGraph` renders native workflow
-declarations or an observed execution graph for agents. Observed nodes are captured
-spans. Solid edges use matching trace IDs and recorded parent span IDs. Dotted
-**Later (time)** links order sibling operations only when captured intervals prove
-non-overlap; they describe timing, not causality. Overlapping, equal-instant or
-unknown-timing operations are not serialized. Timestamp and duration comparisons
-preserve .NET 100ns precision. Completed nested operations participate in layout
-constraints so a later sibling appears below the earlier subtree; those constraints
-are not rendered as captured edges. Repeated names are not merged. Clicking a node
-selects the same span in the timeline and lazy inspector. Missing parents remain
-explicit, without invented parent connections; absent capture never creates a
-fabricated graph. Native workflow topology retains actual IDs,
+declarations or an observed execution graph for agents. **Trace view** defaults to
+**Operations** for both the graph and timeline. Agent runs, model calls and tools
+have readable labels. Recognized native `chat` wrappers are grouped into a Studio
+model call only through consecutive, same-trace recorded chat ancestry; grouping
+never crosses a tool, subagent or unknown operation. A runtime envelope without a recorded error
+and with principal descendants is also grouped. Errors and unknown operations stay
+visible, and missing lower-level capture retains the native chat as a fallback.
+Repeated calls stay distinct. No payload is read to classify these operations.
+
+**Technical spans** restores every retained span's original name and direct parent.
+Selecting a primary node still inspects its actual recorded span; uniquely owned
+hidden layers can highlight that node without changing the selected raw identity.
+Ambiguous ownership does not select an arbitrary model call. Raw capture, metrics
+and payload loading are independent of this presentation switch.
+
+Solid links describe call hierarchy; in Operations they follow recorded ancestry
+through grouped wrappers, while Technical spans shows direct recorded parents.
+Dotted **Later (time)** links order sibling operations only when captured intervals
+prove non-overlap; they describe timing, not causality. Overlapping, equal-instant
+or unknown-timing operations are not serialized. Comparisons preserve .NET 100ns
+precision. Completed nested operations participate in layout constraints, which
+are not rendered as captured edges. Missing parents remain explicit.
+Native workflow topology retains actual IDs,
 branches and cycles; agent views use observed parent-span hierarchy. Dagre places
 native topology in directed layers while preserving declared backward connections
 and cycles; only native fan-in/fan-out needs junctions.

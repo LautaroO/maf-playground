@@ -1,3 +1,4 @@
+import { presentSpans } from '../traces/span-presentation';
 import {
   projectInvocations,
   projectSpans,
@@ -75,6 +76,15 @@ export class StudioRunStore {
   });
   readonly selectedEvents = computed(() => this.eventHistory()[this.selectedRunId() ?? ''] ?? []);
   readonly spans = computed(() => projectSpans(this.selectedEvents()));
+  readonly showTechnicalSpans = signal(false);
+  readonly presentedSpans = computed(() => presentSpans(this.spans(), this.showTechnicalSpans()));
+  readonly selectedPresentedSpanId = computed(() => {
+    const id = this.inspectionSelection().spanId;
+    if (!id) return null;
+    if (this.presentedSpans().some((span) => span.spanId === id)) return id;
+    const owners = this.presentedSpans().filter((span) => span.groupedSpanIds.includes(id));
+    return owners.length === 1 ? owners[0].spanId : null;
+  });
   readonly invocations = computed(() => projectInvocations(this.selectedEvents()));
   readonly metrics = computed(() => modelMetrics(this.spans()));
   clearInspectionSelection() {

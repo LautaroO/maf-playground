@@ -16,6 +16,21 @@ const observed = (
 ) => ({ ...event(n, kind), executorId, invocationId });
 import { spanData } from './inspection.fixture';
 describe('Captured inspection projections', () => {
+  it('does not treat a parent ID in another trace as captured parent context', () => {
+    const spans = projectSpans([
+      event(1, 'span', {
+        ...spanData,
+        SpanId: 'p',
+        TraceId: 'other',
+        ParentSpanId: '0000000000000000',
+      }),
+      event(2, 'span', { ...spanData, SpanId: 'c', TraceId: 'current', ParentSpanId: 'p' }),
+    ]);
+    const row = timelineRows(spans).find((item) => item.span.spanId === 'c')!;
+    expect(row.depth).toBe(0);
+    expect(row.missingParent).toBe(true);
+  });
+
   it('retains repeated and parallel invocation IDs without assigning unknown events by label or time', () => {
     const items = [
       observed(1, 'executor_input', 'node/opaque', 'attempt-1'),

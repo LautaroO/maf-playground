@@ -1,3 +1,4 @@
+import type { SpanMetadata } from './span-presentation';
 import type { StudioEvent, StudioPayload, StudioSpan } from '../core/studio-api.generated';
 export interface InspectionSelection {
   executorId: string | null;
@@ -102,7 +103,7 @@ export function durationMs(value: string): number {
         1000
     : 0;
 }
-export function timelineRows(spans: StudioSpan[]) {
+export function timelineRows<T extends SpanMetadata>(spans: T[]) {
   if (!spans.length) return [];
   const sorted = spans.slice().sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
   const start = Math.min(...spans.map((x) => Date.parse(x.startedAt)));
@@ -110,13 +111,13 @@ export function timelineRows(spans: StudioSpan[]) {
   const range = Math.max(1, end - start);
   const visited = new Set<string>();
   const rows: {
-    span: StudioSpan;
+    span: T;
     depth: number;
     left: number;
     width: number;
     missingParent: boolean;
   }[] = [];
-  const visit = (span: StudioSpan, depth: number) => {
+  const visit = (span: T, depth: number) => {
     if (visited.has(span.spanId)) return;
     visited.add(span.spanId);
     rows.push({
@@ -127,7 +128,7 @@ export function timelineRows(spans: StudioSpan[]) {
       missingParent:
         !!span.parentSpanId &&
         !/^0+$/.test(span.parentSpanId) &&
-        !spans.some((x) => x.spanId === span.parentSpanId),
+        !spans.some((x) => x.spanId === span.parentSpanId && x.traceId === span.traceId),
     });
     for (const child of sorted.filter(
       (x) => x.parentSpanId === span.spanId && x.traceId === span.traceId,

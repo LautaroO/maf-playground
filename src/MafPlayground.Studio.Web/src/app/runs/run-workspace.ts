@@ -100,6 +100,24 @@ import { StatusBadge } from '../shared/ui/status-badge';
           Execution ended · {{ run.errorCategory }}
         </p>
       }
+      <div class="trace-view">
+        <label class="row"
+          >Trace view
+          <select
+            aria-label="Trace view"
+            [value]="store.showTechnicalSpans() ? 'technical' : 'operations'"
+            (change)="store.showTechnicalSpans.set($any($event.target).value === 'technical')"
+          >
+            <option value="operations">Operations</option>
+            <option value="technical">Technical spans</option>
+          </select>
+        </label>
+        <span class="meta"
+          >{{ store.presentedSpans().length }}
+          {{ store.showTechnicalSpans() ? 'spans' : 'operations' }} ·
+          {{ store.spans().length }} captured spans</span
+        >
+      </div>
       <div #investigation class="investigation" [style.--inspector-width]="inspectorWidth() + 'px'">
         <section class="investigation-main">
           <studio-execution-graph [observed]="!workflow()" />
@@ -243,6 +261,13 @@ import { StatusBadge } from '../shared/ui/status-badge';
     }
     .metrics strong {
       font: 13px var(--mono);
+    }
+    .trace-view {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      padding: 0 24px 16px;
     }
     .investigation {
       display: grid;

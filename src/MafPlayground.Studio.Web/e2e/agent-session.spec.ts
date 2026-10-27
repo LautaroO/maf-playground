@@ -35,8 +35,17 @@ test('executes native agent tool, continues session and resets it', async ({
   const tool = page
     .getByRole('group', { name: 'Captured operations' })
     .getByRole('button')
-    .filter({ hasText: 'execute_tool get_current_date_time' });
+    .filter({ hasText: 'get_current_date_time' });
   await expect(tool).toHaveCount(1);
+  const operations = page.getByRole('group', { name: 'Captured operations' });
+  await expect(operations.getByRole('button')).toHaveCount(4);
+  await expect(operations.getByRole('button').filter({ hasText: /Model(?: ·| call)/ })).toHaveCount(
+    2,
+  );
+  await expect(operations).not.toContainText('model_call');
+  await expect(operations).not.toContainText('chat ');
+  await expect(page.getByLabel('Trace view', { exact: true })).toHaveValue('operations');
+
   const spanId = await tool.getAttribute('data-span-node-id');
   await page.getByRole('button', { name: 'Fit graph', exact: true }).click();
   const point = await graph.evaluate(
@@ -62,7 +71,7 @@ test('executes native agent tool, continues session and resets it', async ({
     .toBe(true);
   await expect(tool).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('studio-span-inspector h3').first()).toHaveText(
-    'execute_tool get_current_date_time',
+    'Tool · get_current_date_time',
   );
   await expect(page.locator('[data-span][aria-pressed=true]')).toHaveCount(1);
   const nodePosition = () =>
@@ -80,6 +89,17 @@ test('executes native agent tool, continues session and resets it', async ({
   await tool.click();
   await expect(tool).toHaveAttribute('aria-pressed', 'true');
   expect(await nodePosition()).toEqual(movedPosition);
+  const metrics = await page.locator('.metrics').innerText();
+  await page.getByLabel('Trace view', { exact: true }).selectOption('technical');
+  await expect(operations.getByRole('button').filter({ hasText: 'model_call' })).toHaveCount(2);
+  await expect(
+    operations.locator('button strong').filter({ hasText: /^chat(?:\s|$)/ }),
+  ).toHaveCount(2);
+  await expect(tool).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.locator('.metrics').innerText()).toEqual(metrics);
+  await page.getByLabel('Trace view', { exact: true }).selectOption('operations');
+  await expect(operations.getByRole('button')).toHaveCount(4);
+  await expect(tool).toHaveAttribute('aria-pressed', 'true');
 
   await page
     .locator('studio-payload-viewer')

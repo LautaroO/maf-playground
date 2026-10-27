@@ -10,11 +10,18 @@ import { durationMs, timelineRows } from './inspection';
           store.selectedRun()?.topology?.status === 0 ? 'Trace timeline' : 'Observed call hierarchy'
         }}
       </h2>
-      <span class="spacer"></span><span class="meta">{{ rows().length }} spans</span>
+      <span class="spacer"></span
+      ><span class="meta"
+        >{{ rows().length }} {{ store.showTechnicalSpans() ? 'spans' : 'operations' }}</span
+      >
     </div>
     <p class="meta note">
-      Parent span IDs define hierarchy. Bars show captured start and duration; missing parents
-      remain explicit.
+      {{
+        store.showTechnicalSpans()
+          ? 'Recorded span hierarchy.'
+          : 'Primary operations; technical wrappers are grouped.'
+      }}
+      Bars show captured start and duration; missing parents remain explicit.
     </p>
     <div class="filters">
       <label
@@ -70,7 +77,7 @@ import { durationMs, timelineRows } from './inspection';
           class="trace-row"
           data-span
           [attr.data-span-id]="row.span.spanId"
-          [attr.aria-pressed]="store.inspectionSelection().spanId === row.span.spanId"
+          [attr.aria-pressed]="store.selectedPresentedSpanId() === row.span.spanId"
           (click)="store.selectSpan(row.span.spanId)"
         >
           <span class="trace-name" [style.padding-left.px]="Math.min(row.depth, 8) * 12"
@@ -78,7 +85,8 @@ import { durationMs, timelineRows } from './inspection';
             ><small
               >{{
                 (contextIds().has(row.span.spanId) ? 'Parent context · ' : '') +
-                  (row.span.executorId || 'Unknown executor')
+                  (row.span.executorId ||
+                    (store.showTechnicalSpans() ? 'Unknown executor' : row.span.role))
               }}{{ row.missingParent ? ' · parent not captured' : '' }}</small
             ></span
           ><span class="track"
@@ -215,7 +223,7 @@ export class TraceTimeline {
     this.store.clearInspectionSelection();
   }
   readonly filtered = computed(() => {
-    const spans = this.store.spans();
+    const spans = this.store.presentedSpans();
     const selected = this.store.inspectionSelection();
     const origin = Math.min(...spans.map((x) => Date.parse(x.startedAt)));
     const direct = spans.filter((span) => {
@@ -226,7 +234,9 @@ export class TraceTimeline {
       const time = Date.parse(span.startedAt) - origin;
       return (
         (correlated || unknown) &&
-        span.name.toLowerCase().includes(this.operation().toLowerCase()) &&
+        (span.name + ' ' + span.originalName)
+          .toLowerCase()
+          .includes(this.operation().toLowerCase()) &&
         (!span.executorId || span.executorId.toLowerCase().includes(this.branch().toLowerCase())) &&
         (!this.status() || span.status === this.status()) &&
         (!this.from() || time >= Number(this.from())) &&
