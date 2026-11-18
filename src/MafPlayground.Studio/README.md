@@ -21,6 +21,7 @@ All paths below are relative to `/api/studio/v1`.
 | List or create an explicit session | `GET /sessions`, `POST /sessions` |
 | Reset session history and return a fresh handle | `POST /sessions/{id}/reset` |
 | Submit a run, list retained runs, or read one snapshot | `POST /runs`, `GET /runs`, `GET /runs/{id}` |
+| Read identity, status, timing and event counts for the catalog | `GET /runs?activity=true` |
 | Read a terminal result or request cancellation | `GET /runs/{id}/result`, `POST /runs/{id}/cancel` |
 | Page or stream the journal | `GET /runs/{id}/event-page?after=…&limit=…`, `GET /runs/{id}/events` |
 | Inspect captured evidence | `GET /runs/{id}/spans/{spanId}`, `GET /runs/{id}/payloads/{payloadId}` |

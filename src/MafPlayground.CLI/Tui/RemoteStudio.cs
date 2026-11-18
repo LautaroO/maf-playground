@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Terminal.Gui;
+using Terminal.Gui.Input;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
 
 namespace MafPlayground.CLI.Tui;
 
@@ -22,23 +24,29 @@ internal static class RemoteStudio
             string profile = profiles.FirstOrDefault() ?? throw new InvalidDataException("Studio has no execution profiles.");
             var draft = await RemoteDraft.LoadAsync(client, profile, entity, token);
             string? input = inputFile is null ? null : await File.ReadAllTextAsync(inputFile, token);
-            Commands.TuiCommand.InitializeTerminal();
+            var terminal = new StudioTerminal(stop);
+            bool interrupted;
             RemoteWorkspace? workspace = null;
+            EventHandler<Key>? paletteKey = null;
             try
             {
                 workspace = new RemoteWorkspace(client, host.Authority, instanceId, profiles, draft, input, stop.Token);
+                paletteKey = ActionPicker.AtRoot(workspace.AvailableActions);
+                StudioTerminal.App.Keyboard.KeyDown += paletteKey;
                 workspace.Start(entity is null);
-                Application.Run();
+                StudioTerminal.RunRoot();
+                interrupted = stop.IsCancellationRequested;
             }
             finally
             {
-                Application.Shutdown();
-                await stop.CancelAsync().ConfigureAwait(false);
+                StudioTerminal.App.Keyboard.KeyDown -= paletteKey;
+                terminal.Dispose();
+                await terminal.CancelAsync().ConfigureAwait(false);
                 if (workspace is not null) await workspace.Pending.ConfigureAwait(false);
             }
-            return token.IsCancellationRequested ? 130 : 0;
+            return interrupted ? 130 : 0;
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { return 130; }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { return 130; }
         catch (Exception error) when (error is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException or JsonException or
             HttpRequestException or OperationCanceledException or KeyNotFoundException or InvalidOperationException)
         {
@@ -82,7 +90,7 @@ internal sealed partial class RemoteWorkspace
     private readonly Label _draftLabel = new() { Y = 1, Width = Dim.Fill() };
     private readonly Label _status = new() { Y = Pos.AnchorEnd(1), Width = Dim.Fill() };
     private readonly ListView _list = new() { Y = 2, Width = Dim.Percent(38), Height = Dim.Fill(1) };
-    private readonly TextView _detail = new() { Y = 2, X = Pos.Percent(38), Width = Dim.Fill(), Height = Dim.Fill(1), ReadOnly = true };
+    private readonly StudioTextView _detail = new() { Y = 2, X = Pos.Percent(38), Width = Dim.Fill(), Height = Dim.Fill(1), ReadOnly = true };
     private RemoteDraft _draft;
     private string _input;
     private string? _session;
@@ -92,7 +100,7 @@ internal sealed partial class RemoteWorkspace
     private bool _busy, _polling, _pollStopped;
     private DateTimeOffset _nextPoll;
     private string _message = "";
-    public Task Pending => Task.WhenAll(_action, _poll);
+    public Task Pending => Task.WhenAll(_action, _poll, _catalogPoll);
 
     public RemoteWorkspace(StudioClient client, string host, string instance, string[] profiles, RemoteDraft draft, string? input, CancellationToken token)
     {
@@ -103,60 +111,64 @@ internal sealed partial class RemoteWorkspace
         _startupInput = input;
         _input = input ?? draft.Entity.Field("inputExample").Pretty();
         _token = token;
-        _window = new Window("Studio  ·  " + host) { Y = 1, Width = Dim.Fill(), Height = Dim.Fill() };
-        _window.ColorScheme = StudioPalette.Create();
+        _window = new Window { Title = "Studio  ·  " + host, Y = 1, Width = Dim.Fill(), Height = Dim.Fill() };
+        _window.SetScheme(StudioPalette.Create());
         _window.Add(_header, _draftLabel, _list, _detail, _status);
     }
+
+    internal IEnumerable<StudioAction> AvailableActions() => _catalog?.Actions() ?? Commands;
 
     public void Start(bool showCatalog)
     {
         _menu = new MenuBar([
-            new("_Workspace", new MenuItem[] {new("_Catalog", "", Catalog), new("_Profile", "", Profile),
-                new("_Sessions", "", Sessions), new("_Conversation", "", Conversation), new("_Quit", "", () => Application.RequestStop()) }),
-            new("_Run", new MenuItem[] {new("_Edit input", "", Edit), new("Input schem_a", "", () => Show("Input schema", _draft.Entity.Field("inputSchema").Pretty())),
-                new("_Submit", "", Submit), new("_Cancel execution", "", Cancel), new("_History", "", () => History(false)),
-                new("Prepare re_run", "", PrepareRerun), new("Co_mpare against…", "", () => History(true)),
-                new("Re_fresh journal", "", () => { _pollStopped = false; _nextPoll = default; Poll(true); }) }),
-            new("_Inspect", Enum.GetValues<Panel>().Select(p => new MenuItem(p.ToString(), "", () => ViewPanel(p))).ToArray())
+            new MenuBarItem("_Workspace", [
+                new MenuItem("_Catalog", "", Catalog),
+                new MenuItem("_Profile", "", Profile),
+                new MenuItem("_Sessions", "", Sessions),
+                new MenuItem("_Conversation", "", Conversation),
+                new MenuItem("_Quit", "", () => StudioTerminal.App.RequestStop())
+            ]),
+            new MenuBarItem("_Run", [
+                new MenuItem("_Edit input", "", Edit),
+                new MenuItem("Input schem_a", "", ShowSchema),
+                new MenuItem("Saved inputs and _evaluations", "", OpenCases),
+                new MenuItem("Replay _graph", "", Replay),
+                new MenuItem("_Submit", "", Submit),
+                new MenuItem("_Cancel execution", "", Cancel),
+                new MenuItem("_History", "", () => History(false)),
+                new MenuItem("Prepare re_run", "", PrepareRerun),
+                new MenuItem("Co_mpare against…", "", () => History(true)),
+                new MenuItem("Re_fresh journal", "", RefreshJournal)
+            ]),
+            new MenuBarItem("_Inspect", Enum.GetValues<Panel>().Select(p => new MenuItem(p.ToString(), "", () => ViewPanel(p))))
         ]);
-        Application.Top.Add(_menu, _window);
-        _list.KeyPress += Shortcut;
-        _detail.KeyPress += Shortcut;
-        _list.SelectedItemChanged += _ => ShowSelection();
-        _list.OpenSelectedItem += _ => InspectSelection();
+        StudioTerminal.Root.Add(_menu, _window);
+        _list.HasFocusChanged += (_, _) => Notice(_message);
+        _detail.HasFocusChanged += (_, _) => Notice(_message);
+        // ListView's type-to-search consumes printable keys before View.KeyDown.
+        StudioTerminal.App.Keyboard.KeyDown += Shortcut;
+        _list.ValueChanged += (_, _) => ShowSelection();
+        _list.Accepting += (_, e) => { e.Handled = true; InspectSelection(); };
         Refresh();
         _list.SetFocus();
         if (showCatalog) Catalog();
         else _startupInput = null;
-        Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(120), _ =>
+        StudioTerminal.App.AddTimeout(TimeSpan.FromMilliseconds(120), () =>
         {
-            if (_token.IsCancellationRequested) { Application.RequestStop(); return true; }
+            if (_token.IsCancellationRequested) return false;
             while (_updates.TryDequeue(out var update)) Guard(update);
-            Poll();
+            if (_catalog is null) Poll();
+            else PollCatalog();
             return true;
         });
     }
 
-    private void Shortcut(View.KeyEventEventArgs e)
+    private void Shortcut(object? sender, Key e)
     {
-        Action? action = e.KeyEvent.Key switch
-        {
-            (Key)'1' => () => ViewPanel(Panel.Graph),
-            (Key)'2' => () => ViewPanel(Panel.Events),
-            (Key)'3' => () => ViewPanel(Panel.Result),
-            (Key)'r' => Submit,
-            (Key)'i' => Edit,
-            (Key)'x' => Cancel,
-            (Key)'c' or Key.Esc => Catalog,
-            (Key)'p' => Profile,
-            (Key)'s' => Sessions,
-            (Key)'h' => () => History(false),
-            (Key)'q' => () => Application.RequestStop(),
-            _ => null
-        };
-        if (action is null) return;
-        e.Handled = true;
-        Guard(action);
+        if (e.Handled || StudioTerminal.App.TopRunnableView != StudioTerminal.Root ||
+            StudioTerminal.App.Popovers?.GetActivePopover() is not null || _catalog is not null ||
+            (!_list.HasFocus && !_detail.HasFocus) || !_window.Enabled) return;
+        Guard(() => e.Handled = ActionPicker.Dispatch(Commands, e == Key.Esc ? Key.C : e));
     }
 
     private void Guard(Action action)
@@ -187,7 +199,9 @@ internal sealed partial class RemoteWorkspace
     {
         _message = InspectorRun.Clean(message).Replace('\n', ' ');
         _catalog?.SetMessage(_message);
-        _status.Text = _message.Length == 0 ? "1 Graph  2 Events  3 Result  ·  i input  r run  x cancel  ·  Esc catalog  F9 menus  q quit" : _message;
+        string focus = _detail.HasFocus ? "↑↓ scroll   Tab entries" : "↑↓ entry   Enter inspect   Tab details";
+        string panel = _panel == Panel.Result ? "   j raw/summary" : "";
+        _status.Text = _message.Length == 0 ? $"{focus}{panel}   Ctrl+P actions   Esc catalog" : _message;
     }
 
     private void Poll(bool force = false)
@@ -240,22 +254,25 @@ internal sealed partial class RemoteWorkspace
 
     private static int Pick(string title, string[] labels)
     {
-        if (labels.Length == 0) { MessageBox.Query(title, "No retained entries.", "Close"); return -1; }
+        if (labels.Length == 0) { MessageBox.Query(StudioTerminal.App, title, "No retained entries.", "Close"); return -1; }
         using var dialog = new Dialog { Title = InspectorRun.Clean(title), Width = Dim.Percent(88), Height = Dim.Percent(75) };
         int index = -1;
-        var list = new ListView(labels.Select(s => InspectorRun.Clean(s).Replace('\n', ' ')).ToArray()) { Width = Dim.Fill(), Height = Dim.Fill() };
-        list.OpenSelectedItem += _ => { index = list.SelectedItem; Application.RequestStop(); };
+        var list = new ListView { Width = Dim.Fill(), Height = Dim.Fill() };
+        list.SetSource<string>([.. labels.Select(s => InspectorRun.Clean(s).Replace('\n', ' '))]);
+        list.SelectedItem = 0;
+        list.Accepting += (_, e) => { e.Handled = true; index = list.SelectedItem ?? -1; StudioTerminal.App.RequestStop(); };
         dialog.Add(list);
-        Application.Run(dialog);
+        list.SetFocus();
+        StudioTerminal.App.Run(dialog);
         return index;
     }
 
     private static void Show(string title, string body)
     {
         using var dialog = new Dialog { Title = InspectorRun.Clean(title), Width = Dim.Percent(94), Height = Dim.Percent(90) };
-        var view = new TextView { Text = InspectorRun.Clean(body), ReadOnly = true, Width = Dim.Fill(), Height = Dim.Fill(), WordWrap = true };
+        var view = new StudioTextView { Text = InspectorRun.Clean(body), ReadOnly = true, Width = Dim.Fill(), Height = Dim.Fill(), WordWrap = true };
         dialog.Add(view);
-        Application.Run(dialog);
+        StudioTerminal.App.Run(dialog);
     }
 
     private void Catalog()
@@ -263,18 +280,29 @@ internal sealed partial class RemoteWorkspace
         if (_busy || _catalog is not null) return;
         var entries = _draft.Catalog.Select(e => new CatalogEntry(e.Label("id"), e.Field("kind").ToString() switch
         { "0" => "Agent", "1" => "Workflow", _ => e.Label("kind") },
-            InspectorRun.Clean(e.Str("unavailableReason") ?? e.Str("description") ?? ""))).ToArray();
-        _catalog = new EntityCatalogView(_draft.Profile, entries, OpenEntity);
-        Application.Top.Add(_catalog);
+            InspectorRun.Clean(e.Str("unavailableReason") ?? e.Str("description") ?? ""),
+            e.Field("isAvailable").ValueKind == JsonValueKind.True,
+            e.Field("inputExample") is { ValueKind: not (JsonValueKind.Null or JsonValueKind.Undefined) } example
+                ? InspectorRun.Clean(example.Pretty()) : null)).ToArray();
+        _catalog = new EntityCatalogView(_draft.Profile, entries, id => OpenEntity(id));
+        StudioTerminal.Root.Add(_catalog);
         _catalog.Select(_draft.Id);
         _window.Visible = _menu.Visible = false;
         _catalog.FocusList();
+        _catalog.SetActivity([], "Loading run history…");
+        _nextCatalogPoll = default;
+        PollCatalog();
     }
 
-    private void OpenEntity(string id)
+    private void OpenEntity(string id, string? runId = null)
     {
         if (_busy) return;
-        if (id == _draft.Id) { CloseCatalog(); return; }
+        if (id == _draft.Id)
+        {
+            CloseCatalog();
+            if (runId is not null) SelectRun(runId);
+            return;
+        }
         Request(() => RemoteDraft.LoadAsync(_client, _draft.Profile, id, _token), next =>
         {
             if (_startupInput is not null) _input = _draft.Entity.Field("inputExample").Pretty();
@@ -288,6 +316,7 @@ internal sealed partial class RemoteWorkspace
                 ViewPanel(state.Panel);
             }
             CloseCatalog();
+            if (runId is not null) SelectRun(runId);
         });
     }
 
@@ -295,7 +324,7 @@ internal sealed partial class RemoteWorkspace
     {
         _startupInput = null;
         if (_catalog is null) return;
-        Application.Top.Remove(_catalog);
+        StudioTerminal.Root.Remove(_catalog);
         _catalog.Dispose();
         _catalog = null;
         _menu.Visible = _window.Visible = true;
@@ -311,28 +340,31 @@ internal sealed partial class RemoteWorkspace
     private void Edit()
     {
         if (_busy) { Notice("A Studio request is pending."); return; }
-        if (EditInput(_input, "Input JSON · " + _draft.Entity.Label("inputType")) is not { } edited) return;
+        if (EditInput(_input, "Input JSON · " + _draft.Entity.Label("inputType"), _draft.Id) is not { } edited) return;
         _input = edited;
         _requestId = Guid.NewGuid().ToString();
     }
 
-    private static string? EditInput(string initial, string title)
+    private string? EditInput(string initial, string title, string entity)
     {
         string? edited = null;
         using var dialog = new Dialog { Title = title, Width = Dim.Percent(92), Height = Dim.Percent(80) };
-        var editor = new TextView { Text = initial, Width = Dim.Fill(), Height = Dim.Fill(3), AllowsTab = false };
-        var save = new Button("Apply");
-        save.Clicked += () =>
+        var editor = new StudioTextView { Text = initial, Width = Dim.Fill(), Height = Dim.Fill(3), TabKeyAddsTab = false };
+        var save = new Button { Text = "Apply" };
+        save.Accepting += (_, e) =>
         {
-            var text = editor.Text.ToString() ?? "";
+            e.Handled = true;
+            var text = editor.Text;
             try { using var parsed = JsonDocument.Parse(text); }
-            catch (JsonException error) { MessageBox.ErrorQuery("Invalid JSON", error.Message, "Edit"); return; }
+            catch (JsonException error) { MessageBox.ErrorQuery(StudioTerminal.App, "Invalid JSON", error.Message, "Edit"); return; }
             edited = text;
-            Application.RequestStop();
+            StudioTerminal.App.RequestStop();
         };
-        dialog.Add(editor, new Label("Tab → Apply    Enter confirm    Esc cancel") { Y = Pos.Bottom(editor) });
+        dialog.Add(editor, new Label { Text = "Tab → Apply    Enter confirm    Esc cancel", Y = Pos.Bottom(editor) });
         dialog.AddButton(save);
-        Application.Run(dialog);
+        dialog.AddButton(CaseLibrary.SaveButton(entity, () => editor.Text, _token));
+        editor.SetFocus();
+        StudioTerminal.App.Run(dialog);
         return edited;
     }
 
@@ -359,7 +391,7 @@ internal sealed partial class RemoteWorkspace
         if (_run?.Snapshot.Field("request") is not { ValueKind: JsonValueKind.Object } request) { Notice("Open a retained run first."); return; }
         Request(() => RemoteDraft.LoadAsync(_client, request.Str("profileId")!, request.Str("entityId"), _token), draft =>
         {
-            string? edited = EditInput(request.Field("input").Pretty(), $"Review captured input · {draft.Id} / {draft.Profile} · no session");
+            string? edited = EditInput(request.Field("input").Pretty(), $"Review captured input · {draft.Id} / {draft.Profile} · no session", draft.Id);
             if (edited is null) return;
             ApplyDraft(draft, edited);
             Notice("Rerun draft ready. Press r to submit.");
@@ -376,7 +408,7 @@ internal sealed partial class RemoteWorkspace
                 $"{r.Label("submittedAt")}   {r.Field("request").Label("entityId")}   {r.RunStatus()}   {r.Label("runId")}").ToArray());
             if (i < 0) return;
             string id = runs[i].GetProperty("runId").GetString()!;
-            if (compare) Request(() => _client.CompareAsync(_instance, _run!.Id, id, _token), comparison => Show("Run comparison · metrics and differences", comparison.Pretty()));
+            if (compare) CompareRuns(_run!.Id, id);
             else SelectRun(id);
         });
     }
@@ -396,7 +428,7 @@ internal sealed partial class RemoteWorkspace
             if (i == 1) Request(() => _client.CreateSessionAsync(_draft.Id, _draft.Profile, _token), s => SelectSession(s.Str("id")));
             else if (i == 2 && offset == 3)
             {
-                if (MessageBox.Query("Reset session", "Replace this session and its saved conversation context?", "Keep", "Reset") == 1)
+                if (MessageBox.Query(StudioTerminal.App, "Reset session", "Replace this session and its saved conversation context?", "Keep", "Reset") == 1)
                     Request(() => _client.ResetSessionAsync(_session!, _token), s => SelectSession(s.Str("id")));
             }
             else SelectSession(i == 0 ? null : sessions[i - offset].Str("id"));

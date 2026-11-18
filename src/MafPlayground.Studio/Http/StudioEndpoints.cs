@@ -48,7 +48,22 @@ public static class StudioEndpoints
         });
         api.MapPost("/comparisons", async (HttpContext context, Comparison.StudioComparisonService comparisons) =>
             Results.Ok(await comparisons.CompareAsync(await ReadAsync<StudioComparisonRequest>(context), context.RequestAborted)));
-        api.MapGet("/runs", async (IStudioRunService runs, CancellationToken token) => Results.Ok(await runs.ListAsync(token)));
+        api.MapGet("/runs", async (bool? activity, IStudioRunService runs, CancellationToken token) =>
+        {
+            var retained = await runs.ListAsync(token);
+            if (activity != true) return Results.Ok(retained);
+            return Results.Ok(retained.Select(run => new
+            {
+                run.HostInstanceId,
+                run.RunId,
+                Request = new { run.Request.EntityId, run.Request.ProfileId },
+                run.Status,
+                run.SubmittedAt,
+                run.StartedAt,
+                run.CompletedAt,
+                run.TotalEvents
+            }));
+        });
         api.MapGet("/runs/{id}", async (string id, IStudioRunService runs, CancellationToken token) => Results.Ok(await RequiredAsync(runs, id, token)));
         api.MapGet("/runs/{id}/result", async (string id, IStudioRunService runs, CancellationToken token) =>
         {

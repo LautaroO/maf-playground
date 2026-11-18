@@ -13,7 +13,7 @@ public sealed class ParserTests
         RootCommand rootCommand = Parser.CreateRootCommand();
 
         Assert.Equal(
-            ["agent", "workflow", "rag", "devui", "serve", "docs", "inspect", "tui"],
+            ["agent", "workflow", "rag", "devui", "serve", "docs", "inspect", "tui", "cases"],
             rootCommand.Subcommands.Select(command => command.Name));
     }
 

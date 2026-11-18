@@ -23,6 +23,23 @@ public sealed class StudioHttpTests
     private const string Api = "/api/studio/v1";
 
     [Fact]
+    public async Task Catalog_activity_exposes_only_run_identity_timing_and_status()
+    {
+        await using var host = await Fixture.Create();
+        var receipt = await host.Start();
+        await host.Terminal(receipt.RunId);
+        var summaries = await host.Client.GetFromJsonAsync<JsonElement[]>(Api + "/runs?activity=true");
+        var summary = Assert.Single(summaries!);
+        Assert.Equal(receipt.RunId, summary.GetProperty("runId").GetString());
+        Assert.True(summary.GetProperty("totalEvents").GetInt64() > 0);
+        Assert.Equal(["completedAt", "hostInstanceId", "request", "runId", "startedAt", "status", "submittedAt", "totalEvents"],
+            summary.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["entityId", "profileId"], summary.GetProperty("request").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        var full = Assert.Single((await host.Client.GetFromJsonAsync<JsonElement[]>(Api + "/runs"))!);
+        Assert.True(full.GetProperty("request").TryGetProperty("input", out _));
+    }
+
+    [Fact]
     public async Task Instance_is_authenticated_stable_and_changes_after_host_restart_without_runs()
     {
         await using var first = await Fixture.Create();

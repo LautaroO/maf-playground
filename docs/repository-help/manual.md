@@ -27,7 +27,10 @@ arbitrary source code, or write to the knowledge base.
 Run `tui` for an interactive terminal inspector. Select an agent or workflow
 with ↑/↓ and Enter. Press `r` to run it. Esc returns to the catalog. Reopening
 an entity restores its inspector during the same TUI session. The graph marks each executing node with ▶, including concurrent branches.
-Press `2` to explore events and `3` to read the final result. Use `tui --host URL`
+The catalog displays status and duration history for the selected entity. Press `2` in the catalog for running jobs or `3` for recent failures. Enter opens the selected run.
+Press `2` for events, `3` for the final result, `g` for event-by-event graph replay
+and `b` to compare runs. Inside an inspector, `4` opens the invocation timeline and `j` toggles the raw result. Use `t` to save test cases and `a` to compare two models or host profiles on that suite. CI can run the same local cases with `cases run --entity ID --cases-dir PATH --artifacts PATH`.
+Press Ctrl+P or `:` to find actions and their shortcuts. Esc or Ctrl+P closes the palette. Ctrl+C quits the TUI, as does `q` with an empty search. Use `tui --host URL`
 to connect to a Studio HTTP host using its bearer token in `MAF_STUDIO_TOKEN`.
 Start the host with `serve --url http://127.0.0.1:5051` on the machine that
 executes the agents. The host and TUI ship together in the .NET CLI. The

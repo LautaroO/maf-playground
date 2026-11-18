@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Terminal.Gui;
 
 namespace MafPlayground.CLI.Tui;
 
@@ -9,7 +8,19 @@ internal sealed partial class RemoteWorkspace
     private sealed record Row(string Key, string Title, Func<string> Details, Action? Open = null);
     private Panel _panel;
     private Row[] _rows = [];
-    private bool _updating;
+    private bool _updating, _rawResult;
+
+    private void ShowTimeline()
+    {
+        if (_run is null) { Notice("Open a run to inspect its invocations."); return; }
+        InvocationTimeline.Show(GraphEvidence.From(_run));
+    }
+
+    private void ToggleRawResult()
+    {
+        _rawResult = !_rawResult;
+        ViewPanel(Panel.Result);
+    }
 
     private void ViewPanel(Panel panel)
     {
@@ -20,7 +31,7 @@ internal sealed partial class RemoteWorkspace
 
     private void Refresh()
     {
-        string? selected = _rows.ElementAtOrDefault(_list.SelectedItem)?.Key;
+        string? selected = _rows.ElementAtOrDefault(_list.SelectedItem ?? -1)?.Key;
         JsonElement snapshot = _run?.Snapshot ?? default;
         JsonElement topology = snapshot.Field("topology");
         if (topology.ValueKind != JsonValueKind.Object && _run is null) topology = _draft.Topology;
@@ -53,7 +64,7 @@ internal sealed partial class RemoteWorkspace
         {
             bool sameLabels = _rows.Select(r => r.Title).SequenceEqual(next.Select(r => r.Title));
             _rows = next;
-            if (!sameLabels) _list.SetSource(_rows.Select(r => InspectorRun.Clean(r.Title).Replace('\n', ' ')).ToArray());
+            if (!sameLabels) _list.SetSource<string>([.. _rows.Select(r => InspectorRun.Clean(r.Title).Replace('\n', ' '))]);
             _list.SelectedItem = Math.Max(0, Array.FindIndex(_rows, r => r.Key == selected));
         }
         finally { _updating = false; }
@@ -63,14 +74,14 @@ internal sealed partial class RemoteWorkspace
 
     private void ShowSelection()
     {
-        if (_updating || _rows.ElementAtOrDefault(_list.SelectedItem) is not { } row) return;
+        if (_updating || _rows.ElementAtOrDefault(_list.SelectedItem ?? -1) is not { } row) return;
         string body = InspectorRun.Clean(row.Details());
         if (_detail.Text.ToString() != body) _detail.Text = body;
     }
 
     private void InspectSelection()
     {
-        if (_rows.ElementAtOrDefault(_list.SelectedItem) is not { } row) return;
+        if (_rows.ElementAtOrDefault(_list.SelectedItem ?? -1) is not { } row) return;
         if (row.Open is null) Show("Inspect · " + InspectorRun.Clean(row.Title), row.Details());
         else Guard(row.Open);
     }
@@ -104,10 +115,13 @@ internal sealed partial class RemoteWorkspace
             yield return new("edge-" + edge.Str("id"), "→ " + (edge.Str("label") ?? edge.Label("kind")), () => edge.Pretty());
     }
 
-    private static IEnumerable<Row> ResultRows(JsonElement snapshot)
+    private IEnumerable<Row> ResultRows(JsonElement snapshot)
     {
         if (snapshot.ValueKind == JsonValueKind.Undefined) yield break;
-        yield return new("result", "Output · " + snapshot.RunStatus(), () => snapshot.Field("result").Pretty());
+        var request = snapshot.Field("request");
+        var output = snapshot.Field("result");
+        yield return new("result", (_rawResult ? "Raw output · " : "Output · ") + snapshot.RunStatus(),
+            () => ResultPresentation.Format(request.Label("entityId"), request.Field("input"), output, output.Pretty(), _rawResult));
         yield return new("input", "Captured request", () => snapshot.Field("request").Pretty());
         yield return new("run", "Execution details", () => JsonSerializer.Serialize(new
         {
@@ -134,7 +148,7 @@ internal sealed partial class RemoteWorkspace
                          from target in edge.Field(direction.To).Items()
                          select (direction.Label, Node: target.GetString())).Distinct().ToArray();
         var choices = invocations.Select((g, index) => g.Key is null ? $"Uncorrelated events  ({g.Count()})" :
-            $"Invocation {index + 1}   {g.Key}   ({g.Count()} events)")
+            $"Invocation {index + 1}{ResultPresentation.LanguageSuffix(id, g.FirstOrDefault(e => e.Str("kind") == "executor_input").Field("data").Field("value").Pretty())}   {g.Key}   ({g.Count()} events)")
             .Concat(neighbors.Select(n => n.Label + n.Node)).ToArray();
         int index = Pick("Executor · " + id, choices);
         if (index < 0) return;

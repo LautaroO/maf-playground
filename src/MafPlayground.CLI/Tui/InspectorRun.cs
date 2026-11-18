@@ -16,6 +16,7 @@ internal sealed class Invocation(string input)
         get => field ?? (Finished ? null : Stopwatch.GetElapsedTime(StartedAt));
         set;
     }
+    public TimeSpan? StartOffset { get; set; }
     public string? CallId { get; init; }
     public string Output { get; set; } = "";
     public string Error { get; set; } = "";
@@ -25,7 +26,7 @@ internal sealed class Invocation(string input)
 }
 
 // Owned by the UI thread. Event arrival never changes the selected node or invocation.
-internal sealed partial class InspectorRun
+internal sealed partial class InspectorRun(Action<object?>? observeResult = null)
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -43,12 +44,14 @@ internal sealed partial class InspectorRun
     public List<string> Events { get; } = [];
     public string Result { get; private set; } = "";
     public string Status { get; private set; } = "Ready";
+    private long? _startedAt;
     private Stopwatch? _timer;
     public TimeSpan? Elapsed => _timer?.Elapsed ?? _savedElapsed;
 
     public void Start()
     {
         Status = "Running";
+        _startedAt = Stopwatch.GetTimestamp();
         _timer = Stopwatch.StartNew();
     }
 
@@ -117,6 +120,8 @@ internal sealed partial class InspectorRun
 
     private void AddInvocation(string id, Invocation invocation)
     {
+        if (_startedAt is { } start && invocation.StartedAt >= start)
+            invocation.StartOffset = Stopwatch.GetElapsedTime(start, invocation.StartedAt);
         if (!_attempts.TryGetValue(id, out var list)) _attempts[id] = list = [];
         _eventTargets[Events.Count] = (id, list.Count);
         list.Add(invocation);
@@ -165,9 +170,15 @@ internal sealed partial class InspectorRun
                 Finish(id, attempt, "", reason, timestamp);
     }
 
-    public void Complete(object? output)
+    private long? InputTokens { get; set; }
+    private long? OutputTokens { get; set; }
+
+    public void Complete(object? output, long? inputTokens = null, long? outputTokens = null)
     {
+        InputTokens = inputTokens >= 0 ? inputTokens : null;
+        OutputTokens = outputTokens >= 0 ? outputTokens : null;
         _timer?.Stop();
+        observeResult?.Invoke(output);
         Result = Format(output);
         Status = output is TranslationWorkflowResult translation && translation.Translations.Any(t => !t.IsValid)
             ? "Partial result" : "Completed";

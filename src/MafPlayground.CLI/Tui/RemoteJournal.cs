@@ -119,18 +119,6 @@ internal sealed class RemoteJournal(string id)
 
     public static string Graph(JsonElement topology, IReadOnlyDictionary<string, string> states)
     {
-        var nodes = topology.Field("nodes").Items().Select(n => n.Str("id")).OfType<string>().Distinct().ToArray();
-        if (nodes.Length == 0) return topology.Str("unavailableReason") ?? "No declared topology.";
-        var edges = topology.Field("edges").Items();
-        // Large or highly connected graphs are more legible as an adjacency list.
-        if (nodes.Length > 32 || edges.Length > 64 || nodes.Any(n => n.Length > 80) ||
-            edges.Any(e => e.Field("sourceIds").GetArrayLength() * (long)e.Field("targetIds").GetArrayLength() > 64))
-            return string.Join('\n', edges.Select(edge => $"{Ends(edge, "sourceIds")} → {Ends(edge, "targetIds")}"));
-        var connections = from e in edges
-                          from a in e.Field("sourceIds").Items()
-                          from b in e.Field("targetIds").Items()
-                          where nodes.Contains(a.GetString()) && nodes.Contains(b.GetString())
-                          select (a.GetString()!, b.GetString()!);
         string Decorate(string id) => states.GetValueOrDefault(id) switch
         {
             "Active" => "▶ " + id,
@@ -139,20 +127,55 @@ internal sealed class RemoteJournal(string id)
             "Completed" => "✓ " + id,
             _ => "· " + id
         };
-        var graph = new WorkflowGraph(Decorate(topology.Str("startNodeId") ?? nodes[0]), nodes.Select(Decorate),
-            connections.Select(pair => (Decorate(pair.Item1), Decorate(pair.Item2))));
-        char[][] lines = graph.Lines.Select(line => line.ToCharArray()).ToArray();
-        foreach (var node in graph.Nodes) node.Id.CopyTo(0, lines[node.Y], node.X, node.Id.Length);
-        return string.Join('\n', lines.Select(line => new string(line).TrimEnd()));
+        return Graph(topology, Decorate);
+    }
+
+    public static string Graph(JsonElement topology, Func<string, string> decorate)
+    {
+        var nodes = topology.Field("nodes").Items().Select(n => n.Str("id")).OfType<string>().Distinct().ToArray();
+        if (nodes.Length == 0) return topology.Str("unavailableReason") ?? "No declared topology.";
+        var edges = topology.Field("edges").Items();
+        // Large or highly connected graphs are more legible as an adjacency list.
+        if (nodes.Length > 32 || edges.Length > 64 || nodes.Any(n => n.Length > 80) ||
+            edges.Any(e => e.Field("sourceIds").GetArrayLength() * (long)e.Field("targetIds").GetArrayLength() > 64))
+            return string.Join('\n', nodes.Select(decorate).Concat(edges.Select(edge => $"{Ends(edge, "sourceIds")} → {Ends(edge, "targetIds")}")));
+        var connections = from e in edges
+                          from a in e.Field("sourceIds").Items()
+                          from b in e.Field("targetIds").Items()
+                          where nodes.Contains(a.GetString()) && nodes.Contains(b.GetString())
+                          select (a.GetString()!, b.GetString()!);
+        return GraphEvidence.Render(topology.Str("startNodeId") ?? nodes[0], nodes, connections, decorate);
     }
 
     private static string Ends(JsonElement edge, string field) =>
         string.Join(", ", edge.Field(field).Items().Select(x => x.GetString()));
 
+    private JsonElement[] ModelSpans() => Events.Where(e => e.Str("kind") == "span").Select(e => e.Field("data"))
+        .Where(s => s.Str("source") == "MafPlayground.Studio.Model").DistinctBy(s => (s.Str("traceId"), s.Str("spanId"))).ToArray();
+
+    public (long? Input, long? Output) ModelTokens()
+    {
+        if (HasGap || Snapshot.Field("captureComplete").ValueKind != JsonValueKind.True ||
+            Events.Any(e => e.Number("captureState") != 0)) return (null, null);
+        var spans = ModelSpans();
+        long? Sum(string name)
+        {
+            if (spans.Length == 0) return null;
+            long total = 0;
+            foreach (var span in spans)
+            {
+                var field = span.Field(name);
+                if (field.ValueKind != JsonValueKind.Number || !field.TryGetInt64(out var n) || n < 0 || n > long.MaxValue - total) return null;
+                total += n;
+            }
+            return total;
+        }
+        return (Sum("inputTokens"), Sum("outputTokens"));
+    }
+
     public string Metrics()
     {
-        var spans = Events.Where(e => e.Str("kind") == "span").Select(e => e.Field("data"))
-            .Where(s => s.Str("source") == "MafPlayground.Studio.Model").DistinctBy(s => s.Str("spanId")).ToArray();
+        var spans = ModelSpans();
         string Sum(string name) => spans.Length > 0 && spans.All(s => s.Field(name).ValueKind == JsonValueKind.Number)
             ? spans.Sum(s => s.Field(name).GetDouble()).ToString("G") : "unavailable";
         var currencies = spans.Select(s => s.Str("currency")).Distinct().ToArray();

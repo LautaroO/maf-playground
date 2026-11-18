@@ -50,11 +50,18 @@ dotnet run --project src/MafPlayground.CLI -- tui
 ```
 
 The catalog lists all registered agents and workflows before a model is configured.
-Select with ↑/↓ and Enter. Press Esc or `c` in an inspector to return to the
+Select a row to see an example input before the first run or a duration chart
+with the latest retained runs, newest first. Each bar is scaled to the longest
+visible run for that entity. Rows show the latest status and elapsed time.
+Run coverage counts entities with an observed run in the displayed history.
+Press `l` to open the selected entity’s latest run.
+Catalog keys `1`, `2`, and `3` switch between entities, running jobs, and recent failures.
+Select a run with ↑/↓ and press Enter to inspect it. With an empty history, `n` opens the first available example.
+Select an entity with ↑/↓ and Enter. Press Esc or `c` in an inspector to return to the
 catalog. Opening that entity again restores its draft, selected view and run.
 Local runs continue while you browse. Use `--entity ID` to open an inspector
 directly. With `--input` alone, the first entity you open receives the file. Press `m` to choose a local
-`provider:model`, or pass `--model` or set `AI_MODEL`. The local runtime builds
+`provider:model` (paste with the terminal’s Paste command and press Enter to apply, or Esc to discard), or pass `--model` or set `AI_MODEL`. The local runtime builds
 agents and workflows in process. An animated RUNNING banner appears on submission.
 Each currently executing node has a yellow ▶ and remains visible as active when
 selected. Concurrent branches can be active together. Edges describe possible
@@ -62,6 +69,12 @@ routes. Agent tool nodes appear when the agent invokes the corresponding tool.
 
 | Key | Local action |
 | --- | --- |
+| `Ctrl+P` or `:` | Find actions by name, keyword or shortcut. Use ↑/↓ and Enter. Esc or Ctrl+P closes the palette. Ctrl+C quits, as does `q` with an empty search. From the catalog you can search for entities. |
+| `4` | Open the invocation timeline. Select a bar to see timing, input, output and errors. Older captures can use an event-order scale, identified in the footer. |
+| `j` | Switch between a readable result and raw JSON. Translation summaries include requested languages, validation and attempts. |
+| `a` | Compare the saved suite on two local models or two Studio profiles. Review the run count before starting. Enter on a case opens the paired graphs. |
+| `t` | Save, edit or load a named input, run saved cases and inspect suite results. |
+| `g` | Replay the captured graph one event at a time using ↑/↓. |
 | `c`, `v`, `i` | Choose an entity, read its typed input schema, or edit its JSON. Tab focuses Apply, Enter confirms, Esc discards. |
 | `r`, `x` | Execute or cancel the current run. Use `--entity` and `--input <file.json>` for startup values. |
 | `1`, `2`, `3` | Graph, event timeline, final result. In the timeline, use ↑/↓ and Enter to inspect an observed invocation. |
@@ -71,6 +84,42 @@ routes. Agent tool nodes appear when the agent invokes the corresponding tool.
 | `h`, `b` | Reopen a run from session history or compare the current capture to a baseline. Each local inspector retains its latest 12 archived runs. |
 | `s`, `o` | Save a completed capture to a new JSON file or inspect a saved capture offline. Files include the submitted input, outputs and errors. Keep them with the data they describe. |
 | `?`, `q` | Show shortcuts or quit and cancel local execution. |
+
+On macOS and Linux, Ctrl+C interrupts the TUI even inside the model editor. It returns exit code 130. Use `x` in the inspector to cancel just the run.
+
+The footer follows the focused pane. Open the action palette to see commands and the reason an unavailable action needs more evidence or a different run state.
+
+### Using regression cases
+
+Open an entity, press `i` and choose **Save as case** after editing the JSON.
+Give it a name. Checks are optional. A case can check an output substring, expected
+translation languages, the presence of a JSON Pointer (for example
+`/translations/0/translatedText`), or a maximum invocation count for a node.
+With a pointer, the text check applies to that subtree. On a translation result
+without a pointer, each translated text must contain the substring.
+
+Press `t` to load a case as the draft, run one case, or run the suite in sequence.
+Running cases invokes the chosen model or host profile. Each remote case starts
+without conversation history. Select a failed result to inspect the run and,
+when the evidence identifies one, the failing invocation. Cases are saved on
+the client per entity in the OS local application-data directory under
+`maf-playground/cases`. Set `MAF_TUI_CASES_DIR` for a different case library.
+Files contain the input and checks you explicitly saved.
+
+Use `g` after a run to step through its recorded graph. Use `b` to compare two
+runs. The two diagrams mark changed nodes with Δ. Select a node and press Enter
+to see input, output and errors for each occurrence side by side. Replay and
+comparison use retained evidence and do not make new model calls.
+
+### Running saved cases in CI
+
+Point the TUI at a project-owned library with `MAF_TUI_CASES_DIR` when saving cases you want CI to run. Keep its per-entity directory structure when sharing the library. Set `AI_MODEL` and the chosen provider configuration in CI, then run:
+
+```sh
+dotnet run --project src/MafPlayground.CLI -- cases run --entity translation-workflow --cases-dir ./cases --artifacts ./artifacts/maf
+```
+
+The command runs the same checks as the local TUI. Exit 0 means every case passed, 1 means the suite failed or stopped early, 2 indicates a setup or library error, and 130 indicates cancellation. Each failed run writes a new capture containing input, output, and invocation evidence. Press `o` in a local inspector to open it. Choose the artifact directory and retention policy accordingly.
 
 ### Connect to a Studio host
 

@@ -54,6 +54,7 @@ internal sealed class StudioClient : IDisposable
         string? sessionId, CancellationToken ct) =>
         PostAsync("runs", new { requestId, entityId, profileId, input, sessionId }, ct);
 
+    public Task<JsonElement> ActivityAsync(CancellationToken ct) => GetAsync("runs?activity=true", ct);
     public Task<JsonElement> RunsAsync(CancellationToken ct) => GetAsync("runs", ct);
     public Task<JsonElement> RunAsync(string id, CancellationToken ct) => GetAsync($"runs/{Segment(id)}", ct);
     public Task<JsonElement> ResultAsync(string id, CancellationToken ct) => GetAsync($"runs/{Segment(id)}/result", ct);

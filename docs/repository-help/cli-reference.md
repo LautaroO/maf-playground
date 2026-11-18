@@ -26,6 +26,7 @@ Subcommands:
 | `docs` | Generate repository documentation artifacts. |
 | `inspect` | Inspect local agents and workflows. |
 | `tui` | Inspect and run local agents and workflows in the terminal. |
+| `cases` | Run saved TUI regression cases in automation. |
 
 ### `maf-playground agent`
 
@@ -354,4 +355,39 @@ Options:
 | `--input` | no | Load the run input from a JSON file. |
 | `--entity` | no | Open a local entity by identifier. |
 | `--host` | no | Connect to a Studio API host (MAF_STUDIO_TOKEN). |
+
+### `maf-playground cases`
+
+Run saved TUI regression cases in automation.
+
+Usage:
+
+```text
+dotnet run --project src/MafPlayground.CLI -- cases [command]
+```
+
+Subcommands:
+
+| Command | Description |
+| --- | --- |
+| `run` | Evaluate saved cases and write a replayable capture for each failure. |
+
+#### `maf-playground cases run`
+
+Evaluate saved cases and write a replayable capture for each failure.
+
+Usage:
+
+```text
+dotnet run --project src/MafPlayground.CLI -- cases run --entity <value> [options]
+```
+
+Options:
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `--entity` | yes | Local entity whose saved cases to evaluate. |
+| `--model` | no | Model selector, defaults to AI_MODEL. |
+| `--cases-dir` | no | Saved case library root, defaults to the TUI library. |
+| `--artifacts` | no | Directory for failed-run JSON captures. |
 

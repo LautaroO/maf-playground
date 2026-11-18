@@ -7,7 +7,7 @@ internal sealed record EventLink(int Event, string Node, int Invocation);
 internal sealed record LocalCapture(
     int Version, string Entity, string? Model, string Input, DateTimeOffset Started, string Status, TimeSpan? Elapsed,
     string Result, string StartNode, string[] Nodes, CapturedEdge[] Edges, string[] Tools,
-    Dictionary<string, List<Invocation>> Invocations, string[] Events, EventLink[] Links)
+    Dictionary<string, List<Invocation>> Invocations, string[] Events, EventLink[] Links, long? InputTokens = null, long? OutputTokens = null)
 {
     private const int MaximumBytes = 8 * 1024 * 1024;
 
@@ -40,7 +40,7 @@ internal sealed record LocalCapture(
 
     private bool IsSupported()
     {
-        if (Version != 1 || string.IsNullOrWhiteSpace(Entity) || Entity.Length > 128 || Entity.Any(char.IsControl) || Model is not null && (!AIModelSelection.TryParse(Model, out _) || Model.Any(char.IsControl)) || Input is null || Result is null ||
+        if (Version != 1 || InputTokens < 0 || OutputTokens < 0 || string.IsNullOrWhiteSpace(Entity) || Entity.Length > 128 || Entity.Any(char.IsControl) || Model is not null && (!AIModelSelection.TryParse(Model, out _) || Model.Any(char.IsControl)) || Input is null || Result is null ||
             Status is not ("Completed" or "Failed" or "Partial result" or "Cancelled") ||
             Nodes is not { Length: > 0 and <= 128 } || Edges is not { Length: <= 512 } ||
             Tools is null || Invocations is null || Events is null || Links is null ||
@@ -138,11 +138,18 @@ internal sealed partial class InspectorRun
             {
                 var target = EventTarget(i)!.Value;
                 return new EventLink(i, target.Id, target.Index);
-            }).ToArray());
+            }).ToArray(), InputTokens, OutputTokens);
 
     public static InspectorRun Restore(LocalCapture capture)
     {
-        var run = new InspectorRun { Status = capture.Status, Result = Clean(capture.Result), _savedElapsed = capture.Elapsed };
+        var run = new InspectorRun
+        {
+            Status = capture.Status,
+            Result = Clean(capture.Result),
+            _savedElapsed = capture.Elapsed,
+            InputTokens = capture.InputTokens,
+            OutputTokens = capture.OutputTokens
+        };
         foreach (var (node, attempts) in capture.Invocations) run._attempts.Add(node, attempts);
         run.Events.AddRange(capture.Events.Select(Clean));
         run._toolNodes.AddRange(capture.Tools);

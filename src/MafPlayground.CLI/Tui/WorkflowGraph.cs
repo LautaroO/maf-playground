@@ -1,3 +1,5 @@
+using MafPlayground.CLI.Inspection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Agents.AI.Workflows;
 
 namespace MafPlayground.CLI.Tui;
@@ -9,6 +11,9 @@ internal sealed class WorkflowGraph
     public IReadOnlyList<GraphNode> Nodes { get; }
     public string[] Lines { get; }
     private readonly (string From, string To)[] _edges;
+
+    public static WorkflowGraph For(LocalEntityDescriptor entity, IConfiguration configuration) =>
+        entity.CreateWorkflowDiagram is null ? new(entity.Id, [entity.Id], []) : From(entity.CreateWorkflowDiagram(configuration));
 
     public static WorkflowGraph From(Workflow workflow) => new(workflow.StartExecutorId,
         workflow.ReflectExecutors().Keys, workflow.ReflectEdges().Values.SelectMany(group => group)

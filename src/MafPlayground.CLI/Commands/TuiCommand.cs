@@ -10,7 +10,6 @@ using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Application = Terminal.Gui.Application;
 
 namespace MafPlayground.CLI.Commands;
 
@@ -66,22 +65,26 @@ internal sealed class TuiCommand : ICliCommand
             var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { ContentRootPath = AppContext.BaseDirectory });
             builder.Logging.ClearProviders();
             string? defaultModel = model ?? builder.Configuration["AI_MODEL"];
-            InitializeTerminal();
+            var terminal = new StudioTerminal(stop);
             var workspace = new LocalWorkspace((descriptor, firstInput) => new InspectorScreen(descriptor, firstInput,
                 builder.Configuration, defaultModel, ExecuteAsync, stop.Token), input);
+            var paletteKey = ActionPicker.AtRoot(workspace.AvailableActions);
+            StudioTerminal.App.Keyboard.KeyDown += paletteKey;
+            bool interrupted;
             try
             {
-                using var shutdown = stop.Token.Register(() => Application.MainLoop.Invoke(() => Application.RequestStop()));
                 workspace.Start(initial);
-                Application.Run();
+                StudioTerminal.RunRoot();
+                interrupted = stop.IsCancellationRequested;
             }
             finally
             {
-                Application.Shutdown();
-                await stop.CancelAsync().ConfigureAwait(false);
+                StudioTerminal.App.Keyboard.KeyDown -= paletteKey;
+                terminal.Dispose();
+                await terminal.CancelAsync().ConfigureAwait(false);
                 await workspace.FinishAsync().ConfigureAwait(false);
             }
-            return token.IsCancellationRequested ? 130 : 0;
+            return interrupted ? 130 : 0;
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { return 130; }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
@@ -91,16 +94,7 @@ internal sealed class TuiCommand : ICliCommand
         }
     }
 
-    internal static void InitializeTerminal()
-    {
-        // Terminal.Gui 1.19's Unix curses driver fails on coalesced cursor-key sequences.
-        bool previous = Application.UseSystemConsole;
-        Application.UseSystemConsole |= !OperatingSystem.IsWindows();
-        try { Application.Init(); }
-        finally { Application.UseSystemConsole = previous; }
-    }
-
-    private static async Task ExecuteAsync(LocalEntityDescriptor entity, string json, string? model,
+    internal static async Task ExecuteAsync(LocalEntityDescriptor entity, string json, string? model,
         Action<Action<InspectorRun>> publish, CancellationToken token)
     {
         object input = JsonSerializer.Deserialize(json, entity.InputType, InspectorRun.Json)
@@ -148,7 +142,11 @@ internal sealed class TuiCommand : ICliCommand
             {
                 var response = await agent.RunAsync(prompt, cancellationToken: token);
                 long finishedAt = Stopwatch.GetTimestamp();
-                publish(run => { run.End(entity.Id, response.Text, timestamp: finishedAt); run.Complete(response.Text); });
+                publish(run =>
+                {
+                    run.End(entity.Id, response.Text, timestamp: finishedAt);
+                    run.Complete(response.Text, response.Usage?.InputTokenCount, response.Usage?.OutputTokenCount);
+                });
             }
             catch (Exception e) when (!token.IsCancellationRequested)
             {

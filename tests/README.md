@@ -37,3 +37,5 @@ RAG_TEST_CONNECTION_STRING='Host=localhost;Database=maf_playground;Username=post
 ```
 
 Without that variable the database test is reported as skipped.
+
+On macOS or Linux, after a Debug build, run `python3 tests/terminal/model_paste.py` to exercise local and remote keyboard input in real pseudoterminals. The test starts a loopback Studio server, opens the translation workflow repeatedly with arrows and Enter during resize, applies bracketed paste in the local model field and remote JSON editor, and checks that Ctrl+C exits from the editor with code 130. It makes no model calls.

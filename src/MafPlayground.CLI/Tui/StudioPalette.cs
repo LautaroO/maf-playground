@@ -1,15 +1,15 @@
-using Terminal.Gui;
+using Terminal.Gui.Drawing;
 
 namespace MafPlayground.CLI.Tui;
 
 internal static class StudioPalette
 {
-    public static ColorScheme Create() => new()
+    public static Scheme Create() => new()
     {
-        Normal = Application.Driver.MakeAttribute(Color.Gray, Color.Black),
-        Focus = Application.Driver.MakeAttribute(Color.Black, Color.BrightCyan),
-        HotNormal = Application.Driver.MakeAttribute(Color.BrightCyan, Color.Black),
-        HotFocus = Application.Driver.MakeAttribute(Color.Black, Color.BrightCyan),
-        Disabled = Application.Driver.MakeAttribute(Color.DarkGray, Color.Black)
+        Normal = new(Color.Gray, Color.Black),
+        Focus = new(Color.Black, Color.BrightCyan),
+        HotNormal = new(Color.BrightCyan, Color.Black),
+        HotFocus = new(Color.Black, Color.BrightCyan),
+        Disabled = new(Color.DarkGray, Color.Black)
     };
 }

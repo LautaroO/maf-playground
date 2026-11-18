@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MafPlayground.CLI.Inspection;
-using Terminal.Gui;
+using Terminal.Gui.Views;
+using Terminal.Gui.ViewBase;
 
 namespace MafPlayground.CLI.Tui;
 
@@ -45,7 +46,7 @@ internal sealed partial class InspectorScreen
         if (issues.Count == 0)
         {
             if (_run.Status == "Failed") { _page = 2; _scroll = 0; }
-            else MessageBox.Query("Errors", "No rejected or failed invocations.", "Close");
+            else MessageBox.Query(StudioTerminal.App, "Errors", "No rejected or failed invocations.", "Close");
             return;
         }
         int current = issues.FindIndex(item => item.Id == _graph.Nodes[_node].Id && item.index == _attempt);
@@ -55,24 +56,34 @@ internal sealed partial class InspectorScreen
 
     private bool ChooseModel()
     {
-        using var dialog = new Dialog("Local model", 60, 9);
-        var value = new TextField(_model ?? "") { X = 1, Y = 2, Width = Dim.Fill(1) };
-        var save = new Button("Apply", is_default: true);
-        bool applied = false;
-        save.Clicked += () =>
+        if (PromptModel("Local model", _model) is not { } selection) return false;
+        _model = selection;
+        return true;
+    }
+
+    private static string? PromptModel(string title, string? initial)
+    {
+        using var dialog = new Dialog { Title = title, Width = 60, Height = 9 };
+        var value = new TextField { Text = initial ?? "", X = 1, Y = 2, Width = Dim.Fill(1) };
+        var hint = new Label { Text = "Enter apply   Esc cancel", X = 1, Y = 3, Width = Dim.Fill(1) };
+        var save = new Button { Text = "Apply", IsDefault = true };
+        string? applied = null;
+        save.Accepting += (_, e) =>
         {
+            e.Handled = true;
             if (!AIModelSelection.TryParse(value.Text.ToString(), out var model))
             {
-                MessageBox.ErrorQuery("Model", "Enter provider:model (for example ollama:llama3.1:8b).", "Edit");
+                hint.Text = "Use provider:model (for example ollama:llama3.1:8b).";
+                value.SetFocus();
                 return;
             }
-            _model = model.ToString();
-            applied = true;
-            Application.RequestStop();
+            applied = model.ToString();
+            StudioTerminal.App.RequestStop();
         };
-        dialog.Add(new Label("Provider and model (provider:model)"), value);
+        dialog.Add(new Label { Text = "Provider and model (provider:model)" }, value, hint);
         dialog.AddButton(save);
-        Application.Run(dialog);
+        value.SetFocus();
+        StudioTerminal.App.Run(dialog);
         return applied;
     }
 
@@ -97,29 +108,39 @@ internal sealed partial class InspectorScreen
         ArchiveCurrent();
         if (_history.Count == 0 || (compare && _run.Status == "Ready"))
         {
-            MessageBox.Query("History", "Run or open a capture first.", "Close");
+            MessageBox.Query(StudioTerminal.App, "History", "Run or open a capture first.", "Close");
             return;
         }
-        using var dialog = new Dialog(compare ? "Select baseline" : "Run history", 66, 16);
-        var list = new ListView(_history.Select(c => $"{c.Started:HH:mm:ss}   {c.Entity}   {c.Status}").ToArray())
-        { Width = Dim.Fill(), Height = Dim.Fill() };
+        var choices = compare ? _history.Where(c => c.Started != _started || c.Entity != _entity.Id).ToList() : _history;
+        if (choices.Count == 0)
+        {
+            MessageBox.Query(StudioTerminal.App, "Comparison", "Run another case or open a second capture to compare.", "Close");
+            return;
+        }
+        using var dialog = new Dialog { Title = compare ? "Select baseline" : "Run history", Width = 66, Height = 16 };
+        var list = new ListView { Width = Dim.Fill(), Height = Dim.Fill() };
+        list.SetSource<string>(new(choices.Select(c => $"{c.Started:HH:mm:ss}   {c.Entity}   {c.Status}")));
+        list.SelectedItem = 0;
         LocalCapture? picked = null;
-        list.OpenSelectedItem += _ => { picked = _history[list.SelectedItem]; Application.RequestStop(); };
+        list.Accepting += (_, e) => { e.Handled = true; picked = choices[list.SelectedItem ?? 0]; StudioTerminal.App.RequestStop(); };
         dialog.Add(list);
-        Application.Run(dialog);
+        StudioTerminal.App.Run(dialog);
         if (picked is null) return;
         if (compare)
         {
-            ShowText("Comparison · baseline → current", LocalCapture.Compare(picked, CurrentCapture()));
+            var candidate = CurrentCapture();
+            GraphInspectionDialog.Compare(GraphEvidence.From(picked), GraphEvidence.From(candidate), LocalCapture.Compare(picked, candidate));
         }
         else Load(picked);
     }
 
+    private void Replay() => GraphInspectionDialog.Replay(GraphEvidence.From(CurrentCapture()));
+
     private static void ShowText(string title, string text)
     {
         using var dialog = new Dialog { Title = title, Width = Dim.Percent(92), Height = Dim.Percent(85) };
-        dialog.Add(new TextView { Width = Dim.Fill(), Height = Dim.Fill(), ReadOnly = true, WordWrap = true, Text = text });
-        Application.Run(dialog);
+        dialog.Add(new StudioTextView { Width = Dim.Fill(), Height = Dim.Fill(), ReadOnly = true, WordWrap = true, Text = text });
+        StudioTerminal.App.Run(dialog);
     }
 
     private void Load(LocalCapture capture)
@@ -146,20 +167,25 @@ internal sealed partial class InspectorScreen
         if (!Pending.IsCompleted || !_updates.IsEmpty) return;
         if (save && _run.Status == "Ready")
         {
-            MessageBox.Query("Save", "Run or open a capture first.", "Close");
+            MessageBox.Query(StudioTerminal.App, "Save", "Run or open a capture first.", "Close");
             return;
         }
         try
         {
             using FileDialog dialog = save
-                ? new SaveDialog("Save capture", "Includes local inputs, outputs and errors. Choose a new file.", [".json"])
-                : new OpenDialog("Open capture", "Inspect a previously saved TUI capture.", [".json"]);
-            Application.Run(dialog);
-            if (dialog.Canceled || dialog.FilePath.ToString() is not { Length: > 0 } path) return;
-            if (save) CurrentCapture().Save(path);
+                ? new SaveDialog { Title = "Save capture · Includes local inputs, outputs and errors. Choose a new file." }
+                : new OpenDialog { Title = "Open capture" };
+            dialog.AllowedTypes.Add(new AllowedType("JSON capture", ".json"));
+            StudioTerminal.App.Run(dialog);
+            if (dialog.Canceled || dialog.Path is not { Length: > 0 } path) return;
+            if (save)
+            {
+                var capture = CurrentCapture();
+                StudioFileDialog.Run("Save capture", () => capture.Save(path), _token);
+            }
             else
             {
-                var capture = LocalCapture.Read(path);
+                var capture = StudioFileDialog.Run("Open capture", () => LocalCapture.Read(path), _token);
                 ArchiveCurrent();
                 Load(capture);
                 Remember(capture);
@@ -167,7 +193,7 @@ internal sealed partial class InspectorScreen
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or InvalidDataException)
         {
-            MessageBox.ErrorQuery("Capture", InspectorRun.Clean(ex.Message), "Close");
+            MessageBox.ErrorQuery(StudioTerminal.App, "Capture", InspectorRun.Clean(ex.Message), "Close");
         }
     }
 }
