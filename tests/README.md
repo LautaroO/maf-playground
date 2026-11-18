@@ -6,6 +6,8 @@ Project documentation:
   component tests.
 - [`MafPlayground.IntegrationTests`](MafPlayground.IntegrationTests/README.md):
   opt-in external-infrastructure tests.
+- [`MafPlayground.Studio.Tests`](MafPlayground.Studio.Tests/README.md) covers Studio execution and API contracts.
+- [`MafPlayground.Studio.IntegrationTests`](MafPlayground.Studio.IntegrationTests/README.md) covers host startup, transport and publishing.
 - [`MafPlayground.Evals`](MafPlayground.Evals/README.md): versioned datasets,
   deterministic contracts, and opt-in model-judged quality evaluations.
 

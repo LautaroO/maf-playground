@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- StudioBoundedEncoder forwards framework-required pointer signatures only. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../MafPlayground.AI.Abstractions/MafPlayground.AI.Abstractions.csproj" />
+    <ProjectReference Include="../MafPlayground.AI.Runtime/MafPlayground.AI.Runtime.csproj" />
+  </ItemGroup>
+</Project>

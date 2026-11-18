@@ -1,16 +1,10 @@
 using System.CommandLine;
 using MafPlayground.AI;
-using MafPlayground.AI.Resilience;
-using MafPlayground.AI.Guards;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Agents.BasicRagAgent;
 using MafPlayground.AI.Agents.HelpAgent;
-using MafPlayground.AI.Workflows.Translation;
-using MafPlayground.AI.Runtime;
 using MafPlayground.CLI.DevUI;
 using MafPlayground.CLI.Extensions;
-using MafPlayground.CLI.Documentation;
-using MafPlayground.CLI.Helpers;
 using MafPlayground.CLI.Inspection;
 using MafPlayground.Observability;
 using MafPlayground.Retrieval;
@@ -94,31 +88,7 @@ public sealed class DevUICommand : ICliCommand
         }
         builder.WebHost.UseUrls(url);
 
-        builder.Services.AddLocalUserContext();
-        builder.Services
-            .AddAICore(modelSelection)
-            .AddBasicAgent()
-            .AddBasicRagAgent()
-            .AddHelpAgent(RepositoryHelpAgentConfiguration.Definition)
-            .AddTranslationWorkflow();
-        builder.Services.AddSingleton<IHelpCapabilityCatalog>(
-            new SystemCommandLineHelpCapabilityCatalog(Parser.CreateRootCommand()));
-        builder.Services.Configure<BasicAgentOptions>(
-            builder.Configuration.GetSection(BasicAgentOptions.ConfigurationSectionName));
-        builder.Services.Configure<AIGuardOptions>(
-            builder.Configuration.GetSection(AIGuardOptions.ConfigurationSectionName));
-        builder.Services.Configure<BasicRagAgentOptions>(
-            builder.Configuration.GetSection(BasicRagAgentOptions.ConfigurationSectionName));
-        builder.Services.Configure<HelpAgentOptions>(
-            builder.Configuration.GetSection(
-                RepositoryHelpAgentConfiguration.ConfigurationSectionName));
-        builder.Services.Configure<AIResilienceOptions>(
-            builder.Configuration.GetSection(AIResilienceOptions.ConfigurationSectionName));
-        builder.Services.Configure<TranslationWorkflowOptions>(
-            builder.Configuration.GetSection("AI:Workflows:Translation"));
-        builder.Services.ConfigureAIEntities().AddMafPlaygroundSampleEntities();
-        builder.Services.AddInMemoryAgentSessions();
-        builder.Services.AddConfiguredAIProviders(builder.Configuration);
+        builder.Services.AddLocalRuntime(builder.Configuration, modelSelection);
         try
         {
             builder.Services.AddConfiguredRetrieval(builder.Configuration);

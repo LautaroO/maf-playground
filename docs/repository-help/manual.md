@@ -24,6 +24,15 @@ arbitrary source code, or write to the knowledge base.
 
 ## Quick answers
 
+Run `tui` for an interactive terminal inspector. Select an agent or workflow
+with ↑/↓ and Enter. Press `r` to run it. Esc returns to the catalog. Reopening
+an entity restores its inspector during the same TUI session. The graph marks each executing node with ▶, including concurrent branches.
+Press `2` to explore events and `3` to read the final result. Use `tui --host URL`
+to connect to a Studio HTTP host using its bearer token in `MAF_STUDIO_TOKEN`.
+Start the host with `serve --url http://127.0.0.1:5051` on the machine that
+executes the agents. The host and TUI ship together in the .NET CLI. The
+[CLI guide](../../src/MafPlayground.CLI/README.md) lists keys and connection examples.
+
 ### How do I run DevUI?
 
 Run this exact command from the repository root:

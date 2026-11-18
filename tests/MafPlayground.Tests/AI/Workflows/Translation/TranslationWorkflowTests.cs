@@ -16,6 +16,21 @@ namespace MafPlayground.Tests;
 public sealed class TranslationWorkflowTests
 {
     [Fact]
+    public async Task RunAsync_ClassifiesProviderFailureDuringValidationAsValidationCallFailed()
+    {
+        ConsistentValidationModel model = new(_ => throw new MafPlayground.AI.Abstractions.AIProviderFailureException(
+            "The AI provider call failed.", new HttpRequestException("private provider response")));
+        TranslationWorkflowResult result = await CreateRunner(model).RunAsync(
+            new TranslationWorkflowRequest("Hello", ["es"]));
+
+        ValidatedTranslation translation = Assert.Single(result.Translations);
+        Assert.False(translation.IsValid);
+        Assert.Equal("The translation validation call failed.", translation.Error);
+        Assert.Contains(translation.Issues, issue => issue.Code == TranslationIssueCode.ValidationCallFailed);
+        Assert.DoesNotContain(translation.Issues, issue => issue.Code == TranslationIssueCode.ModelCallFailed);
+    }
+
+    [Fact]
     public async Task RunAsync_TranslatesLanguagesInParallelAndAggregatesInRequestedOrder()
     {
         ParallelTranslationModel model = new(["es", "fr", "pt-BR"]);
@@ -436,6 +451,70 @@ public sealed class TranslationWorkflowTests
     }
 
     [Fact]
+    public async Task Inspector_SeesBothRunningTranslatorsBeforeTheyReturn()
+    {
+        string[] languages = ["es", "fr"];
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource second = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = CreateRunner(new ParallelTranslationModel(languages, language => language == "es" ? first.Task : second.Task));
+        var inspection = new MafPlayground.CLI.Tui.InspectorRun();
+        await foreach (var item in runner.RunStreamingAsync(
+                           new TranslationWorkflowRequest("Hello", languages), true, timeout.Token))
+        {
+            inspection.Apply(item);
+            if (languages.All(language => inspection.IsActive($"translate-{language}")))
+                first.TrySetResult();
+            if (inspection.Attempts("translate-es").Any(attempt => attempt.Finished) && inspection.IsActive("translate-fr"))
+                second.TrySetResult();
+        }
+
+        Assert.True(second.Task.IsCompletedSuccessfully);
+        Assert.Contains("es:Hello", Assert.Single(inspection.Attempts("translate-es")).Output);
+        Assert.Contains("Hello", Assert.Single(inspection.Attempts("translation-input")).Output);
+        Assert.Equal("Completed", inspection.Status);
+    }
+
+    [Fact]
+    public async Task Inspector_ShowsCombinedResultOnFinalAggregateInvocation()
+    {
+        string[] languages = ["es", "fr"];
+        var runner = CreateRunner(new ParallelTranslationModel(languages));
+        var inspection = new MafPlayground.CLI.Tui.InspectorRun();
+        await foreach (var item in runner.RunStreamingAsync(new TranslationWorkflowRequest("Hello", languages)))
+        {
+            inspection.Apply(item);
+        }
+
+        var invocations = inspection.Attempts("translation-aggregate");
+        Assert.Equal(2, invocations.Count);
+        Assert.NotEqual(inspection.Result, invocations[0].Output);
+        Assert.Equal(inspection.Result, invocations[1].Output);
+        Assert.Contains("es:Hello", invocations[1].Output);
+        Assert.Contains("fr:Hello", invocations[1].Output);
+    }
+
+    [Fact]
+    public async Task Inspector_PreservesRejectedAndSuccessfulValidationAttempts()
+    {
+        var runner = CreateRunner(new FeedbackTranslationModel());
+        var inspection = new MafPlayground.CLI.Tui.InspectorRun();
+        await foreach (var item in runner.RunStreamingAsync(
+                           new TranslationWorkflowRequest("Hello", ["es"]), includeInspectionEvents: true))
+        {
+            inspection.Apply(item);
+        }
+
+        var attempts = inspection.Attempts("validate-es");
+        Assert.Equal(2, attempts.Count);
+        Assert.True(attempts[0].Rejected);
+        Assert.Contains("WrongTargetLanguage", attempts[0].Error);
+        Assert.Contains("Hola", attempts[1].Output);
+        Assert.False(attempts[1].Rejected);
+        Assert.Equal("Completed", inspection.Status);
+    }
+
+    [Fact]
     public async Task RunStreamingAsync_EmitsExecutorEventsAndTypedOutput()
     {
         TranslationWorkflowRunner runner = CreateRunner(new FeedbackTranslationModel());
@@ -643,9 +722,12 @@ public sealed class TranslationWorkflowTests
         private int _maximumConcurrentTranslations;
         private int _startedTranslations;
 
-        public ParallelTranslationModel(IReadOnlyList<string> languages)
+        private readonly Func<string, Task>? _release;
+
+        public ParallelTranslationModel(IReadOnlyList<string> languages, Func<string, Task>? release = null)
         {
             _expectedConcurrency = languages.Count;
+            _release = release;
         }
 
         public int MaximumConcurrentTranslations => _maximumConcurrentTranslations;
@@ -662,6 +744,7 @@ public sealed class TranslationWorkflowTests
             }
 
             await _allStarted.Task.WaitAsync(cancellationToken);
+            if (_release is not null) await _release(request.TargetLanguage).WaitAsync(cancellationToken);
             Interlocked.Decrement(ref _activeTranslations);
             return $"{request.TargetLanguage}:Hello";
         }

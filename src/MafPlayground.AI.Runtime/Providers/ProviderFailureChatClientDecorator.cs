@@ -5,17 +5,21 @@ using Microsoft.Extensions.AI;
 
 namespace MafPlayground.AI.Runtime.Providers;
 
-internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
+internal sealed class ProviderFailureChatClientDecorator(IEnumerable<IAIProviderExceptionDiagnostics> diagnostics)
+    : IChatClientDecorator
 {
+    private readonly IAIProviderExceptionDiagnostics[] readers = diagnostics.ToArray();
+
     public int Order => ChatClientDecoratorOrder.ProviderFailure;
 
     public IChatClient Decorate(
         IChatClient chatClient,
         AIModelSelection modelSelection,
         TimeSpan modelCallTimeout) =>
-        new ProviderFailureChatClient(chatClient);
+        new ProviderFailureChatClient(chatClient, readers);
 
-    private sealed class ProviderFailureChatClient(IChatClient innerClient)
+    private sealed class ProviderFailureChatClient(
+        IChatClient innerClient, IReadOnlyList<IAIProviderExceptionDiagnostics> diagnostics)
         : DelegatingChatClient(innerClient)
     {
         public override async Task<ChatResponse> GetResponseAsync(
@@ -34,7 +38,7 @@ internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
             }
             catch (Exception exception)
             {
-                throw new AIProviderFailureException("The AI provider call failed.", exception);
+                throw TranslateFailure(exception, "The AI provider call failed.");
             }
         }
 
@@ -61,7 +65,7 @@ internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
             }
         }
 
-        private static IAsyncEnumerable<ChatResponseUpdate> CreateStream(
+        private IAsyncEnumerable<ChatResponseUpdate> CreateStream(
             Func<IAsyncEnumerable<ChatResponseUpdate>> factory)
         {
             try
@@ -78,7 +82,7 @@ internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
             }
         }
 
-        private static IAsyncEnumerator<ChatResponseUpdate> CreateEnumerator(
+        private IAsyncEnumerator<ChatResponseUpdate> CreateEnumerator(
             IAsyncEnumerable<ChatResponseUpdate> stream,
             CancellationToken cancellationToken)
         {
@@ -96,7 +100,7 @@ internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
             }
         }
 
-        private static async ValueTask<bool> MoveNextAsync(
+        private async ValueTask<bool> MoveNextAsync(
             IAsyncEnumerator<ChatResponseUpdate> enumerator)
         {
             try
@@ -113,7 +117,7 @@ internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
             }
         }
 
-        private static async ValueTask DisposeAsync(
+        private async ValueTask DisposeAsync(
             IAsyncEnumerator<ChatResponseUpdate> enumerator)
         {
             try
@@ -130,9 +134,22 @@ internal sealed class ProviderFailureChatClientDecorator : IChatClientDecorator
             }
         }
 
-        private static AIProviderFailureException TranslateStreamingFailure(
-            Exception exception) => new(
-                "The AI provider streaming call failed.",
-                exception);
+        private AIProviderFailureException TranslateStreamingFailure(Exception exception) =>
+            TranslateFailure(exception, "The AI provider streaming call failed.");
+
+        private AIProviderFailureException TranslateFailure(Exception exception, string message)
+        {
+            AIProviderFailureDetails? details = null;
+            foreach (IAIProviderExceptionDiagnostics reader in diagnostics)
+            {
+                try
+                {
+                    details = reader.Describe(exception);
+                    if (details is not null) break;
+                }
+                catch (Exception) { /* Diagnostic enrichment must never mask the provider failure. */ }
+            }
+            return new AIProviderFailureException(message, exception) { Details = details };
+        }
     }
 }

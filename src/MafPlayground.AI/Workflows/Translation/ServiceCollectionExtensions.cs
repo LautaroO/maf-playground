@@ -31,9 +31,9 @@ public static class TranslationWorkflowServiceCollectionExtensions
                 "Translation workflow requires a guard profile.")
             .ValidateOnStart();
         services.TryAddSingleton<ITranslationModel>(provider =>
-            new ChatClientTranslationModel(
+            new DeferredTranslationModel(() => new ChatClientTranslationModel(
                 provider.GetRequiredService<IAIChatClientFactory>()
-                    .Create("translation-workflow")));
+                    .Create("translation-workflow"))));
         services.TryAddSingleton<TranslationService>();
         services.TryAddSingleton<TranslationWorkflowFactory>();
         services.TryAddSingleton<TranslationWorkflowRunner>();

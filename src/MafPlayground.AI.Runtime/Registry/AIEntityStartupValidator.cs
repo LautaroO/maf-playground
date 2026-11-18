@@ -15,6 +15,8 @@ internal sealed class AIEntityStartupValidator(
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if (services.GetService<AIStartupValidationOptions>()?.Mode == AIStartupValidationMode.LocalInspection)
+            return Task.CompletedTask;
         foreach (AIEntityRegistration registration in registrations)
         {
             ResolvedAIEntityRuntimeOptions options = runtimeOptions.Resolve(

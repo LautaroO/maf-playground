@@ -7,6 +7,9 @@ namespace MafPlayground.AI.Runtime.Providers;
 public interface IAIChatClientFactory
 {
     IChatClient Create(string entityId);
+
+    IChatClient Create(ResolvedAIEntityRuntimeOptions options) =>
+        throw new NotSupportedException("This chat-client factory does not support explicit runtime options.");
 }
 
 internal sealed class AIChatClientFactory(
@@ -18,7 +21,12 @@ internal sealed class AIChatClientFactory(
 
     public IChatClient Create(string entityId)
     {
-        ResolvedAIEntityRuntimeOptions options = runtimeOptions.Resolve(entityId);
+        return Create(runtimeOptions.Resolve(entityId));
+    }
+
+    public IChatClient Create(ResolvedAIEntityRuntimeOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
         IChatClient client = providers.CreateChatClient(options.Model);
         foreach (IChatClientDecorator decorator in _decorators)
         {

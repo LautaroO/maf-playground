@@ -170,3 +170,22 @@ public sealed class ChatClientTranslationModel(IChatClient chatClient) : ITransl
         double Confidence,
         IReadOnlyList<TranslationIssueResolution>? PreviousIssueResolutions);
 }
+
+// Keeps graph construction independent of model client construction. This retains the
+// existing default-path singleton lifetime; profile-specific sources must use their own scope.
+internal sealed class DeferredTranslationModel(Func<ITranslationModel> createModel) : ITranslationModel
+{
+    private readonly Lazy<ITranslationModel> _model = new(createModel);
+
+    public Task<string> TranslateAsync(TranslationDraftRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return _model.Value.TranslateAsync(request, cancellationToken);
+    }
+
+    public Task<TranslationValidation> ValidateAsync(TranslationValidationRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return _model.Value.ValidateAsync(request, cancellationToken);
+    }
+}

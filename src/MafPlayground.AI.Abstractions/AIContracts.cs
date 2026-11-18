@@ -28,7 +28,9 @@ public sealed record AICallerContext
 public sealed record AIExecutionContext(
     string ExecutionId,
     AICallerContext Caller,
-    string? SessionId = null)
+    string? SessionId = null,
+    string? ProfileId = null,
+    IAIExecutionObserver? Observer = null)
 {
     public static AIExecutionContext Create(
         AICallerContext caller,
@@ -74,7 +76,8 @@ public sealed record AIEntityInvocationResult(
     string ExecutionId,
     string EntityId,
     string? SessionId,
-    object? Output);
+    object? Output,
+    AIOutcomeClassification Outcome = AIOutcomeClassification.Unclassified);
 
 public sealed class AIEntityNotFoundException(string entityId)
     : KeyNotFoundException($"AI entity '{entityId}' is not registered.")
@@ -86,7 +89,10 @@ public sealed class AIEntityInputException(string message, Exception? innerExcep
     : ArgumentException(message, innerException);
 
 public sealed class AIProviderFailureException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+    : Exception(message, innerException)
+{
+    public AIProviderFailureDetails? Details { get; init; }
+}
 
 public sealed class AISessionConcurrencyException(string sessionId)
     : InvalidOperationException($"AI session '{sessionId}' was updated concurrently.")
@@ -104,4 +110,13 @@ public sealed class AISessionNotSupportedException(string entityId)
     : ArgumentException($"AI entity '{entityId}' does not support sessions.")
 {
     public string EntityId { get; } = entityId;
+}
+
+public enum AIOutcomeClassification { Unclassified, Succeeded, PartiallyFailed, Failed }
+
+public sealed record AIExecutionEvent(string Kind, System.Text.Json.JsonElement Data, string? ExecutorId = null, string? InvocationId = null);
+
+public interface IAIExecutionObserver
+{
+    void Record(AIExecutionEvent executionEvent);
 }

@@ -10,10 +10,12 @@
     <PackageReference Include="Microsoft.Agents.AI.Hosting" />
     <PackageReference Include="Microsoft.Agents.AI.Hosting.OpenAI" />
     <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Terminal.Gui" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../MafPlayground.AI.Abstractions/MafPlayground.AI.Abstractions.csproj" />
+    <ProjectReference Include="../MafPlayground.Studio/MafPlayground.Studio.csproj" />
     <ProjectReference Include="../MafPlayground.AI.Runtime/MafPlayground.AI.Runtime.csproj" />
     <ProjectReference Include="../MafPlayground.AI.Samples/MafPlayground.AI.Samples.csproj" />
     <ProjectReference Include="../MafPlayground.Observability/MafPlayground.Observability.csproj" />

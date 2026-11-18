@@ -290,6 +290,8 @@ dotnet run --project src/MafPlayground.CLI -- workflow translate --help
 | `inspect agent <id> --view-input` | Print an agent's JSON Schema and example input. |
 | `inspect workflow <id> --view-input` | Print a workflow's JSON Schema and example input. |
 | `inspect workflow <id> --diagram` | Print the native MAF graph as Mermaid source. |
+| `tui` | Explore local workflow graphs, run typed inputs, and inspect individual invocations in the terminal. |
+| `serve` | Host the .NET Studio API for `tui --host`. See the [connection guide](src/MafPlayground.CLI/README.md#connect-to-a-studio-host). |
 | `devui` | Host the local MAF DevUI. |
 
 `--watch` is available on agent and workflow execution commands. It shows

@@ -37,7 +37,8 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IUserContextAccessor, HttpUserContextAccessor>();
 builder.Services.AddAIRuntime(builder.Configuration)
-    .AddMafPlaygroundSampleEntities();
+    .AddBasicAgentEntity()
+    .AddTranslationWorkflowEntity();
 builder.Services.AddInMemoryAgentSessions();
 builder.Services.AddAIEndpoints(builder.Configuration);
 builder.Services.Configure<TranslationWorkflowOptions>(

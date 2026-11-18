@@ -226,6 +226,30 @@ public sealed class AgentGuardPipeline(
             AgentRunOptions? options,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            // Content transformations require a complete response so sensitive text cannot
+            // leak across chunk boundaries. Other profiles can preserve native streaming.
+            if (!profile.Content.Enabled)
+            {
+                IReadOnlyList<ChatMessage> guardedMessages = await pipeline.GuardInputAsync(messages, profile, cancellationToken).ConfigureAwait(false);
+                GuardExecutionContext execution = new(profileName, profile);
+                await using IAsyncEnumerator<AgentResponseUpdate> stream = InnerAgent
+                    .RunStreamingAsync(guardedMessages, session, options, cancellationToken)
+                    .GetAsyncEnumerator(cancellationToken);
+                // Async-iterator continuations do not retain an AsyncLocal assignment
+                // across yields. Re-enter the same ledger for each stream advance.
+                while (true)
+                {
+                    AgentResponseUpdate update;
+                    using (contextAccessor.EnterScope(execution))
+                    {
+                        if (!await stream.MoveNextAsync().ConfigureAwait(false)) break;
+                        update = stream.Current;
+                    }
+                    yield return update;
+                }
+                yield break;
+            }
+
             AgentResponse response = await RunCoreAsync(
                 messages,
                 session,

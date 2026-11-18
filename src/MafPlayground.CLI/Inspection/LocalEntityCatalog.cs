@@ -28,7 +28,9 @@ internal sealed record LocalEntityDescriptor(
     object InputExample,
     Func<IServiceProvider, AIAgent>? CreateAgent = null,
     Func<IConfiguration, Workflow>? CreateWorkflowDiagram = null,
-    Func<IServiceProvider, string, Workflow>? CreateHostedWorkflow = null);
+    Func<IServiceProvider, string, Workflow>? CreateHostedWorkflow = null,
+    Func<IServiceProvider, object, CancellationToken, IAsyncEnumerable<WorkflowEvent>>? StreamWorkflow = null,
+    bool RequiresRetrieval = false);
 
 internal static class LocalEntityCatalog
 {
@@ -47,14 +49,14 @@ internal static class LocalEntityCatalog
             "A grounded help assistant that answers from an ingested document knowledge base with citations.",
             typeof(string),
             "How long does a password-reset link remain valid?",
-            CreateAgent: services => services.GetRequiredService<BasicRagAgent>().Agent),
+            CreateAgent: services => services.GetRequiredService<BasicRagAgent>().Agent, RequiresRetrieval: true),
         new(
             "repository-help-agent",
             LocalEntityKind.Agent,
             "A grounded assistant for understanding the MafPlayground repository and its CLI.",
             typeof(string),
             "How do I run the repository help agent from the CLI?",
-            CreateAgent: services => services.GetRequiredService<HelpAgent>().Agent),
+            CreateAgent: services => services.GetRequiredService<HelpAgent>().Agent, RequiresRetrieval: true),
         new(
             "translation-workflow",
             LocalEntityKind.Workflow,
@@ -64,7 +66,9 @@ internal static class LocalEntityCatalog
             CreateWorkflowDiagram: CreateTranslationWorkflowDiagram,
             CreateHostedWorkflow: (services, name) => services
                 .GetRequiredService<ITranslationWorkflowSource>()
-                .CreateWorkflowForDevUI(name)),
+                .CreateWorkflowForDevUI(name),
+            StreamWorkflow: (services, input, token) => services.GetRequiredService<TranslationWorkflowRunner>()
+                .RunStreamingAsync((TranslationWorkflowRequest)input, includeInspectionEvents: true, token)),
     ];
 
     public static LocalEntityDescriptor? Find(

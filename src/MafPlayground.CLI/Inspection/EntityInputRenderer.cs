@@ -11,22 +11,24 @@ internal sealed class EntityInputRenderer(TextWriter output)
             WriteIndented = true,
         };
 
-    public async Task RenderAsync(
-        LocalEntityDescriptor descriptor,
-        CancellationToken cancellationToken = default)
-    {
-        JsonElement schema = AIJsonUtilities.CreateJsonSchema(
+    public static JsonElement Schema(LocalEntityDescriptor descriptor) =>
+        AIJsonUtilities.CreateJsonSchema(
             descriptor.InputType,
             $"Required input for {descriptor.Id}",
             hasDefaultValue: false,
             defaultValue: null,
             SerializerOptions);
+
+    public async Task RenderAsync(
+        LocalEntityDescriptor descriptor,
+        CancellationToken cancellationToken = default)
+    {
         object document = new
         {
             entityId = descriptor.Id,
             entityType = descriptor.Kind.ToString().ToLowerInvariant(),
             inputType = descriptor.InputType.FullName,
-            schema,
+            schema = Schema(descriptor),
             example = descriptor.InputExample,
         };
 

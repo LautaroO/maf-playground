@@ -15,8 +15,10 @@ public sealed class TranslationWorkflowFactory(
     private readonly TranslationWorkflowOptions _options = options.Value;
     private readonly AgentTelemetryOptions _telemetryOptions = telemetryOptions.Value;
 
-    public Workflow Create() =>
-        Create("translation-workflow", useChatProtocol: false, _options.GuardProfile);
+    public Workflow Create() => Create(includeInspectionEvents: false);
+
+    internal Workflow Create(bool includeInspectionEvents) =>
+        Create("translation-workflow", useChatProtocol: false, _options.GuardProfile, includeInspectionEvents);
 
     public Workflow CreateForRuntime(string guardProfile) =>
         Create("translation-workflow", useChatProtocol: false, guardProfile);
@@ -28,7 +30,8 @@ public sealed class TranslationWorkflowFactory(
     private Workflow Create(
         string workflowName,
         bool useChatProtocol,
-        string guardProfile)
+        string guardProfile,
+        bool includeInspectionEvents = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowName);
         string[] supportedLanguages = TranslationWorkflowHelpers.ValidateSupportedLanguages(
@@ -48,11 +51,13 @@ public sealed class TranslationWorkflowFactory(
             TranslationExecutor translator = new(
                 translatorId,
                 language,
-                translationService);
+                translationService,
+                includeInspectionEvents);
             TranslationValidationExecutor validator = new(
                 $"validate-{executorSuffix}",
                 translatorId,
-                translationService);
+                translationService,
+                includeInspectionEvents);
 
             translators.Add(translator);
             validators.Add(validator);
@@ -131,12 +136,18 @@ public sealed class TranslationWorkflowRunner(TranslationWorkflowFactory workflo
             "The translation workflow completed without producing a result.");
     }
 
+    public IAsyncEnumerable<WorkflowEvent> RunStreamingAsync(
+        TranslationWorkflowRequest request,
+        CancellationToken cancellationToken = default) =>
+        RunStreamingAsync(request, includeInspectionEvents: false, cancellationToken);
+
     public async IAsyncEnumerable<WorkflowEvent> RunStreamingAsync(
         TranslationWorkflowRequest request,
+        bool includeInspectionEvents,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         TranslationWorkflowRequest validatedRequest = workflowFactory.Validate(request);
-        Workflow workflow = workflowFactory.Create();
+        Workflow workflow = workflowFactory.Create(includeInspectionEvents);
         await using StreamingRun run = await InProcessExecution.RunStreamingAsync(
             workflow,
             new TranslationWorkflowInput(

@@ -28,7 +28,9 @@ maf-playground
 │   ├── list
 │   ├── agent <id>
 │   └── workflow <id>
-└── devui
+├── devui
+├── serve
+└── tui
 ```
 
 Discover options through System.CommandLine:
@@ -38,6 +40,80 @@ dotnet run --project src/MafPlayground.CLI -- --help
 dotnet run --project src/MafPlayground.CLI -- agent basic --help
 dotnet run --project src/MafPlayground.CLI -- inspect workflow --help
 ```
+
+## Terminal inspector
+
+Open a terminal at the repository root:
+
+```sh
+dotnet run --project src/MafPlayground.CLI -- tui
+```
+
+The catalog lists all registered agents and workflows before a model is configured.
+Select with ↑/↓ and Enter. Press Esc or `c` in an inspector to return to the
+catalog. Opening that entity again restores its draft, selected view and run.
+Local runs continue while you browse. Use `--entity ID` to open an inspector
+directly. With `--input` alone, the first entity you open receives the file. Press `m` to choose a local
+`provider:model`, or pass `--model` or set `AI_MODEL`. The local runtime builds
+agents and workflows in process. An animated RUNNING banner appears on submission.
+Each currently executing node has a yellow ▶ and remains visible as active when
+selected. Concurrent branches can be active together. Edges describe possible
+routes. Agent tool nodes appear when the agent invokes the corresponding tool.
+
+| Key | Local action |
+| --- | --- |
+| `c`, `v`, `i` | Choose an entity, read its typed input schema, or edit its JSON. Tab focuses Apply, Enter confirms, Esc discards. |
+| `r`, `x` | Execute or cancel the current run. Use `--entity` and `--input <file.json>` for startup values. |
+| `1`, `2`, `3` | Graph, event timeline, final result. In the timeline, use ↑/↓ and Enter to inspect an observed invocation. |
+| ↑/↓, ←/→ | Select a node or follow an incoming/outgoing edge. |
+| Tab or Enter, ←/→, `[` / `]` | Focus the inspector, switch input/output/error, or select another invocation. Narrow terminals show the focused inspector full-screen. |
+| `e` | Jump to the next failed or rejected invocation. |
+| `h`, `b` | Reopen a run from session history or compare the current capture to a baseline. Each local inspector retains its latest 12 archived runs. |
+| `s`, `o` | Save a completed capture to a new JSON file or inspect a saved capture offline. Files include the submitted input, outputs and errors. Keep them with the data they describe. |
+| `?`, `q` | Show shortcuts or quit and cancel local execution. |
+
+### Connect to a Studio host
+
+`serve` and `tui --host` ship in the same .NET CLI. The server runs the agents
+and owns the catalog, profiles, sessions, jobs and retained results. On the
+machine with the model configuration, start the API:
+
+```sh
+dotnet run --project src/MafPlayground.CLI -- serve --url http://127.0.0.1:5051
+```
+
+The host reads `AI_MODEL` or `--model provider:model`. Retrieval-backed agents
+require the knowledge base configuration and `Studio__EnableRetrieval=true`.
+A regular `dotnet publish src/MafPlayground.CLI -c Release` produces the same
+host and client. Both run without Node or web assets.
+
+For another machine, forward that same loopback address and port to preserve
+the host's origin checks:
+
+```sh
+ssh -N -L 127.0.0.1:5051:127.0.0.1:5051 user@studio-machine
+```
+
+In the client terminal, supply the **API bearer token** printed by the host in
+`MAF_STUDIO_TOKEN`. For example, in zsh:
+
+```sh
+read -rs 'MAF_STUDIO_TOKEN?Studio API bearer token: ' && export MAF_STUDIO_TOKEN
+dotnet run --project src/MafPlayground.CLI -- tui --host http://127.0.0.1:5051
+unset MAF_STUDIO_TOKEN
+```
+
+The remote workspace also accepts HTTPS for compatible authenticated hosts.
+The remote catalog is populated by the selected host. Esc brings you back to
+the list. Reopening an entity resumes its current run and session for that profile.
+Use F9 for the Workspace, Run, and Inspect menus. Press `p` to select a profile,
+`c` for the catalog, `s` for sessions, and `h` for history. The graph, events
+and result use `1`, `2` and `3`. Edit with `i`, run with `r`, and cancel with
+`x`. Open retained runs to inspect observed executor and
+tool activity, failures, spans, payloads and available usage metrics. Use Run to
+prepare a rerun or compare two runs on that host. Closing the remote client
+disconnects the viewer; Run → Cancel execution explicitly requests cancellation.
+Sessions and run history follow the selected server's lifetime and retention limits.
 
 ## Structure
 

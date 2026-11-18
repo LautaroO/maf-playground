@@ -149,3 +149,22 @@ internal sealed record ValidatedTranslationMessage(
     IReadOnlyList<string> RequestedTargetLanguages,
     ValidatedTranslation Translation,
     string GuardExecutionId);
+
+public sealed class TranslationValidationEvent(string executorId, ValidatedTranslation validation)
+    : Microsoft.Agents.AI.Workflows.WorkflowEvent(validation)
+{
+    public string ExecutorId { get; } = executorId;
+    public ValidatedTranslation Validation { get; } = validation;
+}
+
+public sealed class TranslationDraftEvent : Microsoft.Agents.AI.Workflows.ExecutorEvent
+{
+    internal TranslationDraftEvent(string executorId, TranslationBranchState state) : base(executorId, state)
+    {
+        Attempt = state.Attempts;
+        Error = state.Error;
+    }
+
+    public int Attempt { get; }
+    public string? Error { get; }
+}

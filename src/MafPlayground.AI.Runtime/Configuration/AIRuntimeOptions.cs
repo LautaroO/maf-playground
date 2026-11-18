@@ -1,4 +1,5 @@
 using MafPlayground.AI.Guards;
+using MafPlayground.AI.Runtime.Registry;
 
 namespace MafPlayground.AI.Runtime.Configuration;
 
@@ -29,4 +30,6 @@ public sealed record ResolvedAIEntityRuntimeOptions(
 public interface IAIEntityRuntimeOptionsResolver
 {
     ResolvedAIEntityRuntimeOptions Resolve(string entityId);
+
+    ResolvedAIEntityRuntimeOptions Resolve(string entityId, AIExecutionProfileOptions profile);
 }

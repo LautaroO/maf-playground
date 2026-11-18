@@ -22,8 +22,10 @@ Subcommands:
 | `workflow` | Run and test workflows. |
 | `rag` | Manage the local RAG knowledge base. |
 | `devui` | Run the local Agent Framework DevUI. |
+| `serve` | Start the Studio HTTP API for tui --host. |
 | `docs` | Generate repository documentation artifacts. |
 | `inspect` | Inspect local agents and workflows. |
+| `tui` | Inspect and run local agents and workflows in the terminal. |
 
 ### `maf-playground agent`
 
@@ -212,6 +214,23 @@ Options:
 | `--model`, `-m` | no | Model selector in provider:model format. Falls back to AI_MODEL. |
 | `--url` | no | HTTP URL for DevUI. Falls back to DEVUI_URL. |
 
+### `maf-playground serve`
+
+Start the Studio HTTP API for tui --host.
+
+Usage:
+
+```text
+dotnet run --project src/MafPlayground.CLI -- serve [options]
+```
+
+Options:
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `--model`, `-m` | no | Model selector in provider:model format. Falls back to AI_MODEL. |
+| `--url` | no | Loopback HTTP URL for Studio. |
+
 ### `maf-playground docs`
 
 Generate repository documentation artifacts.
@@ -316,4 +335,23 @@ Options:
 | --- | --- | --- |
 | `--view-input` | no | Print the required input JSON Schema and an example. |
 | `--diagram` | no | Print the native MAF workflow graph as Mermaid. |
+
+### `maf-playground tui`
+
+Inspect and run local agents and workflows in the terminal.
+
+Usage:
+
+```text
+dotnet run --project src/MafPlayground.CLI -- tui [options]
+```
+
+Options:
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `--model`, `-m` | no | Model selector; defaults to AI_MODEL. |
+| `--input` | no | Load the run input from a JSON file. |
+| `--entity` | no | Open a local entity by identifier. |
+| `--host` | no | Connect to a Studio API host (MAF_STUDIO_TOKEN). |
 

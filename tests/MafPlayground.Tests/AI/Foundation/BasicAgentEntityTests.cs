@@ -3,6 +3,8 @@ using MafPlayground.AI.Abstractions;
 using MafPlayground.AI.Agents.BasicAgent;
 using MafPlayground.AI.Context;
 using MafPlayground.AI.Runtime.Sessions;
+using MafPlayground.AI.Runtime.Agents;
+using MafPlayground.AI.Runtime.Providers;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +13,27 @@ namespace MafPlayground.Tests.AI.Foundation;
 
 public sealed class BasicAgentEntityTests
 {
+    [Fact]
+    public async Task DefaultFactory_PreservesCustomEntityIdClientFactory()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IAIChatClientFactory>(new DefaultOnlyFactory());
+        services.AddAIRuntime(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["AI:Defaults:Model"] = "fake:model" }).Build());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        var agent = provider.GetRequiredService<IMafAgentFactory>().Create("custom", new("custom", "test", "test"));
+        Assert.Equal("custom response", (await agent.RunAsync("hello")).Text);
+    }
+
+    private sealed class DefaultOnlyFactory : IAIChatClientFactory
+    {
+        public IChatClient Create(string entityId)
+        {
+            Assert.Equal("custom", entityId);
+            return new FakeChatClient("custom response");
+        }
+    }
+
     [Fact]
     public async Task Entity_RestoresMafSessionAcrossScopes()
     {

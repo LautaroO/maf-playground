@@ -14,6 +14,16 @@ public static class HelpAgentServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(definition);
 
         services.AddSingleton(definition);
+        services.AddHelpAgentOptions();
+        services.TryAddSingleton<CitationValidator>();
+        services.TryAddSingleton<IRagAnswerRepairService, ChatClientRagAnswerRepairService>();
+        services.TryAddSingleton<IHelpAgentFactory, HelpAgentFactory>();
+        services.TryAddSingleton<HelpAgent>();
+        return services;
+    }
+
+    internal static IServiceCollection AddHelpAgentOptions(this IServiceCollection services)
+    {
         services.AddOptions<HelpAgentOptions>()
             .Validate(
                 options => !string.IsNullOrWhiteSpace(options.KnowledgeBase),
@@ -34,10 +44,6 @@ public static class HelpAgentServiceCollectionExtensions
                 options => !string.IsNullOrWhiteSpace(options.GuardProfile),
                 "Help agent requires a guard profile.")
             .ValidateOnStart();
-        services.TryAddSingleton<CitationValidator>();
-        services.TryAddSingleton<IRagAnswerRepairService, ChatClientRagAnswerRepairService>();
-        services.TryAddSingleton<IHelpAgentFactory, HelpAgentFactory>();
-        services.TryAddSingleton<HelpAgent>();
         return services;
     }
 }
